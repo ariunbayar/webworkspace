@@ -1,4 +1,79 @@
+var boxes = [];
+var currentBox = $('.help').addClass('active');
+var gridSize = 30;
+
+function positionsChanged()
+{
+    $('#formPosition label.changed').show();
+    $('#formPosition label.unchanged').hide();
+}
+
+function moveCurrentBox(x, y)
+{
+    var position = currentBox.position();
+    currentBox.css({
+        top: position.top + y,
+        left: position.left + x
+    });
+    positionsChanged();
+}
+
+function navUp()
+{
+    var currentPosition = currentBox.position();
+
+    var curTop = currentPosition.top;
+    var curLeft = currentPosition.left;
+    var curRight = left + currentBox.width();
+    var curBottom = top + currentBox.height();
+
+    var bottomMost;
+    $('.box').each(function(i) {
+        var el = $(this);
+        var pos = el.position();
+        var bottom = pos.top + el.height();
+        if (bottom <= top)
+        var middle = pos.top + el.height() / 2
+        if (pos.top) {
+
+        }
+        if (i == 0) {
+            bottomMost = bottom;
+        }
+    });
+    break;
+}
+
+function keyPressed(ctrlKeyPressed, altKeyPressed, shiftKeyPressed, charCode)
+{
+    var keyMap = {
+        '0|0|1|75': function() { moveCurrentBox(0, -gridSize); },
+        '0|0|1|74': function() { moveCurrentBox(0, gridSize); },
+        '0|0|1|72': function() { moveCurrentBox(-gridSize, 0); },
+        '0|0|1|76': function() { moveCurrentBox(gridSize, 0); },
+        '0|0|0|75': function() { navUp(); },
+    };
+    var key = [ctrlKeyPressed, altKeyPressed, shiftKeyPressed, charCode].join('|');
+    //console.log(key);return;
+
+    // call corresponding function
+    if (keyMap[key]) {
+        keyMap[key]();
+    }
+}
+
+
+
 $(function(){
+
+    $('.box').each(function() {
+        var position = $(this).position();
+        boxes.push(position);
+    });
+
+    $(document).keydown(function(e){
+        keyPressed(e.ctrlKey & 1, e.altKey & 1, e.shiftKey & 1, e.which);
+    });
 
     $.fn.drags = function(opt) {
 
@@ -44,27 +119,7 @@ $(function(){
 
     }
 
-    var throttle = function (fn, threshhold, scope) {
-        threshhold || (threshhold = 250);
-        var last, deferTimer;
-        return function () {
-            var context = scope || this;
-
-            var now = +new Date,
-                args = arguments;
-            if (last && now < last + threshhold) {
-                // hold on to it
-                clearTimeout(deferTimer);
-                deferTimer = setTimeout(function () {
-                    last = now;
-                    fn.apply(context, args);
-                }, threshhold);
-            } else {
-                last = now;
-                fn.apply(context, args);
-            }
-        };
-    }
+    $('.browser').drags();
 
     var updateInput = function (watch, removeFlag) {
         removeFlag = removeFlag || '0';

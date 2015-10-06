@@ -39,6 +39,18 @@ a:hover, a:focus { color: #0099dd; text-decoration: underline; }
     margin: 0;
 }
 
+@keyframes active {
+    0%   { box-shadow: 0px 0px 0px 5px #fff, 0px 0px 0px 10px #fdd; }
+    20%  { box-shadow: 0px 0px 0px 2px #fff, 0px 0px 0px  7px #fdd; }
+    100% { box-shadow: 0px 0px 0px 2px #fff, 0px 0px 0px  7px #fdd; }
+}
+
+.active{
+    box-shadow: 0px 0px 0px 5px #fff, 0px 0px 0px 7px #fdd;
+    animation: active 2.5s ease-in-out 0s infinite alternate;
+    transition: top 0.1s, left 0.1s;
+}
+
 /*
 div.watch:hover::before{
     background: #eee;

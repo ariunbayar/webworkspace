@@ -46,3 +46,9 @@
 
 <div style="top: 20px; left: 1350px;" class="box preview"><pre></pre></div>
 
+
+<pre style="top: 300px; left: 20px;" class="box help">
+Press ? for help
+k, j, h, l - Navigate up, down, left and right
+K, J, H, L - Move box up, down, left and right
+</pre>
