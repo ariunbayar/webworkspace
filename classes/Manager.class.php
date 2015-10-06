@@ -1,14 +1,15 @@
 <?php
-class Manager {
-
-    // saved configs
+class Manager
+{
     public $browser;
     public $watches;
+
+    static protected $_instance = null;
 
     /**
      * Loads configurations and setup values
      */
-    function __construct()
+    public function __construct()
     {
 
         // Main directory
@@ -23,7 +24,7 @@ class Manager {
         $this->watches = $watches ? unserialize($watches) : [];
     }
 
-    function save()
+    public function save()
     {
         for ($i = count($this->watches) - 1; $i >= 0; $i--) {
             if ($this->watches[$i]->remove == 1) {
@@ -34,4 +35,11 @@ class Manager {
         set('watches', serialize($this->watches));
     }
 
+    static public function getInstance()
+    {
+        if (self::$_instance === null) {
+            self::$_instance = new Manager();
+        }
+        return self::$_instance;
+    }
 }

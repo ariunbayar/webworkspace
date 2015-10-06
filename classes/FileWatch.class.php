@@ -57,8 +57,8 @@ class FileWatch implements Serializable
 
     function getSource()
     {
-        global $m;
-        $handle = fopen($m->browser->directory . $this->file, "r");
+        $manager = Manager::getInstance();
+        $handle = fopen($manager->browser->directory . $this->file, "r");
 
         $content = '';
         $this->numLines = 0;

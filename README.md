@@ -3,6 +3,6 @@ Web workspace
 
 Execute server with following command:
 
-    php -S 127.0.0.1:8081 -t .
+    cd web; php -S 127.0.0.1:8081 index.php
 
-And go to http://localhost:8081/
+And go to http://127.0.0.1:8081/

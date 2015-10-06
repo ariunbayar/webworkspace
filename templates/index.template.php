@@ -1,39 +1,6 @@
-<?php
-
-/*
-echo "
-SELECT 1
-KEYS *
-GET directory
-GET watches
-" | redis-cli
-*/
-
-ini_set('error_reporting', E_ALL);
-ini_set('display_errors', 1);
-ini_set('display_startup_errors', 1);
-
-
-require_once(__DIR__ . '/helpers/redis.php');
-require_once(__DIR__ . '/helpers/misc.php');
-require_once(__DIR__ . '/classes/Browser.class.php');
-require_once(__DIR__ . '/classes/FileWatch.class.php');
-require_once(__DIR__ . '/classes/Manager.class.php');
-require_once(__DIR__ . '/actions/action.php');
-
-?><!DOCTYPE html>
-<html>
-<head>
-    <link rel="stylesheet" href="assets/main.css" type="text/css" media="all" />
-</head>
-<body>
-
-
-<form action="" method="POST">
-    <input type="text" name="directory" value="<?php echo get('directory')?>"/>
-
-    <input type="submit" value="Save and Reload"/>
-</form>
+<?php foreach ($widgets as $widget) {
+    $widget->render();
+} ?>
 
 
 <form id="formPosition" action="" method="POST">
@@ -79,8 +46,3 @@ require_once(__DIR__ . '/actions/action.php');
 
 <div style="top: 20px; left: 1350px;" class="box preview"><pre></pre></div>
 
-
-<script src="//code.jquery.com/jquery-1.11.3.min.js"></script>
-<script src="assets/main.js"></script>
-</body>
-</html>
