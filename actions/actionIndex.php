@@ -33,7 +33,7 @@ class actionIndex extends actionBase
         }
 
         $openIndex = $this->getRequestParamGet('open');
-        if ($openIndex) {
+        if ($openIndex !== null) {
             $watch = $manager->watches[$openIndex];
             $file = $manager->browser->directory . $watch->file;
             exec("gnome-terminal -e \"gvim '$file'\"");
