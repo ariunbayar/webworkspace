@@ -18,30 +18,134 @@ function moveCurrentBox(x, y)
     positionsChanged();
 }
 
+function getElementBoundaries(el)
+{
+    var pos = el.position();
+    var width = el.width();
+    var height = el.height();
+
+    var boundaries = {
+        top: pos.top,
+        left: pos.left,
+        right: pos.left + width,
+        bottom: pos.top + height,
+        centerX: pos.left + width / 2,
+        centerY: pos.top + height / 2,
+        isAbove: function (bound) {
+            var isAbove = bound.top < this.top;
+            var isInColumn =
+                this.left < bound.centerX && bound.centerX < this.right ||
+                this.left < bound.left    && bound.left    < this.right ||
+                this.left < bound.right   && bound.right   < this.right;
+            return isAbove && isInColumn;
+        },
+        isLeft: function (bound) {
+            var isLeft = bound.left < this.left;
+            var isInRow =
+                this.top < bound.centerY && bound.centerY < this.bottom ||
+                this.top < bound.top     && bound.top     < this.bottom ||
+                this.top < bound.bottom  && bound.bottom  < this.bottom;
+            return isLeft && isInRow;
+        }
+    };
+
+    return boundaries;
+}
+
+function switchTo(box)
+{
+    box.addClass('active');
+    currentBox.removeClass('active');
+    currentBox = box;
+}
+
 function navUp()
 {
-    var currentPosition = currentBox.position();
+    // TODO please optimize these nav functions
+    var curBound = getElementBoundaries(currentBox);
 
-    var curTop = currentPosition.top;
-    var curLeft = currentPosition.left;
-    var curRight = left + currentBox.width();
-    var curBottom = top + currentBox.height();
-
-    var bottomMost;
-    $('.box').each(function(i) {
+    var bottomMostBox = null;
+    var bottomMost = null;
+    $('.box').each(function() {
         var el = $(this);
-        var pos = el.position();
-        var bottom = pos.top + el.height();
-        if (bottom <= top)
-        var middle = pos.top + el.height() / 2
-        if (pos.top) {
+        bound = getElementBoundaries(el);
 
-        }
-        if (i == 0) {
-            bottomMost = bottom;
+        if (curBound.isAbove(bound)) {
+            if (bottomMost === null || bound.bottom > bottomMost) {
+                bottomMost = bound.bottom;
+                bottomMostBox = el;
+            }
         }
     });
-    break;
+    if (bottomMostBox) {
+        switchTo(bottomMostBox);
+    }
+}
+
+function navDown()
+{
+    var curBound = getElementBoundaries(currentBox);
+
+    var topMostBox = null;
+    var topMost = null;
+    $('.box').each(function() {
+        var el = $(this);
+        bound = getElementBoundaries(el);
+
+        if (bound.isAbove(curBound)) {
+            if (topMost === null || bound.top < topMost) {
+                topMost = bound.top;
+                topMostBox = el;
+            }
+        }
+    });
+    if (topMostBox) {
+        switchTo(topMostBox);
+    }
+}
+
+function navLeft()
+{
+    var curBound = getElementBoundaries(currentBox);
+
+    var rightMostBox = null;
+    var rightMost = null;
+    $('.box').each(function() {
+        var el = $(this);
+        bound = getElementBoundaries(el);
+
+        if (curBound.isLeft(bound)) {
+            if (rightMost === null || bound.right > rightMost) {
+                rightMost = bound.right;
+                rightMostBox = el;
+            }
+        }
+    });
+    if (rightMostBox) {
+        switchTo(rightMostBox);
+    }
+}
+
+function navRight()
+{
+    var curBound = getElementBoundaries(currentBox);
+
+    var leftMostBox = null;
+    var leftMost = null;
+    $('.box').each(function() {
+        var el = $(this);
+        bound = getElementBoundaries(el);
+
+        if (bound.isLeft(curBound)) {
+            if (leftMost === null || bound.left < leftMost) {
+                leftMost = bound.left;
+                leftMostBox = el;
+            }
+        }
+    });
+    if (leftMostBox) {
+        switchTo(leftMostBox);
+    }
 }
 
 function keyPressed(ctrlKeyPressed, altKeyPressed, shiftKeyPressed, charCode)
@@ -52,6 +156,9 @@ function keyPressed(ctrlKeyPressed, altKeyPressed, shiftKeyPressed, charCode)
         '0|0|1|72': function() { moveCurrentBox(-gridSize, 0); },
         '0|0|1|76': function() { moveCurrentBox(gridSize, 0); },
         '0|0|0|75': function() { navUp(); },
+        '0|0|0|74': function() { navDown(); },
+        '0|0|0|72': function() { navLeft(); },
+        '0|0|0|76': function() { navRight(); },
     };
     var key = [ctrlKeyPressed, altKeyPressed, shiftKeyPressed, charCode].join('|');
     //console.log(key);return;
