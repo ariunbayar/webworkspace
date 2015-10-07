@@ -51,21 +51,21 @@ function getElementBoundaries(el)
                 bound.top < this.bottom  && this.bottom  < bound.bottom;
             return result;
         },
-        isAbove: function (bound) {
+        isAbove: function (bound, ignoreColumnCheck) {
             var isAbove = bound.top < this.top;
-            return isAbove && this.isInColumn(bound);
+            return isAbove && (ignoreColumnCheck || this.isInColumn(bound));
         },
-        isBelow: function (bound) {
+        isBelow: function (bound, ignoreColumnCheck) {
             var isBelow = this.bottom < bound.bottom;
-            return isBelow && this.isInColumn(bound);
+            return isBelow && (ignoreColumnCheck || this.isInColumn(bound));
         },
-        isLeft: function (bound) {
+        isLeft: function (bound, ignoreRowCheck) {
             var isLeft = bound.left < this.left;
-            return isLeft && this.isInRow(bound);
+            return isLeft && (ignoreRowCheck || this.isInRow(bound));
         },
-        isRight: function (bound) {
+        isRight: function (bound, ignoreRowCheck) {
             var isRight = this.right < bound.right;
-            return isRight && this.isInRow(bound);
+            return isRight && (ignoreRowCheck || this.isInRow(bound));
         }
     };
 
@@ -86,10 +86,18 @@ function navUp()
 
     var bottomMostBox = null;
     var bottomMost = null;
+    var bottomMostBoxNoColumn = null;
+    var bottomMostNoColumn = null;
     $('.box').each(function() {
         var el = $(this);
         bound = getElementBoundaries(el);
 
+        if (curBound.isAbove(bound, true)) {
+            if (bottomMostNoColumn === null || bound.bottom > bottomMostNoColumn) {
+                bottomMostNoColumn = bound.bottom;
+                bottomMostBoxNoColumn = el;
+            }
+        }
         if (curBound.isAbove(bound)) {
             if (bottomMost === null || bound.bottom > bottomMost) {
                 bottomMost = bound.bottom;
@@ -99,6 +107,8 @@ function navUp()
     });
     if (bottomMostBox) {
         switchTo(bottomMostBox);
+    } else if (bottomMostBoxNoColumn) {
+        switchTo(bottomMostBoxNoColumn);
     }
 }
 
@@ -108,10 +118,18 @@ function navDown()
 
     var topMostBox = null;
     var topMost = null;
+    var topMostBoxNoColumn = null;
+    var topMostNoColumn = null;
     $('.box').each(function() {
         var el = $(this);
         bound = getElementBoundaries(el);
 
+        if (curBound.isBelow(bound, true)) {
+            if (topMostNoColumn === null || bound.top < topMostNoColumn) {
+                topMostNoColumn = bound.top;
+                topMostBoxNoColumn = el;
+            }
+        }
         if (curBound.isBelow(bound)) {
             if (topMost === null || bound.top < topMost) {
                 topMost = bound.top;
@@ -121,6 +139,8 @@ function navDown()
     });
     if (topMostBox) {
         switchTo(topMostBox);
+    } else if (topMostBoxNoColumn) {
+        switchTo(topMostBoxNoColumn);
     }
 }
 
@@ -130,10 +150,18 @@ function navLeft()
 
     var rightMostBox = null;
     var rightMost = null;
+    var rightMostBoxNoRow = null;
+    var rightMostNoRow = null;
     $('.box').each(function() {
         var el = $(this);
         bound = getElementBoundaries(el);
 
+        if (curBound.isLeft(bound, true)) {
+            if (rightMostNoRow === null || bound.right > rightMostNoRow) {
+                rightMostNoRow = bound.right;
+                rightMostBoxNoRow = el;
+            }
+        }
         if (curBound.isLeft(bound)) {
             if (rightMost === null || bound.right > rightMost) {
                 rightMost = bound.right;
@@ -143,6 +171,8 @@ function navLeft()
     });
     if (rightMostBox) {
         switchTo(rightMostBox);
+    } else if (rightMostBoxNoRow) {
+        switchTo(rightMostBoxNoRow);
     }
 }
 
@@ -152,10 +182,18 @@ function navRight()
 
     var leftMostBox = null;
     var leftMost = null;
+    var leftMostBoxNoRow = null;
+    var leftMostNoRow = null;
     $('.box').each(function() {
         var el = $(this);
         bound = getElementBoundaries(el);
 
+        if (curBound.isRight(bound, true)) {
+            if (leftMostNoRow === null || bound.left < leftMostNoRow) {
+                leftMostNoRow = bound.left;
+                leftMostBoxNoRow = el;
+            }
+        }
         if (curBound.isRight(bound)) {
             if (leftMost === null || bound.left < leftMost) {
                 leftMost = bound.left;
@@ -165,6 +203,8 @@ function navRight()
     });
     if (leftMostBox) {
         switchTo(leftMostBox);
+    } else if (leftMostBoxNoRow) {
+        switchTo(leftMostBoxNoRow);
     }
 }
 
