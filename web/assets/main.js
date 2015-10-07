@@ -335,12 +335,6 @@ $(function(){
         })(watch), 1000);
     });
 
-    $('.watch a.resize').click(function() {
-        var watch = $(this).parents('.watch');
-        watch.css({width: 150, height: 200});
-        updateInput(watch);
-    });
-
     $('.watch pre').mousemove(function (e) {
         var pre = $(e.target);
         var tmpBox = $('.tmpBox');

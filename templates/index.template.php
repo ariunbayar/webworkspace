@@ -38,7 +38,6 @@
 <div class="watch box" data-idx="<?php echo $i ?>" style="<?php echo $watch->toStyleForWatch() . $watch->toStyleForPre() ?>">
     <div class="filename"><?php echo $watch->file ?></div>
     <a href="#" title="close" class="close">X</a>
-    <a href="#" title="resize to default 150x200" class="resize">R</a>
     <?php $content = $watch->getSource() ?>
     <pre data-num-lines="<?php echo $watch->numLines ?>"><?php echo htmlspecialchars($content) ?></pre>
 </div>
