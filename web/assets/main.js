@@ -1,4 +1,3 @@
-var boxes = [];
 var currentBox = $('.help').addClass('active');
 var gridSize = 30;
 
@@ -233,11 +232,6 @@ function keyPressed(ctrlKeyPressed, altKeyPressed, shiftKeyPressed, charCode)
 
 $(function(){
 
-    $('.box').each(function() {
-        var position = $(this).position();
-        boxes.push(position);
-    });
-
     $(document).keydown(function(e){
         keyPressed(e.ctrlKey & 1, e.altKey & 1, e.shiftKey & 1, e.which);
     });
@@ -356,12 +350,6 @@ $(function(){
         var newLine = "\n";
         var contentArray = pre.html().split(newLine);
         $('.preview pre').html(contentArray.slice(lineBegin, lineEnd).join(newLine));
-    });
-
-    $('.watch pre').mouseout(function (e) {
-        if (window.tmpBox) {
-            tmpBox.hide();
-        }
     });
 
     $('.watch pre').dblclick(function(e){
