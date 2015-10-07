@@ -23,7 +23,11 @@ function updateInput(watch, removeFlag)
 function moveCurrentBox(x, y)
 {
     var offset = currentBox.offset();
-    currentBox.offset({top: offset.top + y, left: offset.left + x});
+    // normalize current box offset
+    offset.top = Math.round(offset.top / gridSize) * gridSize;
+    offset.left = Math.round(offset.left / gridSize) * gridSize;
+    // move according with x and y by grid size
+    currentBox.offset({top: offset.top + y * gridSize, left: offset.left + x * gridSize});
     // TODO update position values
     positionsChanged();
 }
@@ -32,8 +36,10 @@ function resizeCurrentBox(x, y)
 {
     var width = currentBox.width();
     var height = currentBox.height();
-    currentBox.height(height + y);
-    currentBox.width(width + x);
+    width = Math.round(width / gridSize) * gridSize;
+    height = Math.round(height / gridSize) * gridSize;
+    currentBox.height(height + y * gridSize);
+    currentBox.width(width + x * gridSize);
     // TODO update position values
     positionsChanged();
 }
@@ -262,14 +268,14 @@ function closeBox()
 function keyPressed(ctrlKeyPressed, altKeyPressed, shiftKeyPressed, charCode)
 {
     var keyMap = {
-        '0|0|1|75': function() { modeMoveResize ? resizeCurrentBox(0, -gridSize) : 0; },
-        '0|0|1|74': function() { modeMoveResize ? resizeCurrentBox(0,  gridSize) : 0; },
-        '0|0|1|72': function() { modeMoveResize ? resizeCurrentBox(-gridSize, 0) : 0; },
-        '0|0|1|76': function() { modeMoveResize ? resizeCurrentBox( gridSize, 0) : 0; },
-        '0|0|0|75': function() { modeMoveResize ? moveCurrentBox(0, -gridSize) : navUp(); },
-        '0|0|0|74': function() { modeMoveResize ? moveCurrentBox(0,  gridSize) : navDown(); },
-        '0|0|0|72': function() { modeMoveResize ? moveCurrentBox(-gridSize, 0) : navLeft(); },
-        '0|0|0|76': function() { modeMoveResize ? moveCurrentBox( gridSize, 0) : navRight(); },
+        '0|0|1|75': function() { modeMoveResize ? resizeCurrentBox(0, -1) : 0; },
+        '0|0|1|74': function() { modeMoveResize ? resizeCurrentBox(0,  1) : 0; },
+        '0|0|1|72': function() { modeMoveResize ? resizeCurrentBox(-1, 0) : 0; },
+        '0|0|1|76': function() { modeMoveResize ? resizeCurrentBox( 1, 0) : 0; },
+        '0|0|0|75': function() { modeMoveResize ? moveCurrentBox(0, -1) : navUp(); },
+        '0|0|0|74': function() { modeMoveResize ? moveCurrentBox(0,  1) : navDown(); },
+        '0|0|0|72': function() { modeMoveResize ? moveCurrentBox(-1, 0) : navLeft(); },
+        '0|0|0|76': function() { modeMoveResize ? moveCurrentBox( 1, 0) : navRight(); },
         '0|0|0|69': function() { toggleModeMoveResize(true); },
         '0|0|0|27': function() { toggleModeMoveResize(false); },
         '0|0|0|13': function() { openFile(); },
