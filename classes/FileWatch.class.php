@@ -47,12 +47,12 @@ class FileWatch implements Serializable
 
     function toStyleForWatch()
     {
-         return 'top:' . $this->x . 'px; left:' . $this->y . 'px';
+         return 'top:' . $this->x . 'px; left:' . $this->y . 'px;';
     }
 
     function toStyleForPre()
     {
-         return 'width:' . $this->width . 'px; height:' . $this->height . 'px';
+         return 'width:' . $this->width . 'px; height:' . $this->height . 'px;';
     }
 
     function getSource()

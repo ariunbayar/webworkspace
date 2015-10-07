@@ -287,9 +287,11 @@ $(function(){
         var input = $('#formPosition input[name="watch[' + watch.attr('data-idx') + ']"]');
         var top = parseInt(watch.css('top'));
         var left = parseInt(watch.css('left'));
-        var pre = watch.find('pre');
-        var width = parseInt(pre.css('width'));
-        var height = parseInt(pre.css('height'));
+        //var pre = watch.find('pre');
+        //var width = pre.width();
+        //var height = pre.height();
+        var width = watch.width();
+        var height = watch.height();
         input.val(removeFlag + '|' + top + '|' + left + '|' + width  + '|' + height);
         $('#formPosition label.changed').show();
         $('#formPosition label.unchanged').hide();
@@ -311,7 +313,7 @@ $(function(){
 
     $('.watch a.resize').click(function() {
         var watch = $(this).parents('.watch');
-        watch.find('pre').css({width: 150, height: 200});
+        watch.css({width: 150, height: 200});
         updateInput(watch);
     });
 

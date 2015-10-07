@@ -35,12 +35,12 @@
 
 <!-- Watching files -->
 <?php foreach ($m->watches as $i => $watch) { ?>
-<div class="watch box" data-idx="<?php echo $i ?>" style="<?php echo $watch->toStyleForWatch() ?>">
+<div class="watch box" data-idx="<?php echo $i ?>" style="<?php echo $watch->toStyleForWatch() . $watch->toStyleForPre() ?>">
     <div class="filename"><?php echo $watch->file ?></div>
     <a href="#" title="close" class="close">X</a>
     <a href="#" title="resize to default 150x200" class="resize">R</a>
     <?php $content = $watch->getSource() ?>
-    <pre style="<?php echo $watch->toStyleForPre() ?>" data-num-lines="<?php echo $watch->numLines ?>"><?php echo htmlspecialchars($content) ?></pre>
+    <pre data-num-lines="<?php echo $watch->numLines ?>"><?php echo htmlspecialchars($content) ?></pre>
 </div>
 <?php } ?>
 
