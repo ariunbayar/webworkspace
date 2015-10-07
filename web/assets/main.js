@@ -20,32 +20,52 @@ function moveCurrentBox(x, y)
 
 function getElementBoundaries(el)
 {
-    var pos = el.position();
+    var pos = el.offset();
     var width = el.width();
     var height = el.height();
 
     var boundaries = {
-        top: pos.top,
-        left: pos.left,
-        right: pos.left + width,
-        bottom: pos.top + height,
-        centerX: pos.left + width / 2,
-        centerY: pos.top + height / 2,
-        isAbove: function (bound) {
-            var isAbove = bound.top < this.top;
-            var isInColumn =
+        top: pos.top - parseInt(el.css('border-top-width')),
+        left: pos.left - parseInt(el.css('border-left-width')),
+        right: pos.left + width + parseInt(el.css('border-right-width')),
+        bottom: pos.top + height + parseInt(el.css('border-bottom-width')),
+        centerX: pos.left + (width + parseInt(el.css('border-left-width')) + parseInt(el.css('border-right-width'))) / 2,
+        centerY: pos.top + (height + parseInt(el.css('border-top-width')) + parseInt(el.css('border-bottom-width'))) / 2,
+        isInColumn: function (bound) {
+            var result =
                 this.left < bound.centerX && bound.centerX < this.right ||
                 this.left < bound.left    && bound.left    < this.right ||
-                this.left < bound.right   && bound.right   < this.right;
-            return isAbove && isInColumn;
+                this.left < bound.right   && bound.right   < this.right ||
+                bound.left < this.centerX && this.centerX < bound.right ||
+                bound.left < this.left    && this.left    < bound.right ||
+                bound.left < this.right   && this.right   < bound.right;
+            return result;
+        },
+        isInRow: function(bound) {
+            var result =
+                this.top < bound.centerY && bound.centerY < this.bottom ||
+                this.top < bound.top     && bound.top     < this.bottom ||
+                this.top < bound.bottom  && bound.bottom  < this.bottom ||
+                bound.top < this.centerY && this.centerY < bound.bottom ||
+                bound.top < this.top     && this.top     < bound.bottom ||
+                bound.top < this.bottom  && this.bottom  < bound.bottom;
+            return result;
+        },
+        isAbove: function (bound) {
+            var isAbove = bound.top < this.top;
+            return isAbove && this.isInColumn(bound);
+        },
+        isBelow: function (bound) {
+            var isBelow = this.bottom < bound.bottom;
+            return isBelow && this.isInColumn(bound);
         },
         isLeft: function (bound) {
             var isLeft = bound.left < this.left;
-            var isInRow =
-                this.top < bound.centerY && bound.centerY < this.bottom ||
-                this.top < bound.top     && bound.top     < this.bottom ||
-                this.top < bound.bottom  && bound.bottom  < this.bottom;
-            return isLeft && isInRow;
+            return isLeft && this.isInRow(bound);
+        },
+        isRight: function (bound) {
+            var isRight = this.right < bound.right;
+            return isRight && this.isInRow(bound);
         }
     };
 
@@ -92,7 +112,7 @@ function navDown()
         var el = $(this);
         bound = getElementBoundaries(el);
 
-        if (bound.isAbove(curBound)) {
+        if (curBound.isBelow(bound)) {
             if (topMost === null || bound.top < topMost) {
                 topMost = bound.top;
                 topMostBox = el;
@@ -136,7 +156,7 @@ function navRight()
         var el = $(this);
         bound = getElementBoundaries(el);
 
-        if (bound.isLeft(curBound)) {
+        if (curBound.isRight(bound)) {
             if (leftMost === null || bound.left < leftMost) {
                 leftMost = bound.left;
                 leftMostBox = el;
