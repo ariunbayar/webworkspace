@@ -2,46 +2,48 @@ var currentBox = $('.help').addClass('active');
 var gridSize = 30;
 var modeMoveResize = false;
 
-function positionsChanged()
-{
-    $('#formPosition label.changed').show();
-    $('#formPosition label.unchanged').hide();
-}
-
-function updateInput(watch, removeFlag)
+function positionsChanged(box, removeFlag)
 {
     removeFlag = removeFlag || '0';
-    var input = $('#formPosition input[name="watch[' + watch.attr('data-idx') + ']"]');
-    var top = parseInt(watch.css('top'));
-    var left = parseInt(watch.css('left'));
-    var width = watch.width();
-    var height = watch.height();
-    input.val(removeFlag + '|' + top + '|' + left + '|' + width  + '|' + height);
-    positionsChanged();  // TODO pass which position values have changed
+
+    var offset = box.offset();
+    var width = box.width();
+    var height = box.height();
+
+    var input = $('#formPosition input[name="watch[' + box.attr('data-idx') + ']"]');
+    input.val(removeFlag + '|' + offset.top + '|' + offset.left + '|' + width  + '|' + height);
+
+    $('#formPosition label.changed').show();
+    $('#formPosition label.unchanged').hide();
 }
 
 function moveCurrentBox(x, y)
 {
     var offset = currentBox.offset();
-    // normalize current box offset
+
+    // normalize current box offset to grid size
     offset.top = Math.round(offset.top / gridSize) * gridSize;
     offset.left = Math.round(offset.left / gridSize) * gridSize;
-    // move according with x and y by grid size
-    currentBox.offset({top: offset.top + y * gridSize, left: offset.left + x * gridSize});
-    // TODO update position values
-    positionsChanged();
+
+    // move with x and y by grid size
+    offset.top = offset.top + y * gridSize;
+    offset.left = offset.left + x * gridSize;
+    currentBox.offset(offset);
+
+    positionsChanged(currentBox);
 }
 
 function resizeCurrentBox(x, y)
 {
-    var width = currentBox.width();
-    var height = currentBox.height();
-    width = Math.round(width / gridSize) * gridSize;
-    height = Math.round(height / gridSize) * gridSize;
+    // normalize current box size to grid
+    width = Math.round(currentBox.width() / gridSize) * gridSize;
+    height = Math.round(currentBox.height() / gridSize) * gridSize;
+
+    // resize with x and y by grid size
     currentBox.height(height + y * gridSize);
     currentBox.width(width + x * gridSize);
-    // TODO update position values
-    positionsChanged();
+
+    positionsChanged(currentBox);
 }
 
 function toggleModeMoveResize(isEnter)
@@ -254,7 +256,7 @@ function openFile()
 
 function closeBox()
 {
-    updateInput(currentBox, 1);
+    positionsChanged(currentBox, 1);
     setTimeout((function(el) {
         el.addClass('hinge');
         return function () {
@@ -289,8 +291,6 @@ function keyPressed(ctrlKeyPressed, altKeyPressed, shiftKeyPressed, charCode)
         keyMap[key]();
     }
 }
-
-
 
 $(function(){
 
