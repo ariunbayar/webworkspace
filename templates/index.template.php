@@ -37,7 +37,6 @@
 <?php foreach ($m->watches as $i => $watch) { ?>
 <div class="watch box" data-idx="<?php echo $i ?>" style="<?php echo $watch->toStyleForWatch() . $watch->toStyleForPre() ?>">
     <div class="filename"><?php echo $watch->file ?></div>
-    <a href="#" title="close" class="close">X</a>
     <?php $content = $watch->getSource() ?>
     <pre data-num-lines="<?php echo $watch->numLines ?>"><?php echo htmlspecialchars($content) ?></pre>
 </div>
@@ -55,10 +54,11 @@ Normal mode
 * k, j, h, l - Navigate up, down, left and right
 * Enter - Opens selected file
 
-Move/resize mode
-* e - Enter move/resize mode
+Modify box mode
+* e - Enter modify mode
 * k, j, h, l - Move box up, down, left and right
 * K, J, H, L - Resize box up, down, left and right
+* d - Remove current box
 </pre>
 
 

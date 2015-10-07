@@ -8,6 +8,18 @@ function positionsChanged()
     $('#formPosition label.unchanged').hide();
 }
 
+function updateInput(watch, removeFlag)
+{
+    removeFlag = removeFlag || '0';
+    var input = $('#formPosition input[name="watch[' + watch.attr('data-idx') + ']"]');
+    var top = parseInt(watch.css('top'));
+    var left = parseInt(watch.css('left'));
+    var width = watch.width();
+    var height = watch.height();
+    input.val(removeFlag + '|' + top + '|' + left + '|' + width  + '|' + height);
+    positionsChanged();  // TODO pass which position values have changed
+}
+
 function moveCurrentBox(x, y)
 {
     var offset = currentBox.offset();
@@ -26,7 +38,8 @@ function resizeCurrentBox(x, y)
     positionsChanged();
 }
 
-function toggleModeMoveResize(isEnter) {
+function toggleModeMoveResize(isEnter)
+{
     if (isEnter) {
         modeMoveResize = true;
         $('.active').css('border-color', '#00f');
@@ -233,6 +246,19 @@ function openFile()
     $.get(window.location.pathname + '?open=' + fileId);
 }
 
+function closeBox()
+{
+    updateInput(currentBox, 1);
+    setTimeout((function(el) {
+        el.addClass('hinge');
+        return function () {
+            // switch to some other window
+            navLeft(); navRight(); navUp(); navDown();
+            el.remove();
+        }
+    })(currentBox), 1000);
+}
+
 function keyPressed(ctrlKeyPressed, altKeyPressed, shiftKeyPressed, charCode)
 {
     var keyMap = {
@@ -247,6 +273,7 @@ function keyPressed(ctrlKeyPressed, altKeyPressed, shiftKeyPressed, charCode)
         '0|0|0|69': function() { toggleModeMoveResize(true); },
         '0|0|0|27': function() { toggleModeMoveResize(false); },
         '0|0|0|13': function() { openFile(); },
+        '0|0|0|68': function() { modeMoveResize ? closeBox() : 0; },
     };
     var key = [ctrlKeyPressed, altKeyPressed, shiftKeyPressed, charCode].join('|');
     //console.log(key);return;
@@ -311,36 +338,12 @@ $(function(){
 
     $('.browser').drags();
 
-    var updateInput = function (watch, removeFlag) {
-        removeFlag = removeFlag || '0';
-        var input = $('#formPosition input[name="watch[' + watch.attr('data-idx') + ']"]');
-        var top = parseInt(watch.css('top'));
-        var left = parseInt(watch.css('left'));
-        //var pre = watch.find('pre');
-        //var width = pre.width();
-        //var height = pre.height();
-        var width = watch.width();
-        var height = watch.height();
-        input.val(removeFlag + '|' + top + '|' + left + '|' + width  + '|' + height);
-        $('#formPosition label.changed').show();
-        $('#formPosition label.unchanged').hide();
-    }
-
     $('.watch').drags({
         dragstop: function(handle){
             var watch = $(handle).parents('.watch');
             updateInput(watch);
         },
         handle: '.filename'
-    });
-
-    $('.watch a.close').click(function() {
-        var watch = $(this).parents('.watch');
-        updateInput(watch, 1);
-        setTimeout((function(el) {
-            el.addClass('hinge');
-            return function () { el.remove(); }
-        })(watch), 1000);
     });
 
     $('.watch pre').mousemove(function (e) {
