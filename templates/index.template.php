@@ -49,6 +49,17 @@
 
 <pre style="top: 300px; left: 20px;" class="box help">
 Press ? for help
-k, j, h, l - Navigate up, down, left and right
-K, J, H, L - Move box up, down, left and right
+
+* Esc - Goes back to normal mode from whatever mode
+
+Normal mode
+* k, j, h, l - Navigate up, down, left and right
+
+Move/resize mode
+* e - Enter move/resize mode
+* k, j, h, l - Move box up, down, left and right
+* K, J, H, L - Resize box up, down, left and right
 </pre>
+
+
+<div class="resizer" style="top: 327px; left: 329px;">&#8690;</div>

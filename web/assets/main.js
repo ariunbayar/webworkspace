@@ -1,5 +1,6 @@
 var currentBox = $('.help').addClass('active');
 var gridSize = 30;
+var modeMoveResize = false;
 
 function positionsChanged()
 {
@@ -9,12 +10,30 @@ function positionsChanged()
 
 function moveCurrentBox(x, y)
 {
-    var position = currentBox.position();
-    currentBox.css({
-        top: position.top + y,
-        left: position.left + x
-    });
+    var offset = currentBox.offset();
+    currentBox.offset({top: offset.top + y, left: offset.left + x});
+    // TODO update position values
     positionsChanged();
+}
+
+function resizeCurrentBox(x, y)
+{
+    var width = currentBox.width();
+    var height = currentBox.height();
+    currentBox.height(height + y);
+    currentBox.width(width + x);
+    // TODO update position values
+    positionsChanged();
+}
+
+function toggleModeMoveResize(isEnter) {
+    if (isEnter) {
+        modeMoveResize = true;
+        $('.active').css('border-color', '#00f');
+    } else {
+        modeMoveResize = false;
+        $('.active').css('border-color', '#ccc');
+    }
 }
 
 function getElementBoundaries(el)
@@ -210,14 +229,16 @@ function navRight()
 function keyPressed(ctrlKeyPressed, altKeyPressed, shiftKeyPressed, charCode)
 {
     var keyMap = {
-        '0|0|1|75': function() { moveCurrentBox(0, -gridSize); },
-        '0|0|1|74': function() { moveCurrentBox(0, gridSize); },
-        '0|0|1|72': function() { moveCurrentBox(-gridSize, 0); },
-        '0|0|1|76': function() { moveCurrentBox(gridSize, 0); },
-        '0|0|0|75': function() { navUp(); },
-        '0|0|0|74': function() { navDown(); },
-        '0|0|0|72': function() { navLeft(); },
-        '0|0|0|76': function() { navRight(); },
+        '0|0|1|75': function() { modeMoveResize ? resizeCurrentBox(0, -gridSize) : 0; },
+        '0|0|1|74': function() { modeMoveResize ? resizeCurrentBox(0,  gridSize) : 0; },
+        '0|0|1|72': function() { modeMoveResize ? resizeCurrentBox(-gridSize, 0) : 0; },
+        '0|0|1|76': function() { modeMoveResize ? resizeCurrentBox( gridSize, 0) : 0; },
+        '0|0|0|75': function() { modeMoveResize ? moveCurrentBox(0, -gridSize) : navUp(); },
+        '0|0|0|74': function() { modeMoveResize ? moveCurrentBox(0,  gridSize) : navDown(); },
+        '0|0|0|72': function() { modeMoveResize ? moveCurrentBox(-gridSize, 0) : navLeft(); },
+        '0|0|0|76': function() { modeMoveResize ? moveCurrentBox( gridSize, 0) : navRight(); },
+        '0|0|0|69': function() { toggleModeMoveResize(true); },
+        '0|0|0|27': function() { toggleModeMoveResize(false); },
     };
     var key = [ctrlKeyPressed, altKeyPressed, shiftKeyPressed, charCode].join('|');
     //console.log(key);return;
@@ -308,7 +329,10 @@ $(function(){
     $('.watch a.close').click(function() {
         var watch = $(this).parents('.watch');
         updateInput(watch, 1);
-        watch.remove();
+        setTimeout((function(el) {
+            el.addClass('hinge');
+            return function () { el.remove(); }
+        })(watch), 1000);
     });
 
     $('.watch a.resize').click(function() {
