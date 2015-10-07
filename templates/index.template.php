@@ -53,6 +53,7 @@ Press ? for help
 
 Normal mode
 * k, j, h, l - Navigate up, down, left and right
+* Enter - Opens selected file
 
 Move/resize mode
 * e - Enter move/resize mode

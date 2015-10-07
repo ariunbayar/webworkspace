@@ -226,6 +226,13 @@ function navRight()
     }
 }
 
+function openFile()
+{
+    // TODO pass scroll to editor
+    var fileId = currentBox.attr('data-idx');
+    $.get(window.location.pathname + '?open=' + fileId);
+}
+
 function keyPressed(ctrlKeyPressed, altKeyPressed, shiftKeyPressed, charCode)
 {
     var keyMap = {
@@ -239,6 +246,7 @@ function keyPressed(ctrlKeyPressed, altKeyPressed, shiftKeyPressed, charCode)
         '0|0|0|76': function() { modeMoveResize ? moveCurrentBox( gridSize, 0) : navRight(); },
         '0|0|0|69': function() { toggleModeMoveResize(true); },
         '0|0|0|27': function() { toggleModeMoveResize(false); },
+        '0|0|0|13': function() { openFile(); },
     };
     var key = [ctrlKeyPressed, altKeyPressed, shiftKeyPressed, charCode].join('|');
     //console.log(key);return;
@@ -371,11 +379,4 @@ $(function(){
         var contentArray = pre.html().split(newLine);
         $('.preview pre').html(contentArray.slice(lineBegin, lineEnd).join(newLine));
     });
-
-    $('.watch pre').dblclick(function(e){
-        // TODO find clicked line to locate when editor opens
-        var fileId = $(e.target).parents('.watch').attr('data-idx');
-        $.get(window.location.pathname + '?open=' + fileId);
-    });
-
 });
