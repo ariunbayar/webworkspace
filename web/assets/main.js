@@ -1,11 +1,17 @@
 var currentBox = $('.help').addClass('active');
-var gridSize = 30;
+
+var Constants = {
+    MODE_NORMAL: 'MODE_NORMAL',
+    MODE_EDIT  : 'MODE_EDIT',
+    gridSize : 30,
+    boxScroll: 30
+}
 
 var currentMode = 'MODE_NORMAL';
 
 var keyMaps = {
     'MODE_NORMAL': {
-        // scroll the box TODO
+        // scroll the box
         '0|0|0|K': scrollUp,
         '0|0|0|J': scrollDown,
         '0|0|0|H': scrollLeft,
@@ -70,12 +76,12 @@ function moveCurrentBox(x, y)
     var offset = currentBox.offset();
 
     // normalize current box offset to grid size
-    offset.top = Math.round(offset.top / gridSize) * gridSize;
-    offset.left = Math.round(offset.left / gridSize) * gridSize;
+    offset.top = Math.round(offset.top / Constants.gridSize) * Constants.gridSize;
+    offset.left = Math.round(offset.left / Constants.gridSize) * Constants.gridSize;
 
     // move with x and y by grid size
-    offset.top = offset.top + y * gridSize;
-    offset.left = offset.left + x * gridSize;
+    offset.top = offset.top + y * Constants.gridSize;
+    offset.left = offset.left + x * Constants.gridSize;
     currentBox.offset(offset);
 
     positionsChanged(currentBox);
@@ -84,12 +90,12 @@ function moveCurrentBox(x, y)
 function resizeCurrentBox(x, y)
 {
     // normalize current box size to grid
-    width = Math.round(currentBox.width() / gridSize) * gridSize;
-    height = Math.round(currentBox.height() / gridSize) * gridSize;
+    width = Math.round(currentBox.width() / Constants.gridSize) * Constants.gridSize;
+    height = Math.round(currentBox.height() / Constants.gridSize) * Constants.gridSize;
 
     // resize with x and y by grid size
-    currentBox.height(height + y * gridSize);
-    currentBox.width(width + x * gridSize);
+    currentBox.height(height + y * Constants.gridSize);
+    currentBox.width(width + x * Constants.gridSize);
 
     positionsChanged(currentBox);
 }
@@ -176,22 +182,32 @@ function switchTo(box)
 
 function scrollUp()
 {
-
+    var scrollTop = currentBox.scrollTop() - Constants.boxScroll;
+    scrollTop = scrollTop < 0 ? 0 : scrollTop;
+    currentBox.scrollTop(scrollTop);
 }
 
 function scrollDown()
 {
-
+    var scrollHeight = currentBox[0].scrollHeight;
+    var scrollTop = currentBox.scrollTop() + Constants.boxScroll;
+    scrollTop = scrollTop > scrollHeight ? scrollHeight : scrollTop;
+    currentBox.scrollTop(scrollTop);
 }
 
 function scrollLeft()
 {
-
+    var scrollLeft = currentBox.scrollLeft() - Constants.boxScroll;
+    scrollLeft = scrollLeft < 0 ? 0 : scrollLeft;
+    currentBox.scrollLeft(scrollLeft);
 }
 
 function scrollRight()
 {
-
+    var scrollWidth = currentBox[0].scrollWidth;
+    var scrollLeft = currentBox.scrollLeft() + Constants.boxScroll;
+    scrollLeft = scrollLeft > scrollWidth ? scrollWidth : scrollLeft;
+    currentBox.scrollLeft(scrollLeft);
 }
 
 function navUp()
