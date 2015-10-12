@@ -1,6 +1,54 @@
 var currentBox = $('.help').addClass('active');
 var gridSize = 30;
-var modeMoveResize = false;
+
+var currentMode = 'MODE_NORMAL';
+
+var keyMaps = {
+    'MODE_NORMAL': {
+        // scroll the box TODO
+        '0|0|0|K': scrollUp,
+        '0|0|0|J': scrollDown,
+        '0|0|0|H': scrollLeft,
+        '0|0|0|L': scrollRight,
+        // navigate between boxes using shift and arrow letters
+        '0|0|1|K': navUp,
+        '0|0|1|J': navDown,
+        '0|0|1|H': navLeft,
+        '0|0|1|L': navRight,
+        // opens file in editor
+        '0|0|0|Enter': openFile,
+        // switch between modes
+        '0|0|0|E': function() { switchMode('MODE_EDIT'); },
+    },
+    'MODE_EDIT': {
+        // resizes the box
+        '0|0|0|K': function() { resizeCurrentBox(0, -1); },
+        '0|0|0|J': function() { resizeCurrentBox(0,  1); },
+        '0|0|0|H': function() { resizeCurrentBox(-1, 0); },
+        '0|0|0|L': function() { resizeCurrentBox( 1, 0); },
+        // moves the box
+        '0|0|1|K': function() { moveCurrentBox(0, -1); },
+        '0|0|1|J': function() { moveCurrentBox(0,  1); },
+        '0|0|1|H': function() { moveCurrentBox(-1, 0); },
+        '0|0|1|L': function() { moveCurrentBox( 1, 0); },
+        // closes the box
+        '0|0|0|D': closeBox,
+        // back to normal mode
+        '0|0|0|Esc': function() { switchMode('MODE_NORMAL'); },
+    }
+};
+
+var charMap = {
+    75: 'K',
+    74: 'J',
+    72: 'H',
+    76: 'L',
+    69: 'E',
+    68: 'D',
+    27: 'Esc',
+    13: 'Enter'
+};
+
 
 function positionsChanged(box, removeFlag)
 {
@@ -46,15 +94,23 @@ function resizeCurrentBox(x, y)
     positionsChanged(currentBox);
 }
 
-function toggleModeMoveResize(isEnter)
+function switchMode(newMode)
 {
-    if (isEnter) {
-        modeMoveResize = true;
-        $('.active').css('border-color', '#00f');
-    } else {
-        modeMoveResize = false;
-        $('.active').css('border-color', '#ccc');
+    var modeChange = currentMode + ' -> ' + newMode;
+
+    switch (modeChange) {
+        case  'MODE_EDIT -> MODE_NORMAL':
+            $('.active').css('border-color', '#ccc');
+            break;
+        case  'MODE_NORMAL -> MODE_EDIT':
+            $('.active').css('border-color', '#00f');
+            break;
+
+        default:
+            console.error('Unknown mode change: ' + modeChange);
     }
+
+    currentMode = newMode;
 }
 
 function getElementBoundaries(el)
@@ -116,6 +172,26 @@ function switchTo(box)
     box.addClass('active');
     currentBox.removeClass('active');
     currentBox = box;
+}
+
+function scrollUp()
+{
+
+}
+
+function scrollDown()
+{
+
+}
+
+function scrollLeft()
+{
+
+}
+
+function scrollRight()
+{
+
 }
 
 function navUp()
@@ -269,31 +345,16 @@ function closeBox()
 
 function keyPressed(ctrlKeyPressed, altKeyPressed, shiftKeyPressed, charCode)
 {
-    var keyMap = {
-        '0|0|1|75': function() { modeMoveResize ? resizeCurrentBox(0, -1) : 0; },
-        '0|0|1|74': function() { modeMoveResize ? resizeCurrentBox(0,  1) : 0; },
-        '0|0|1|72': function() { modeMoveResize ? resizeCurrentBox(-1, 0) : 0; },
-        '0|0|1|76': function() { modeMoveResize ? resizeCurrentBox( 1, 0) : 0; },
-        '0|0|0|75': function() { modeMoveResize ? moveCurrentBox(0, -1) : navUp(); },
-        '0|0|0|74': function() { modeMoveResize ? moveCurrentBox(0,  1) : navDown(); },
-        '0|0|0|72': function() { modeMoveResize ? moveCurrentBox(-1, 0) : navLeft(); },
-        '0|0|0|76': function() { modeMoveResize ? moveCurrentBox( 1, 0) : navRight(); },
-        '0|0|0|69': function() { toggleModeMoveResize(true); },
-        '0|0|0|27': function() { toggleModeMoveResize(false); },
-        '0|0|0|13': function() { openFile(); },
-        '0|0|0|68': function() { modeMoveResize ? closeBox() : 0; },
-    };
-    var key = [ctrlKeyPressed, altKeyPressed, shiftKeyPressed, charCode].join('|');
-    //console.log(key);return;
+    var key = [ctrlKeyPressed, altKeyPressed, shiftKeyPressed, charMap[charCode]].join('|');
+    //console.log(currentMode, key);return;
 
     // call corresponding function
-    if (keyMap[key]) {
-        keyMap[key]();
+    if (keyMaps[currentMode] && keyMaps[currentMode][key]) {
+        keyMaps[currentMode][key]();
     }
 }
 
 $(function(){
-
     $(document).keydown(function(e){
         keyPressed(e.ctrlKey & 1, e.altKey & 1, e.shiftKey & 1, e.which);
     });
