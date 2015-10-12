@@ -10,8 +10,10 @@ var Constants = {
 var currentMode = 'MODE_NORMAL';
 
 var keyMaps = {
+    // TODO multiple letter commands
     'MODE_NORMAL': {
         // scroll the box
+        // TODO G or gg to go to beginning or ending
         '0|0|0|K': scrollUp,
         '0|0|0|J': scrollDown,
         '0|0|0|H': scrollLeft,
@@ -28,15 +30,15 @@ var keyMaps = {
     },
     'MODE_EDIT': {
         // resizes the box
-        '0|0|0|K': function() { resizeCurrentBox(0, -1); },
-        '0|0|0|J': function() { resizeCurrentBox(0,  1); },
-        '0|0|0|H': function() { resizeCurrentBox(-1, 0); },
-        '0|0|0|L': function() { resizeCurrentBox( 1, 0); },
+        '0|0|1|K': function() { resizeCurrentBox(0, -1); },
+        '0|0|1|J': function() { resizeCurrentBox(0,  1); },
+        '0|0|1|H': function() { resizeCurrentBox(-1, 0); },
+        '0|0|1|L': function() { resizeCurrentBox( 1, 0); },
         // moves the box
-        '0|0|1|K': function() { moveCurrentBox(0, -1); },
-        '0|0|1|J': function() { moveCurrentBox(0,  1); },
-        '0|0|1|H': function() { moveCurrentBox(-1, 0); },
-        '0|0|1|L': function() { moveCurrentBox( 1, 0); },
+        '0|0|0|K': function() { moveCurrentBox(0, -1); },
+        '0|0|0|J': function() { moveCurrentBox(0,  1); },
+        '0|0|0|H': function() { moveCurrentBox(-1, 0); },
+        '0|0|0|L': function() { moveCurrentBox( 1, 0); },
         // closes the box
         '0|0|0|D': closeBox,
         // back to normal mode

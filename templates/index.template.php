@@ -51,11 +51,12 @@ Press ? for help
 * Esc - Goes back to normal mode from whatever mode
 
 Normal mode
-* k, j, h, l - Navigate up, down, left and right
+* k, j, h, l - Scrolls box up, down, left and right
+* K, J, H, L - Navigate up, down, left and right
 * Enter - Opens selected file
+* e - Enter edit box mode
 
-Modify box mode
-* e - Enter modify mode
+Edit box mode
 * k, j, h, l - Move box up, down, left and right
 * K, J, H, L - Resize box up, down, left and right
 * d - Remove current box
