@@ -180,6 +180,35 @@ function switchTo(box)
     box.addClass('active');
     currentBox.removeClass('active');
     currentBox = box;
+
+    // scroll window to show current box fully in viewport
+    var viewPortPadding = 40;
+    var winBound = {
+        left   : $(window).scrollLeft(),
+        top    : $(window).scrollTop(),
+        right  : $(window).scrollLeft() + $(window).width(),
+        bottom : $(window).scrollTop()  + $(window).height()
+    };
+    var boxBound = {
+        left   : currentBox.offset().left,
+        top    : currentBox.offset().top,
+        right  : currentBox.offset().left + currentBox.width(),
+        bottom : currentBox.offset().top  + currentBox.height()
+    };
+    var scrollProps = {scrollTop: winBound.top, scrollLeft: winBound.left};
+    if (boxBound.bottom > winBound.bottom) {
+        scrollProps.scrollTop = boxBound.bottom + viewPortPadding - $(window).height();
+    }
+    if (boxBound.right > winBound.right) {
+        scrollProps.scrollLeft = boxBound.right + viewPortPadding - $(window).width();
+    }
+    if (winBound.top > boxBound.top) {
+        scrollProps.scrollTop = boxBound.top - viewPortPadding;
+    }
+    if (winBound.left > boxBound.left) {
+        scrollProps.scrollLeft = boxBound.left - viewPortPadding;
+    }
+    $('html, body').stop().animate(scrollProps, 100);
 }
 
 function scrollUp()
