@@ -3,15 +3,16 @@
 } ?>
 
 
-<form id="formPosition" action="" method="POST">
-    <label class="unchanged">Positions haven't changed</label>
-    <label class="changed" style="display: none; color: red;">Positions have changed</label>
-    <?php foreach ($m->watches as $i => $w) { ?>
-    <input type="hidden" name="watch[<?php echo $i ?>]" value="<?php echo $w->dump() ?>"/>
-    <?php } ?>
-    <input type="submit" value="Save and Reload"/>
-</form>
-
+<div class="box">
+    <form id="formPosition" action="" method="POST">
+        <label class="unchanged">Positions haven't changed</label>
+        <label class="changed" style="display: none; color: red;">Positions have changed</label>
+        <?php foreach ($m->watches as $i => $w) { ?>
+        <input type="hidden" name="watch[<?php echo $i ?>]" value="<?php echo $w->dump() ?>"/>
+        <?php } ?>
+        <input type="submit" value="Save and Reload"/>
+    </form>
+</div>
 
 <!-- File browser -->
 <?php $b = $m->browser ?>
