@@ -14,49 +14,37 @@ var keyMaps = {
     'MODE_NORMAL': {
         // scroll the box
         // TODO G or gg to go to beginning or ending
-        '0|0|0|K': scrollUp,
-        '0|0|0|J': scrollDown,
-        '0|0|0|H': scrollLeft,
-        '0|0|0|L': scrollRight,
+        'K': scrollUp,
+        'J': scrollDown,
+        'H': scrollLeft,
+        'L': scrollRight,
         // navigate between boxes using shift and arrow letters
-        '0|0|1|K': navUp,
-        '0|0|1|J': navDown,
-        '0|0|1|H': navLeft,
-        '0|0|1|L': navRight,
+        'Shift+K': navUp,
+        'Shift+J': navDown,
+        'Shift+H': navLeft,
+        'Shift+L': navRight,
         // opens file in editor
-        '0|0|0|Enter': openFile,
+        'Enter': openFile,
         // switch between modes
-        '0|0|0|E': function() { switchMode('MODE_EDIT'); },
+        'E': function() { switchMode('MODE_EDIT'); },
     },
     'MODE_EDIT': {
         // resizes the box
-        '0|0|1|K': function() { resizeCurrentBox(0, -1); },
-        '0|0|1|J': function() { resizeCurrentBox(0,  1); },
-        '0|0|1|H': function() { resizeCurrentBox(-1, 0); },
-        '0|0|1|L': function() { resizeCurrentBox( 1, 0); },
+        'Shift+K': function() { resizeCurrentBox(0, -1); },
+        'Shift+J': function() { resizeCurrentBox(0,  1); },
+        'Shift+H': function() { resizeCurrentBox(-1, 0); },
+        'Shift+L': function() { resizeCurrentBox( 1, 0); },
         // moves the box
-        '0|0|0|K': function() { moveCurrentBox(0, -1); },
-        '0|0|0|J': function() { moveCurrentBox(0,  1); },
-        '0|0|0|H': function() { moveCurrentBox(-1, 0); },
-        '0|0|0|L': function() { moveCurrentBox( 1, 0); },
+        'K': function() { moveCurrentBox(0, -1); },
+        'J': function() { moveCurrentBox(0,  1); },
+        'H': function() { moveCurrentBox(-1, 0); },
+        'L': function() { moveCurrentBox( 1, 0); },
         // closes the box
-        '0|0|0|D': closeBox,
+        'D': closeBox,
         // back to normal mode
-        '0|0|0|Esc': function() { switchMode('MODE_NORMAL'); },
+        'Esc': function() { switchMode('MODE_NORMAL'); },
     }
 };
-
-var charMap = {
-    75: 'K',
-    74: 'J',
-    72: 'H',
-    76: 'L',
-    69: 'E',
-    68: 'D',
-    27: 'Esc',
-    13: 'Enter'
-};
-
 
 function positionsChanged(box, removeFlag)
 {
@@ -390,20 +378,37 @@ function closeBox()
     })(currentBox), 1000);
 }
 
-function keyPressed(ctrlKeyPressed, altKeyPressed, shiftKeyPressed, charCode)
+function keyPressed(key)
 {
-    var key = [ctrlKeyPressed, altKeyPressed, shiftKeyPressed, charMap[charCode]].join('|');
-    //console.log(currentMode, key);return;
-
-    // call corresponding function
     if (keyMaps[currentMode] && keyMaps[currentMode][key]) {
         keyMaps[currentMode][key]();
     }
 }
 
+function translateKeys(e)
+{
+    var charMap = {
+        27: 'Esc',
+        13: 'Enter'
+    };
+
+    var key = '';
+
+    key += e.ctrlKey ? 'Ctrl+' : '';
+    key += e.altKey ? 'Alt+' : '';
+    key += e.shiftKey ? 'Shift+' : '';
+    // A-Z
+    key += (65 <= e.which && e.which <= 90) ? String.fromCharCode(e.which) : '';
+    // Other non-printable characters
+    key += charMap[e.which] ? charMap[e.which] : '';
+
+    return key;
+}
+
 $(function(){
     $(document).keydown(function(e){
-        keyPressed(e.ctrlKey & 1, e.altKey & 1, e.shiftKey & 1, e.which);
+        var key = translateKeys(e);
+        keyPressed(key);
     });
 
     $('.watch pre').mousemove(function (e) {
