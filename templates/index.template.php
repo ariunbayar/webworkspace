@@ -65,3 +65,11 @@ Edit box mode
 
 
 <div class="resizer" style="top: 327px; left: 329px;">&#8690;</div>
+
+<script type="text/html" id="template-project">
+    <span><%= directory %></span>
+    <ul>
+        <li><strong>i</strong> - edit directory and reload workspace from new position</li>
+        <li><strong>o</strong> - opens new file browser</li>
+    </ul>
+</script>
