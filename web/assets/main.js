@@ -1,3 +1,5 @@
+var boxes = [];
+var currentView = null;
 var currentBox = $('.help').addClass('active');
 
 var Constants = {
@@ -409,6 +411,7 @@ $(function(){
     $(document).keydown(function(e){
         var key = translateKeys(e);
         keyPressed(key);
+        currentView.keyAction(key);
     });
 
     $('.watch pre').mousemove(function (e) {
@@ -448,10 +451,38 @@ $(function(){
         $('.preview pre').html(contentArray.slice(lineBegin, lineEnd).join(newLine));
     });
 
-    borderWidth=150; borderRange=200; colors = ['#F27360', '#9AAABA', '#6E6F71', '#485868', '#F3C766', '#FBE6E1', '#BCBDC1', '#9FC2BB', '#F5A46C'];fn=function(c, b, cls){ boxes = $('.box'); boxes.css('z-index', 100); boxes.each(function(){ el=$(this); p=el.position(); w=el.width(); h=el.height(); $('<div>').appendTo('body').css({backgroundColor: c, position: 'absolute', top: (p.top-b)+'px', left: (p.left-b)+'px', borderRadius: b+'px', width: (w+b*2)+'px', height: (h+b*2)+'px'}).addClass(cls); }); };fn(colors[1], borderRange+borderWidth, 'back');fn('#fff', borderRange, 'front');fn('#DDEEFF', borderRange-20, 'front1');//i=0;setInterval(function(){ $('.back').css('background-color', colors[i]); i=(i+1)%colors.length; }, 3000)
+    // outline borders
+    borderWidth=150;
+    borderRange=200;
+    colors = ['#F27360', '#9AAABA', '#6E6F71', '#485868', '#F3C766', '#FBE6E1', '#BCBDC1', '#9FC2BB', '#F5A46C'];
+    fn = function(c, b, cls){
+        els = $('.box');
+        els.css('z-index', 100);
+        els.each(function(){
+            el=$(this);
+            p=el.position();
+            w=el.width();
+            h=el.height();
+            $('<div>').appendTo('body').css({
+                backgroundColor: c,
+                position: 'absolute',
+                top: (p.top-b)+'px',
+                left: (p.left-b)+'px',
+                borderRadius: b+'px',
+                width: (w+b*2)+'px',
+                height: (h+b*2)+'px'
+            }).addClass(cls);
+        });
+    };
+    fn(colors[1], borderRange+borderWidth, 'back');
+    fn('#fff', borderRange, 'front');
+    fn('#DDEEFF', borderRange-20, 'front1');
+    //i=0;setInterval(function(){ $('.back').css('background-color', colors[i]); i=(i+1)%colors.length; }, 3000)
 
+    // project widget
     var project = new ProjectView({
         model: new Project({top: 200, left: 200})
     });
+    currentView = project;
 
 });
