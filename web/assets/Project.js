@@ -22,8 +22,6 @@ var ProjectView = Backbone.View.extend({
     initialize: function() {
         this.$el.appendTo('body');
 
-        boxes.push(this);
-
         this.listenTo(this.model, 'change', this.render);
 
         this.render();
@@ -38,6 +36,7 @@ var ProjectView = Backbone.View.extend({
             width: this.model.get('width'),
             height: this.model.get('height')
         });
+        // TODO no need to rewrite content when only css attribute changes
         this.$el.html(this.template({directory: this.model.get('directory')}));
     },
 
