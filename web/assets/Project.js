@@ -24,20 +24,32 @@ var ProjectView = Backbone.View.extend({
 
         this.listenTo(this.model, 'change', this.render);
 
-        this.render();
+        this.render(false);
     },
 
     template: _.template($('#template-project').html()),
 
-    render: function() {
-        this.$el.css({
-            top: this.model.get('top'),
-            left: this.model.get('left'),
-            width: this.model.get('width'),
-            height: this.model.get('height')
-        });
-        // TODO no need to rewrite content when only css attribute changes
-        this.$el.html(this.template({directory: this.model.get('directory')}));
+    render: function(_model) {
+
+        var isInitial = _model === false;
+        var model = this.model;
+        var isAttributeChanged = function (attrs) {
+            return _.intersection(attrs, _.keys(model.changedAttributes())).length > 0;
+        };
+
+        if (isInitial || isAttributeChanged(['top', 'left', 'width', 'height'])) {
+            this.$el.css({
+                top    : this.model.get('top'),
+                left   : this.model.get('left'),
+                width  : this.model.get('width'),
+                height : this.model.get('height')
+            });
+        }
+
+        if (isInitial || isAttributeChanged(['directory'])) {
+            this.$el.html(this.template({directory: this.model.get('directory')}));
+        }
+
     },
 
     keyAction: function(key) {
