@@ -42,9 +42,9 @@ class actionIndex extends actionBase
 
         $widgets = [new WidgetDirectory($manager->browser->directory)];
 
-        return [
+        $this->render([
             'm'       => $manager,
             'widgets' => $widgets,
-        ];
+        ]);
     }
 }

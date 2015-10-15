@@ -25,6 +25,6 @@ class Application
     protected function serveAction($action)
     {
         $action = new $action();
-        $action->dispatch();
+        $action->execute();
     }
 }

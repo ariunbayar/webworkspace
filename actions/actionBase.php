@@ -36,9 +36,9 @@ abstract class actionBase
         exit(0);
     }
 
-    public function dispatch()
+    protected function render($template_args)
     {
-        foreach ($this->execute() as $var => $value) {
+        foreach ($template_args as $var => $value) {
             $$var = $value;
         }
 
@@ -47,6 +47,12 @@ abstract class actionBase
         $mainContent = ob_get_clean();
 
         require_once(__DIR__ . '/../templates/layout.php');
+    }
+
+    protected function renderJson($values)
+    {
+        header('Content-Type: application/json');
+        echo json_encode($values);
     }
 
 }

@@ -1,5 +1,9 @@
 var Project = Backbone.Model.extend({
+
+    url: '/project',
+
     defaults: {
+        id: 2,
         top: 0,
         left: 0,
         width: 150,
@@ -8,7 +12,9 @@ var Project = Backbone.Model.extend({
     },
 
     initialize: function(attributes, options) {
+        this.fetch();
     }
+
 });
 
 var ProjectView = Backbone.View.extend({

@@ -1,5 +1,3 @@
-var currentBox = $('.help').addClass('active');
-
 var Constants = {
     gridSize : 30,
     boxScroll: 30
