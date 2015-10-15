@@ -63,11 +63,12 @@ $(function(){
 
     var mainView = new MainView();
 
-    var project = new ProjectView({
-        model: new Project({top: 200, left: 200})
-    });
+    var project = new ProjectView({model: new Project({top: 200, left: 200})});
     mainView.boxes.push(project);
     mainView.currentBox = project;
+
+    var help = new HelpView({model: new Help({top: 300, left: 20})});
+    mainView.boxes.push(help);
 
     $(document).keydown(function(e){
         var key = Utility.translateKeys(e);
