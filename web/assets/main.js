@@ -61,9 +61,9 @@ $(function(){
 
     var mainView = new MainView();
 
-    var project = new ProjectView({model: new Project({top: 200, left: 200})});
-    mainView.boxes.push(project);
-    mainView.currentBox = project;
+    var projectView = new ProjectView({model: new Project()});
+    mainView.boxes.push(projectView);
+    mainView.currentBox = projectView;
 
     var help = new HelpView({model: new Help({top: 300, left: 20})});
     mainView.boxes.push(help);

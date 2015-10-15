@@ -3,16 +3,35 @@ var Project = Backbone.Model.extend({
     url: '/project',
 
     defaults: {
-        id: 2,
+        id: null,
         top: 0,
         left: 0,
-        width: 150,
-        height: 200,
+        width: 0,
+        height: 0,
         directory: ''
     },
 
     initialize: function(attributes, options) {
-        this.fetch();
+
+        this.fetch().then(_.bind(function(){
+            this.on('change', this.changeOccured, this);
+        }, this));
+
+    },
+
+    changeOccured: function () {
+
+        // silent option make sure this.save won't trigger another change
+        var options = {silent: true};
+
+        if (this.hasChanged('directory')) {
+            // directory change must refresh the page
+            // TODO update changes to related boxes without refresh
+            options.success = function() { window.location.reload(); }
+        }
+
+        this.save(null, options);
+
     }
 
 });
@@ -74,8 +93,6 @@ var ProjectView = Backbone.View.extend({
             return;
         }
         this.model.set('directory', result);
-        // waits for model to synchronize with backend
-        setTimeout(function(){ window.location.reload(); }, 3000);
     },
 
     openFileBrowser: function() {

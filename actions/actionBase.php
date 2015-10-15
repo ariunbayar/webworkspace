@@ -30,6 +30,16 @@ abstract class actionBase
         return $value;
     }
 
+    protected function getRequestMethod()
+    {
+        return $_SERVER['REQUEST_METHOD'];
+    }
+
+    protected function getRequestPayload()
+    {
+        return json_decode(file_get_contents('php://input'), true);
+    }
+
     protected function redirect($url)
     {
         header('Location: ' . $url);
