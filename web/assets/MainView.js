@@ -30,10 +30,10 @@ var MainView = Backbone.View.extend({
 
         switch (modeChange) {
             case  'MODE_EDIT -> MODE_NORMAL':
-                $('.active').css('border-color', '#ccc');
+                this.currentBox.$el.css('border-color', '#ccc');
                 break;
             case  'MODE_NORMAL -> MODE_EDIT':
-                $('.active').css('border-color', '#00f');
+                this.currentBox.$el.css('border-color', '#00f');
                 break;
 
             default:
@@ -366,6 +366,7 @@ var MainView = Backbone.View.extend({
         // TODO multiple letter commands
         'MODE_NORMAL': {
 
+            // TODO relative to specific box
             // scroll the box
             // TODO G or gg to go to beginning or ending
             'K': function() { this.scrollUp(); },
@@ -373,14 +374,15 @@ var MainView = Backbone.View.extend({
             'H': function() { this.scrollLeft(); },
             'L': function() { this.scrollRight(); },
 
+            // TODO relative to specific box
+            // opens file in editor
+            'Enter': function() { this.openFile(); },
+
             // navigate between boxes using shift and arrow letters
             'Shift+K': function() { this.navUp(); },
             'Shift+J': function() { this.navDown(); },
             'Shift+H': function() { this.navLeft(); },
             'Shift+L': function() { this.navRight(); },
-
-            // opens file in editor
-            'Enter': function() { this.openFile(); },
 
             // switch between modes
             'E': function() { this.switchMode('MODE_EDIT'); },
