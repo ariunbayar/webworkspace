@@ -1,14 +1,42 @@
 var Help = Backbone.Model.extend({
+
+    url: '/help',
+
     defaults: {
+        id: null,
         top: 0,
         left: 0,
         width: 150,
         height: 200,
-        directory: ''
     },
 
     initialize: function(attributes, options) {
+
+        this.fetch().then(_.bind(function(){
+            this.on('change', this.changeOccured, this);
+        }, this));
+
+    },
+
+    changeOccured: function () {
+
+        // silent option make sure this.save won't trigger another change
+        var options = {silent: true};
+
+        this.save(null, options);
+
+    },
+
+
+    getView: function () {
+
+        if (!this.view) {
+            this.view = new HelpView({model: this});
+        }
+        return this.view;
+
     }
+
 });
 
 var HelpView = Backbone.View.extend({
