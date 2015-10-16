@@ -1,8 +1,3 @@
-<?php foreach ($widgets as $widget) {
-    $widget->render();
-} ?>
-
-
 <!-- File browser -->
 <?php $b = $m->browser ?>
 <div class="browser box">
@@ -24,10 +19,6 @@
 
 
 <div style="top: 20px; left: 1350px;" class="box preview"><pre></pre></div>
-
-
-
-<div class="resizer" style="top: 327px; left: 329px;">&#8690;</div>
 
 
 <script type="text/html" id="template-project">
@@ -62,6 +53,7 @@
         </li>
     </ul>
 </script>
+
 
 <script type="text/html" id="template-file">
     <div class="filename"><%= filename %></div>

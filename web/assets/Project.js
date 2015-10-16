@@ -54,11 +54,13 @@ var ProjectView = Backbone.View.extend({
     events: {},
 
     initialize: function() {
+
         this.$el.appendTo('body');
 
         this.listenTo(this.model, 'change', this.render);
 
         this.render(false);
+
     },
 
     template: _.template($('#template-project').html()),
@@ -87,14 +89,17 @@ var ProjectView = Backbone.View.extend({
     },
 
     keyAction: function(key) {
+
         var keyMap = {
             'I': this.promptDirectoryAndReload,
             'O': this.openFileBrowser
         }
         keyMap[key] && keyMap[key].apply(this);
+
     },
 
     promptDirectoryAndReload: function() {
+
         var msg = 'Project directory is located at';
         var result = window.prompt(msg, this.model.get('directory'));
         var isUserCanceled = result === null;
@@ -102,10 +107,13 @@ var ProjectView = Backbone.View.extend({
             return;
         }
         this.model.set('directory', result);
+
     },
 
     openFileBrowser: function() {
+
         // TODO open file browser widget
+
     }
 
 });

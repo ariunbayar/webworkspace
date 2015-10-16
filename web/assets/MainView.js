@@ -11,7 +11,6 @@ var MainCollection = Backbone.Collection.extend({
             files.fetch()
         );
 
-
         deferredAll.then(_.bind(function(){
             this.add(project);
             this.add(files.models);
@@ -19,6 +18,7 @@ var MainCollection = Backbone.Collection.extend({
         }, this));
 
         return deferredAll;
+
     }
 
 });
@@ -58,6 +58,7 @@ var MainView = Backbone.View.extend({
         // TODO pass scroll location to code editor
         var fileId = currentBox.attr('data-idx');
         $.get(window.location.pathname + '?open=' + fileId);
+
     },
 
     switchMode: function(newMode) {

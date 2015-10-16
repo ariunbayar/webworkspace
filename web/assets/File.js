@@ -15,6 +15,7 @@ var File = Backbone.Model.extend({
 
     initialize: function(attributes, options) {
 
+        // TODO save changes
         //this.fetch().then(_.bind(function(){
             //this.on('change', this.changeOccured, this);
         //}, this));

@@ -13,7 +13,12 @@ class Manager
     {
 
         // Main directory
-        $directory = get('directory');
+        $project = get('project');
+        if ($project) {
+            $directory = json_decode($project, true)['directory'];
+        } else {
+            $directory = '';
+        }
         if (!$directory) {
             $directory = getcwd();
         }
@@ -31,7 +36,6 @@ class Manager
                 array_splice($this->watches, $i, 1);
             }
         }
-        set('directory', rtrim($this->browser->directory, '/'));
         set('watches', serialize($this->watches));
     }
 

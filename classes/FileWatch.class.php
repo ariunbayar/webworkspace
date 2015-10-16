@@ -30,31 +30,6 @@ class FileWatch implements Serializable
         list($this->x, $this->y, $this->width, $this->height, $this->file) = explode('|', $data, 5);
     }
 
-    function load($dump)
-    {
-        list($this->remove, $this->x, $this->y, $this->width, $this->height) = explode('|', $dump, 5);
-    }
-
-    function dump()
-    {
-        return
-            '0|' .
-            $this->x . '|' .
-            $this->y . '|' .
-            $this->width . '|' .
-            $this->height;
-    }
-
-    function toStyleForWatch()
-    {
-         return 'top:' . $this->x . 'px; left:' . $this->y . 'px;';
-    }
-
-    function toStyleForPre()
-    {
-         return 'width:' . $this->width . 'px; height:' . $this->height . 'px;';
-    }
-
     function getSource()
     {
         $manager = Manager::getInstance();
