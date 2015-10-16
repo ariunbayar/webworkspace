@@ -3,17 +3,6 @@
 } ?>
 
 
-<div class="box">
-    <form id="formPosition" action="" method="POST">
-        <label class="unchanged">Positions haven't changed</label>
-        <label class="changed" style="display: none; color: red;">Positions have changed</label>
-        <?php foreach ($m->watches as $i => $w) { ?>
-        <input type="hidden" name="watch[<?php echo $i ?>]" value="<?php echo $w->dump() ?>"/>
-        <?php } ?>
-        <input type="submit" value="Save and Reload"/>
-    </form>
-</div>
-
 <!-- File browser -->
 <?php $b = $m->browser ?>
 <div class="browser box">
@@ -33,15 +22,6 @@
     </ul>
 </div>
 
-
-<!-- Watching files -->
-<?php foreach ($m->watches as $i => $watch) { ?>
-<div class="watch box" data-idx="<?php echo $i ?>" style="<?php echo $watch->toStyleForWatch() . $watch->toStyleForPre() ?>">
-    <div class="filename"><?php echo $watch->file ?></div>
-    <?php $content = $watch->getSource() ?>
-    <pre data-num-lines="<?php echo $watch->numLines ?>"><?php echo htmlspecialchars($content) ?></pre>
-</div>
-<?php } ?>
 
 <div style="top: 20px; left: 1350px;" class="box preview"><pre></pre></div>
 
@@ -81,4 +61,9 @@
             </ul>
         </li>
     </ul>
+</script>
+
+<script type="text/html" id="template-file">
+    <div class="filename"><%= filename %></div>
+    <pre data-num-lines="<%= numLines %>"><%= content %></pre>
 </script>

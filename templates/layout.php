@@ -10,9 +10,10 @@
     <script src="/assets/libs/underscore-min.js"></script>
     <script src="/assets/libs/backbone-min.js"></script>
     <script src="/assets/Utility.js"></script>
-    <script src="/assets/MainView.js"></script>
     <script src="/assets/Project.js"></script>
+    <script src="/assets/File.js"></script>
     <script src="/assets/Help.js"></script>
+    <script src="/assets/MainView.js"></script>
     <script src="/assets/main.js"></script>
 
 </body>

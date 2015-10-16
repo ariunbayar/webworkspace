@@ -72,4 +72,18 @@ class FileWatch implements Serializable
         return $content;
     }
 
+    function toArray()
+    {
+        return [
+            // TODO id
+            'content'  => htmlspecialchars($this->getSource()),
+            'numLines' => $this->numLines,
+            'filename' => $this->file,
+            'top'      => (int)$this->x,
+            'left'     => (int)$this->y,
+            'width'    => (int)$this->width,
+            'height'   => (int)$this->height,
+        ];
+    }
+
 }

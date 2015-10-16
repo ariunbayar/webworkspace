@@ -26,6 +26,8 @@ require_once(__DIR__ . '/../widgets/widgetDirectory.php');
 require_once(__DIR__ . '/../actions/actionBase.php');
 require_once(__DIR__ . '/../actions/actionIndex.php');
 require_once(__DIR__ . '/../actions/actionProject.php');
+require_once(__DIR__ . '/../actions/actionFile.php');
+require_once(__DIR__ . '/../actions/actionHelp.php');
 
 require_once(__DIR__ . '/../helpers/redis.php');
 require_once(__DIR__ . '/../helpers/misc.php');

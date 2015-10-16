@@ -1,6 +1,6 @@
-var Project = Backbone.Model.extend({
+var File = Backbone.Model.extend({
 
-    url: '/project',
+    url: '/file',
 
     defaults: {
         id: null,
@@ -8,14 +8,16 @@ var Project = Backbone.Model.extend({
         left: 0,
         width: 0,
         height: 0,
-        directory: ''
+        filename: '',
+        content: '',
+        numLines: 0
     },
 
     initialize: function(attributes, options) {
 
-        this.fetch().then(_.bind(function(){
-            this.on('change', this.changeOccured, this);
-        }, this));
+        //this.fetch().then(_.bind(function(){
+            //this.on('change', this.changeOccured, this);
+        //}, this));
 
     },
 
@@ -37,7 +39,7 @@ var Project = Backbone.Model.extend({
     getView: function () {
 
         if (!this.view) {
-            this.view = new ProjectView({model: this});
+            this.view = new FileView({model: this});
         }
         return this.view;
 
@@ -45,23 +47,36 @@ var Project = Backbone.Model.extend({
 
 });
 
-var ProjectView = Backbone.View.extend({
+var FileCollection = Backbone.Collection.extend({
+
+    url: '/file',
+
+    model: File,
+
+    initialize: function () {
+    },
+
+});
+
+var FileView = Backbone.View.extend({
 
     tagName: 'div',
 
-    className: 'box project',
+    className: 'box watch',
 
     events: {},
 
     initialize: function() {
+
         this.$el.appendTo('body');
 
         this.listenTo(this.model, 'change', this.render);
 
         this.render(false);
+
     },
 
-    template: _.template($('#template-project').html()),
+    template: _.template($('#template-file').html()),
 
     render: function(_model) {
 
@@ -80,32 +95,20 @@ var ProjectView = Backbone.View.extend({
             });
         }
 
-        if (isInitial || isAttributeChanged(['directory'])) {
-            this.$el.html(this.template({directory: this.model.get('directory')}));
+        if (isInitial) {
+            this.$el.html(this.template({
+                filename: this.model.get('filename'),
+                content: this.model.get('content'),
+                numLines: this.model.get('numLines')
+            }));
         }
 
     },
 
     keyAction: function(key) {
         var keyMap = {
-            'I': this.promptDirectoryAndReload,
-            'O': this.openFileBrowser
         }
         keyMap[key] && keyMap[key].apply(this);
-    },
-
-    promptDirectoryAndReload: function() {
-        var msg = 'Project directory is located at';
-        var result = window.prompt(msg, this.model.get('directory'));
-        var isUserCanceled = result === null;
-        if (isUserCanceled) {
-            return;
-        }
-        this.model.set('directory', result);
-    },
-
-    openFileBrowser: function() {
-        // TODO open file browser widget
     }
 
 });

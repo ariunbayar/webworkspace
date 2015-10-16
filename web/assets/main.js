@@ -57,16 +57,14 @@ $(function(){
         $('.preview pre').html(contentArray.slice(lineBegin, lineEnd).join(newLine));
     });
 
-    Utility.drawBoxOutline();
+    setTimeout(Utility.drawBoxOutline, 1000);
 
-    var mainView = new MainView();
+    var mainCollection = new MainCollection();
+    var mainView = new MainView({collection: mainCollection});
+    mainCollection.fetch().then(function(){
+        mainView.render();
+    });
 
-    var projectView = new ProjectView({model: new Project()});
-    mainView.boxes.push(projectView);
-    mainView.currentBox = projectView;
-
-    var help = new HelpView({model: new Help({top: 300, left: 20})});
-    mainView.boxes.push(help);
 
     $(document).keydown(function(e){
         var key = Utility.translateKeys(e);

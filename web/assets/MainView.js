@@ -1,8 +1,44 @@
+var MainCollection = Backbone.Collection.extend({
+
+    fetch: function () {
+
+        var project = new Project();
+        var help = new Help({top: 300, left: 20});
+        var files = new FileCollection();
+
+        var deferredAll = $.when(
+            project.fetch(),
+            files.fetch()
+        );
+
+
+        deferredAll.then(_.bind(function(){
+            this.add(project);
+            this.add(files.models);
+            this.add(help);
+        }, this));
+
+        return deferredAll;
+    }
+
+});
+
+
 var MainView = Backbone.View.extend({
 
     boxes: [],
     currentBox: null,
     currentMode: 'MODE_NORMAL',
+
+    render: function () {
+
+        this.collection.each(function(model) {
+            var view = model.getView();
+            this.boxes.push(view);
+        }, this);
+        this.currentBox = this.boxes[this.boxes.length - 1];
+
+    },
 
     keyAction: function(key) {
 
