@@ -33,9 +33,11 @@ var MainView = Backbone.View.extend({
     render: function () {
 
         this.collection.each(function(model) {
+            if (model.get('isActive')) {
+                this.switchTo(model);
+            }
             model.getView();
         }, this);
-        this.switchTo(this.collection.models[this.collection.length - 1]);
 
     },
 
@@ -61,6 +63,10 @@ var MainView = Backbone.View.extend({
     },
 
     switchMode: function(newMode) {
+
+        if (!this.currentModel) {
+            return;
+        }
 
         var modeChange = this.currentMode + ' -> ' + newMode;
 
@@ -194,14 +200,25 @@ var MainView = Backbone.View.extend({
 
     getBoundaries: function (model) {
 
-        var boundary = {
-            top     : model.get('top'),
-            left    : model.get('left'),
-            bottom  : model.get('top')  + model.get('height'),
-            right   : model.get('left') + model.get('width'),
-            centerX : model.get('left') + Math.round(model.get('width') / 2),
-            centerY : model.get('top')  + Math.round(model.get('height') / 2),
-        };
+        if (model) {
+            var boundary = {
+                top     : model.get('top'),
+                left    : model.get('left'),
+                bottom  : model.get('top')  + model.get('height'),
+                right   : model.get('left') + model.get('width'),
+                centerX : model.get('left') + Math.round(model.get('width') / 2),
+                centerY : model.get('top')  + Math.round(model.get('height') / 2),
+            };
+        } else {
+            var boundary = {
+                top     : 0,
+                left    : 0,
+                bottom  : 0,
+                right   : 0,
+                centerX : 0,
+                centerY : 0,
+            };
+        }
 
         return boundary;
     },
@@ -224,7 +241,7 @@ var MainView = Backbone.View.extend({
         }, this);
 
         return _.find(models, function(model) {
-            if (model.cid == this.currentModel.cid) {
+            if (this.currentModel && this.currentModel.cid == model.cid) {
                 return false;
             } else {
                 return isInRange(this.getBoundaries(model), lines);
