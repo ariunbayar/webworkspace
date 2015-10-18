@@ -1,6 +1,7 @@
 var Constants = {
     gridSize : 30,
-    boxScroll: 30
+    boxScroll: 30,
+    viewPortPadding: 40
 }
 
 $(function(){

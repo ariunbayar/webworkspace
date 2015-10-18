@@ -8,7 +8,8 @@ var Project = Backbone.Model.extend({
         left: 0,
         width: 0,
         height: 0,
-        directory: ''
+        directory: '',
+        isActive: false
     },
 
     initialize: function(attributes, options) {
@@ -80,6 +81,10 @@ var ProjectView = Backbone.View.extend({
                 width  : this.model.get('width'),
                 height : this.model.get('height')
             });
+        }
+
+        if (isInitial || isAttributeChanged(['isActive'])) {
+            this.$el.toggleClass('active', this.model.get('isActive'));
         }
 
         if (isInitial || isAttributeChanged(['directory'])) {

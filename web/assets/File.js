@@ -10,7 +10,8 @@ var File = Backbone.Model.extend({
         height: 0,
         filename: '',
         content: '',
-        numLines: 0
+        numLines: 0,
+        isActive: false
     },
 
     initialize: function(attributes, options) {
@@ -94,6 +95,10 @@ var FileView = Backbone.View.extend({
                 width  : this.model.get('width'),
                 height : this.model.get('height')
             });
+        }
+
+        if (isInitial || isAttributeChanged(['isActive'])) {
+            this.$el.toggleClass('active', this.model.get('isActive'));
         }
 
         if (isInitial) {

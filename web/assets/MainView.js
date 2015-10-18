@@ -26,17 +26,17 @@ var MainCollection = Backbone.Collection.extend({
 
 var MainView = Backbone.View.extend({
 
-    boxes: [],
-    currentBox: null,
+    collection: null,
+    currentModel: null,
     currentMode: 'MODE_NORMAL',
 
     render: function () {
 
         this.collection.each(function(model) {
-            var view = model.getView();
-            this.boxes.push(view);
+            model.getView();
         }, this);
-        this.currentBox = this.boxes[this.boxes.length - 1];
+        this.currentModel = this.collection.models[this.collection.length - 1];
+        this.currentModel.set('isActive', true);
 
     },
 
@@ -67,10 +67,10 @@ var MainView = Backbone.View.extend({
 
         switch (modeChange) {
             case  'MODE_EDIT -> MODE_NORMAL':
-                this.currentBox.$el.css('border-color', '#ccc');
+                this.currentModel.getView().$el.css('border-color', '#ccc');
                 break;
             case  'MODE_NORMAL -> MODE_EDIT':
-                this.currentBox.$el.css('border-color', '#00f');
+                this.currentModel.getView().$el.css('border-color', '#00f');
                 break;
 
             default:
@@ -84,7 +84,6 @@ var MainView = Backbone.View.extend({
     closeBox: function () {
 
         // TODO rewrite for this view
-        positionsChanged(currentBox, 1);
         setTimeout((function(el) {
             el.addClass('hinge');
             return function () {
@@ -98,35 +97,28 @@ var MainView = Backbone.View.extend({
 
     moveCurrentBox: function (x, y) {
 
-        var curBoxModel = this.currentBox.model;
-        var top  = curBoxModel.get('top');
-        var left = curBoxModel.get('left');
+        var top  = this.currentModel.get('top');
+        var left = this.currentModel.get('left');
 
         // normalize current box position to grid size
         top  = Math.round(top  / Constants.gridSize) * Constants.gridSize;
         left = Math.round(left / Constants.gridSize) * Constants.gridSize;
 
         // move with x and y by grid size
-        curBoxModel.set('top',  top  + y * Constants.gridSize);
-        curBoxModel.set('left', left + x * Constants.gridSize);
-
-         positionsChanged(this.currentBox.$el);
+        this.currentModel.set('top',  top  + y * Constants.gridSize);
+        this.currentModel.set('left', left + x * Constants.gridSize);
 
     },
 
     resizeCurrentBox: function (x, y) {
 
-        var curBoxModel = this.currentBox.model;
-
         // normalize current box size to grid
-        var width  = Math.round(curBoxModel.get('width')  / Constants.gridSize) * Constants.gridSize;
-        var height = Math.round(curBoxModel.get('height') / Constants.gridSize) * Constants.gridSize;
+        var width  = Math.round(this.currentModel.get('width')  / Constants.gridSize) * Constants.gridSize;
+        var height = Math.round(this.currentModel.get('height') / Constants.gridSize) * Constants.gridSize;
 
         // resize with x and y by grid size
-        curBoxModel.set('width',  width  + x * Constants.gridSize);
-        curBoxModel.set('height', height + y * Constants.gridSize);
-
-        positionsChanged(this.currentBox.$el);
+        this.currentModel.set('width',  width  + x * Constants.gridSize);
+        this.currentModel.set('height', height + y * Constants.gridSize);
 
     },
 
@@ -168,232 +160,178 @@ var MainView = Backbone.View.extend({
 
     },
 
-    switchTo: function (box) {
+    switchTo: function (model) {
 
-        // TODO rewrite for this view
-        box.addClass('active');
-        currentBox.removeClass('active');
-        currentBox = box;
+        this.currentModel.set('isActive', false);
+        model.set('isActive', true);
+        this.currentModel = model;
 
         // scroll window to show current box fully in viewport
-        var viewPortPadding = 40;
         var winBound = {
             left   : $(window).scrollLeft(),
             top    : $(window).scrollTop(),
             right  : $(window).scrollLeft() + $(window).width(),
             bottom : $(window).scrollTop()  + $(window).height()
         };
-        var boxBound = {
-            left   : currentBox.offset().left,
-            top    : currentBox.offset().top,
-            right  : currentBox.offset().left + currentBox.width(),
-            bottom : currentBox.offset().top  + currentBox.height()
-        };
+        var boxBound = this.getBoundaries(model);
         var scrollProps = {scrollTop: winBound.top, scrollLeft: winBound.left};
         if (boxBound.bottom > winBound.bottom) {
-            scrollProps.scrollTop = boxBound.bottom + viewPortPadding - $(window).height();
+            scrollProps.scrollTop = boxBound.bottom + Constants.viewPortPadding - $(window).height();
         }
         if (boxBound.right > winBound.right) {
-            scrollProps.scrollLeft = boxBound.right + viewPortPadding - $(window).width();
+            scrollProps.scrollLeft = boxBound.right + Constants.viewPortPadding - $(window).width();
         }
         if (winBound.top > boxBound.top) {
-            scrollProps.scrollTop = boxBound.top - viewPortPadding;
+            scrollProps.scrollTop = boxBound.top - Constants.viewPortPadding;
         }
         if (winBound.left > boxBound.left) {
-            scrollProps.scrollLeft = boxBound.left - viewPortPadding;
+            scrollProps.scrollLeft = boxBound.left - Constants.viewPortPadding;
         }
         $('html, body').stop().animate(scrollProps, 100);
 
     },
 
-    getElementBoundaries: function (el) {
+    getBoundaries: function (model) {
 
-        // TODO rewrite for this view
-        var pos = el.offset();
-        var width = el.width();
-        var height = el.height();
-
-        var boundaries = {
-            top: pos.top - parseInt(el.css('border-top-width')),
-            left: pos.left - parseInt(el.css('border-left-width')),
-            right: pos.left + width + parseInt(el.css('border-right-width')),
-            bottom: pos.top + height + parseInt(el.css('border-bottom-width')),
-            centerX: pos.left + (width + parseInt(el.css('border-left-width')) + parseInt(el.css('border-right-width'))) / 2,
-            centerY: pos.top + (height + parseInt(el.css('border-top-width')) + parseInt(el.css('border-bottom-width'))) / 2,
-            isInColumn: function (bound) {
-                var result =
-                    this.left < bound.centerX && bound.centerX < this.right ||
-                    this.left < bound.left    && bound.left    < this.right ||
-                    this.left < bound.right   && bound.right   < this.right ||
-                    bound.left < this.centerX && this.centerX < bound.right ||
-                    bound.left < this.left    && this.left    < bound.right ||
-                    bound.left < this.right   && this.right   < bound.right;
-                return result;
-            },
-            isInRow: function(bound) {
-                var result =
-                    this.top < bound.centerY && bound.centerY < this.bottom ||
-                    this.top < bound.top     && bound.top     < this.bottom ||
-                    this.top < bound.bottom  && bound.bottom  < this.bottom ||
-                    bound.top < this.centerY && this.centerY < bound.bottom ||
-                    bound.top < this.top     && this.top     < bound.bottom ||
-                    bound.top < this.bottom  && this.bottom  < bound.bottom;
-                return result;
-            },
-            isAbove: function (bound, ignoreColumnCheck) {
-                var isAbove = bound.top < this.top;
-                return isAbove && (ignoreColumnCheck || this.isInColumn(bound));
-            },
-            isBelow: function (bound, ignoreColumnCheck) {
-                var isBelow = this.bottom < bound.bottom;
-                return isBelow && (ignoreColumnCheck || this.isInColumn(bound));
-            },
-            isLeft: function (bound, ignoreRowCheck) {
-                var isLeft = bound.left < this.left;
-                return isLeft && (ignoreRowCheck || this.isInRow(bound));
-            },
-            isRight: function (bound, ignoreRowCheck) {
-                var isRight = this.right < bound.right;
-                return isRight && (ignoreRowCheck || this.isInRow(bound));
-            }
+        var boundary = {
+            top     : model.get('top'),
+            left    : model.get('left'),
+            bottom  : model.get('top')  + model.get('height'),
+            right   : model.get('left') + model.get('width'),
+            centerX : model.get('left') + Math.round(model.get('width') / 2),
+            centerY : model.get('top')  + Math.round(model.get('height') / 2),
         };
 
-        return boundaries;
+        return boundary;
+    },
+
+    getClosestInRange: function (lines) {
+
+        var isInRange = function (bound, lines) {
+            return _.reduce(lines, function (memo, line) {
+                var dotProduct =
+                    (line.x2 - line.x1) * (bound.centerY - line.y1) -
+                    (line.y2 - line.y1) * (bound.centerX - line.x1);
+                return memo && (dotProduct > 0);
+            }, true);
+        }
+
+        var models = _.sortBy(this.collection.models, function (model) {
+            var p1 = this.getBoundaries(this.currentModel);
+            var p2 = this.getBoundaries(model);
+            return Utility.distanceBetweenPoints(p1.left, p1.top, p2.left, p2.top);
+        }, this);
+
+        return _.find(models, function(model) {
+            if (model.cid == this.currentModel.cid) {
+                return false;
+            } else {
+                return isInRange(this.getBoundaries(model), lines);
+            }
+        }, this);
 
     },
 
     navUp: function () {
 
-        // TODO please optimize these nav functions
-        var curBound = getElementBoundaries(currentBox);
+        var curBound = this.getBoundaries(this.currentModel);
 
-        var bottomMostBox = null;
-        var bottomMost = null;
-        var bottomMostBoxNoColumn = null;
-        var bottomMostNoColumn = null;
-        $('.box').each(function() {
-            var el = $(this);
-            bound = getElementBoundaries(el);
+        var lines = [
+            {
+                x1: curBound.right + 1,
+                y1: curBound.top - 1,
+                x2: curBound.right,
+                y2: curBound.top
+            },
+            {
+                x1: curBound.left,
+                y1: curBound.top,
+                x2: curBound.left - 1,
+                y2: curBound.top - 1
+            }
+        ];
 
-            if (curBound.isAbove(bound, true)) {
-                if (bottomMostNoColumn === null || bound.bottom > bottomMostNoColumn) {
-                    bottomMostNoColumn = bound.bottom;
-                    bottomMostBoxNoColumn = el;
-                }
-            }
-            if (curBound.isAbove(bound)) {
-                if (bottomMost === null || bound.bottom > bottomMost) {
-                    bottomMost = bound.bottom;
-                    bottomMostBox = el;
-                }
-            }
-        });
-        if (bottomMostBox) {
-            switchTo(bottomMostBox);
-        } else if (bottomMostBoxNoColumn) {
-            switchTo(bottomMostBoxNoColumn);
+        var modelFound = this.getClosestInRange(lines);
+        if (modelFound) {
+            this.switchTo(modelFound);
         }
 
     },
 
     navDown: function() {
 
-        // TODO rewrite for this view
-        var curBound = getElementBoundaries(currentBox);
+        var curBound = this.getBoundaries(this.currentModel);
 
-        var topMostBox = null;
-        var topMost = null;
-        var topMostBoxNoColumn = null;
-        var topMostNoColumn = null;
-        $('.box').each(function() {
-            var el = $(this);
-            bound = getElementBoundaries(el);
+        var lines = [
+            {
+                x1: curBound.left - 1,
+                y1: curBound.bottom + 1,
+                x2: curBound.left,
+                y2: curBound.bottom
+            },
+            {
+                x1: curBound.right,
+                y1: curBound.bottom,
+                x2: curBound.right + 1,
+                y2: curBound.bottom + 1
+            }
+        ];
 
-            if (curBound.isBelow(bound, true)) {
-                if (topMostNoColumn === null || bound.top < topMostNoColumn) {
-                    topMostNoColumn = bound.top;
-                    topMostBoxNoColumn = el;
-                }
-            }
-            if (curBound.isBelow(bound)) {
-                if (topMost === null || bound.top < topMost) {
-                    topMost = bound.top;
-                    topMostBox = el;
-                }
-            }
-        });
-        if (topMostBox) {
-            switchTo(topMostBox);
-        } else if (topMostBoxNoColumn) {
-            switchTo(topMostBoxNoColumn);
+        var modelFound = this.getClosestInRange(lines);
+        if (modelFound) {
+            this.switchTo(modelFound);
         }
 
     },
 
-    navLeft: function () {
+    navLeft: function() {
 
-        // TODO rewrite for this view
-        var curBound = getElementBoundaries(currentBox);
+        var curBound = this.getBoundaries(this.currentModel);
 
-        var rightMostBox = null;
-        var rightMost = null;
-        var rightMostBoxNoRow = null;
-        var rightMostNoRow = null;
-        $('.box').each(function() {
-            var el = $(this);
-            bound = getElementBoundaries(el);
-
-            if (curBound.isLeft(bound, true)) {
-                if (rightMostNoRow === null || bound.right > rightMostNoRow) {
-                    rightMostNoRow = bound.right;
-                    rightMostBoxNoRow = el;
-                }
+        var lines = [
+            {
+                x1: curBound.left - 1,
+                y1: curBound.top - 1,
+                x2: curBound.left,
+                y2: curBound.top
+            },
+            {
+                x1: curBound.left,
+                y1: curBound.bottom,
+                x2: curBound.left - 1,
+                y2: curBound.bottom + 1
             }
-            if (curBound.isLeft(bound)) {
-                if (rightMost === null || bound.right > rightMost) {
-                    rightMost = bound.right;
-                    rightMostBox = el;
-                }
-            }
-        });
-        if (rightMostBox) {
-            switchTo(rightMostBox);
-        } else if (rightMostBoxNoRow) {
-            switchTo(rightMostBoxNoRow);
+        ];
+
+        var modelFound = this.getClosestInRange(lines);
+        if (modelFound) {
+            this.switchTo(modelFound);
         }
 
     },
 
-    navRight: function () {
+    navRight: function() {
 
-        // TODO rewrite for this view
-        var curBound = getElementBoundaries(currentBox);
+        var curBound = this.getBoundaries(this.currentModel);
 
-        var leftMostBox = null;
-        var leftMost = null;
-        var leftMostBoxNoRow = null;
-        var leftMostNoRow = null;
-        $('.box').each(function() {
-            var el = $(this);
-            bound = getElementBoundaries(el);
-
-            if (curBound.isRight(bound, true)) {
-                if (leftMostNoRow === null || bound.left < leftMostNoRow) {
-                    leftMostNoRow = bound.left;
-                    leftMostBoxNoRow = el;
-                }
+        var lines = [
+            {
+                x1: curBound.right + 1,
+                y1: curBound.bottom + 1,
+                x2: curBound.right,
+                y2: curBound.bottom
+            },
+            {
+                x1: curBound.right,
+                y1: curBound.top,
+                x2: curBound.right + 1,
+                y2: curBound.top - 1
             }
-            if (curBound.isRight(bound)) {
-                if (leftMost === null || bound.left < leftMost) {
-                    leftMost = bound.left;
-                    leftMostBox = el;
-                }
-            }
-        });
-        if (leftMostBox) {
-            switchTo(leftMostBox);
-        } else if (leftMostBoxNoRow) {
-            switchTo(leftMostBoxNoRow);
+        ];
+
+        var modelFound = this.getClosestInRange(lines);
+        if (modelFound) {
+            this.switchTo(modelFound);
         }
 
     },

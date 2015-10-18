@@ -8,6 +8,7 @@ var Help = Backbone.Model.extend({
         left: 0,
         width: 150,
         height: 200,
+        isActive: false
     },
 
     initialize: function(attributes, options) {
@@ -72,6 +73,10 @@ var HelpView = Backbone.View.extend({
                 width  : this.model.get('width'),
                 height : this.model.get('height')
             });
+        }
+
+        if (isInitial || isAttributeChanged(['isActive'])) {
+            this.$el.toggleClass('active', this.model.get('isActive'));
         }
 
         if (isInitial) {
