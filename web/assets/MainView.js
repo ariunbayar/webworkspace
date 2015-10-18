@@ -35,8 +35,7 @@ var MainView = Backbone.View.extend({
         this.collection.each(function(model) {
             model.getView();
         }, this);
-        this.currentModel = this.collection.models[this.collection.length - 1];
-        this.currentModel.set('isActive', true);
+        this.switchTo(this.collection.models[this.collection.length - 1]);
 
     },
 
@@ -162,7 +161,9 @@ var MainView = Backbone.View.extend({
 
     switchTo: function (model) {
 
-        this.currentModel.set('isActive', false);
+        if (this.currentModel) {
+            this.currentModel.set('isActive', false);
+        }
         model.set('isActive', true);
         this.currentModel = model;
 
