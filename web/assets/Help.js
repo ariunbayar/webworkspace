@@ -13,9 +13,11 @@ var Help = Backbone.Model.extend({
 
     initialize: function(attributes, options) {
 
-        this.fetch().then(_.bind(function(){
-            this.on('change', this.changeOccured, this);
-        }, this));
+    },
+
+    init: function () {
+
+        this.on('change', this.changeOccured, this);
 
     },
 

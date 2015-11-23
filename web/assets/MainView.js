@@ -8,6 +8,7 @@ var MainCollection = Backbone.Collection.extend({
 
         var deferredAll = $.when(
             project.fetch(),
+            help.fetch(),
             files.fetch()
         );
 
@@ -15,6 +16,9 @@ var MainCollection = Backbone.Collection.extend({
             this.add(project);
             this.add(files.models);
             this.add(help);
+            project.init();
+            files.init();
+            help.init();
         }, this));
 
         return deferredAll;

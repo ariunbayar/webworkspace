@@ -16,10 +16,11 @@ var File = Backbone.Model.extend({
 
     initialize: function(attributes, options) {
 
-        // TODO save changes
-        //this.fetch().then(_.bind(function(){
-            //this.on('change', this.changeOccured, this);
-        //}, this));
+    },
+
+    init: function () {
+
+        this.on('change', this.changeOccured, this);
 
     },
 
@@ -57,6 +58,14 @@ var FileCollection = Backbone.Collection.extend({
 
     initialize: function () {
     },
+
+    init: function () {
+
+        this.each(function(file){
+            // TODO can we listen changes in collection?
+            file.init();
+        })
+    }
 
 });
 
