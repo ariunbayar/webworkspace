@@ -16,6 +16,11 @@ if (class_exists('Redis')) {
         return $redis->set($key, $value);
     }
 
+    function del($key) {
+        global $redis;
+        return $redis->del($key);
+    }
+
 } else {
 
     // fallback method of saving to disk
@@ -35,6 +40,13 @@ if (class_exists('Redis')) {
         global $file;
         $data = unserialize(file_get_contents($file));
         $data[$key] = $value;
+        file_put_contents($file, serialize($data));
+    }
+
+    function del($key) {
+        global $file;
+        $data = unserialize(file_get_contents($file));
+        unset($data[$key]);
         file_put_contents($file, serialize($data));
     }
 
