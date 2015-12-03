@@ -27,15 +27,12 @@ var File = Backbone.Model.extend({
     changeOccured: function () {
 
         // silent option make sure this.save won't trigger another change
-        var options = {silent: true};
+        var options = {silent: true, patch: true};
 
-        if (this.hasChanged('directory')) {
-            // directory change must refresh the page
-            // TODO update changes to related boxes without refresh
-            options.success = function() { window.location.reload(); }
-        }
+        attrs = _.pick(this.changedAttributes(), 'top', 'left', 'width', 'height', 'isActive');
+        attrs.id = this.id;
 
-        this.save(null, options);
+        this.save(attrs, options);
 
     },
 

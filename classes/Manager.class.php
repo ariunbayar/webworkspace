@@ -2,7 +2,6 @@
 class Manager
 {
     public $browser;
-    public $watches;
 
     static protected $_instance = null;
 
@@ -18,20 +17,10 @@ class Manager
             $project->save();
         }
         $this->browser = new Browser($project->getDirectory());
-
-        // Watching files
-        $watches = DataStore::getInstance()->get('watches');
-        $this->watches = $watches ? unserialize($watches) : [];
     }
 
     public function save()
     {
-        for ($i = count($this->watches) - 1; $i >= 0; $i--) {
-            if ($this->watches[$i]->remove == 1) {
-                array_splice($this->watches, $i, 1);
-            }
-        }
-        DataStore::getInstance()->set('watches', serialize($this->watches));
     }
 
     static public function getInstance()

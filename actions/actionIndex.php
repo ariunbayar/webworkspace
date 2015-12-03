@@ -10,11 +10,14 @@ class actionIndex extends actionBase
         $pick = $this->getRequestParamGet('pick');
         if ($pick) {
             // TODO don't add if already exists
-            $manager->watches[] = new FileWatch($pick);
-            $manager->save();
+            $file = new File();
+            $file->setFilename($pick);
+            $file->save();
             $this->redirect('/');
         }
 
+        // TODO fix
+        /*
         $openIndex = $this->getRequestParamGet('open');
         if ($openIndex !== null) {
             $watch = $manager->watches[$openIndex];
@@ -22,6 +25,7 @@ class actionIndex extends actionBase
             exec("gnome-terminal -e \"gvim '$file'\"");
             exit(0);
         }
+         */
 
         $this->render([
             'm' => $manager,

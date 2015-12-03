@@ -8,7 +8,6 @@ ini_set('display_startup_errors', 1);
 
 require_once(__DIR__ . '/../classes/Application.class.php');
 require_once(__DIR__ . '/../classes/Browser.class.php');
-require_once(__DIR__ . '/../classes/FileWatch.class.php');
 require_once(__DIR__ . '/../classes/Manager.class.php');
 require_once(__DIR__ . '/../classes/DataStore.class.php');
 require_once(__DIR__ . '/../classes/DataStoreFile.class.php');
@@ -17,6 +16,7 @@ require_once(__DIR__ . '/../classes/DataStoreRedis.class.php');
 require_once(__DIR__ . '/../model/Model.php');
 require_once(__DIR__ . '/../model/Help.php');
 require_once(__DIR__ . '/../model/Project.php');
+require_once(__DIR__ . '/../model/File.php');
 
 require_once(__DIR__ . '/../actions/actionBase.php');
 require_once(__DIR__ . '/../actions/actionIndex.php');

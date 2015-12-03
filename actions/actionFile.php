@@ -5,41 +5,25 @@ class actionFile extends actionBase
     {
         $method = $this->getRequestMethod();
 
-        if ($method == 'PUT' || $method == 'POST') {
+        if (in_array($method, ['PUT', 'POST', 'PATCH'])) {
             $data = $this->getRequestPayload();
-            $data = $this->setFileData($data);
+            $file = new File($data['id']);
+            $file->fromArray($data);
+            $file->save();
+            $data = $file->toArray();
         }
 
         if ($method == 'GET') {
-            $data = $this->getFileData();
+            $files = File::fetchAll();
+            $data = [];
+            foreach ($files as $i => $file) {
+                $data[$i] = $file->toArray();
+                list($content, $numLines) = $file->getFileMeta();
+                $data[$i]['content'] = $content;
+                $data[$i]['numLines'] = $numLines;
+            }
         }
 
         $this->renderJson($data);
-    }
-
-    protected function getFileData()
-    {
-        $raw = DataStore::getInstance()->get('watches');  // TODO change to another format
-        $files = $raw ? unserialize($raw) : [];
-
-        $data = [];
-        foreach ($files as $i => $file) {
-            $values = $file->toArray();
-            $values['id'] = $i;
-            $data[] = $values;
-        }
-
-        return $data;
-    }
-
-    protected function setFileData($data)
-    {
-        $raw = DataStore::getInstance()->get('watches');  // TODO change to another format
-        $files = $raw ? unserialize($raw) : [];
-        $file = $files[$data['id']];
-        $file->fromArray($data);
-        DataStore::getInstance()->set('watches', serialize($files));
-
-        return $data;
     }
 }
