@@ -81,6 +81,15 @@ class Model
         return $this->values;
     }
 
+    public function fromArray($values)
+    {
+        foreach ($this->values as $k => $v) {
+            if (array_key_exists($k, $values)) {
+                $this->values[$k] = $values[$k];
+            }
+        }
+    }
+
     static public function fetchAll()
     {
         $objects = [];
