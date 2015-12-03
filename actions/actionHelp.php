@@ -13,8 +13,7 @@ class actionHelp extends actionBase
         }
 
         if ($method == 'GET') {
-            $helps = Help::fetchAll();
-            $help = $helps ? $helps[0] : new Help();
+            $help = Help::fetchFirstOrNew();
         }
 
         $this->renderJson($help->toArray());

@@ -103,4 +103,12 @@ class Model
 
         return $objects;
     }
+
+    static public function fetchFirstOrNew()
+    {
+        $models = static::fetchAll();
+        $model = $models ? $models[0] : new static();
+
+        return $model;
+    }
 }
