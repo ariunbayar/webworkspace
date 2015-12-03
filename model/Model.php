@@ -6,8 +6,9 @@ class Model
 
     public function __construct($id = null)
     {
-        if ($id) {
-            $json = get(static::$name . '_' . $id);
+        if (is_numeric($id)) {
+            $id = (int)$id;
+            $json = DataStore::getInstance()->get(static::$name . '_' . $id);
             if ($json) {
                 $this->values = json_decode($json, true);
             }
@@ -16,23 +17,23 @@ class Model
 
     protected function _saveNewId()
     {
-        $json = get(static::$name . '_ids') ?: '[]';
+        $json = DataStore::getInstance()->get(static::$name . '_ids') ?: '[]';
 
         $ids = json_decode($json, true);
         $ids[] = $this->getId();
 
-        set(static::$name . '_ids', json_encode($ids));
+        DataStore::getInstance()->set(static::$name . '_ids', json_encode($ids));
     }
 
     protected function _saveModel()
     {
         if ($this->isNew()) {
-            $this->setId(incr('last_id'));
+            $this->setId(DataStore::getInstance()->incr('last_id'));
             $this->_saveNewId();
         }
 
         $json = json_encode($this->values);
-        set(static::$name . '_' . $this->getId(), $json);
+        DataStore::getInstance()->set(static::$name . '_' . $this->getId(), $json);
     }
 
     public function getId()
@@ -62,16 +63,16 @@ class Model
         }
 
         // remove object
-        del(static::$name . '_' . $this->getId(), null);
+        DataStore::getInstance()->del(static::$name . '_' . $this->getId(), null);
 
         // remove id from list
-        $json = get(static::$name . '_ids') ?: '[]';
+        $json = DataStore::getInstance()->get(static::$name . '_ids') ?: '[]';
         $ids = json_decode($json, true);
         $index = array_search($this->getId(), $ids);
         if ($index !== false) {
             unset($ids[$index]);
             $ids = array_values($ids);
-            set(static::$name . '_ids', json_encode($ids));
+            DataStore::getInstance()->set(static::$name . '_ids', json_encode($ids));
         }
     }
 
@@ -84,7 +85,7 @@ class Model
     {
         $objects = [];
 
-        $json_ids = get(static::$name . '_ids');
+        $json_ids = DataStore::getInstance()->get(static::$name . '_ids');
         $ids = $json_ids ? json_decode($json_ids) : [];
 
         foreach ($ids as $id) {
