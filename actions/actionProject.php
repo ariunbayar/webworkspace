@@ -7,40 +7,15 @@ class actionProject extends actionBase
 
         if ($method == 'PUT' || $method == 'POST') {
             $data = $this->getRequestPayload();
-            $data = $this->setProjectData($data);
+            $project = new Project($data['id']);
+            $project->fromArray($data);
+            $project->save();
         }
 
         if ($method == 'GET') {
-            $data = $this->getProjectData();
+            $project = Project::fetchFirstOrNew();
         }
 
-        $this->renderJson($data);
-    }
-
-    protected function getProjectData()
-    {
-        $json = DataStore::getInstance()->get('project');
-
-        if ($json) {
-            $data = json_decode($json, true);
-        } else {
-            $data = [
-                'top'       => 0,
-                'left'      => 0,
-                'width'     => 150,
-                'height'    => 200,
-            ];
-        }
-
-        return $data;
-    }
-
-    protected function setProjectData($data)
-    {
-        $data['id'] = 1;  // TODO allow multiple projects
-
-        DataStore::getInstance()->set('project', json_encode($data));
-
-        return $data;
+        $this->renderJson($project->toArray());
     }
 }

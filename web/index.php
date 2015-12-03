@@ -16,6 +16,7 @@ require_once(__DIR__ . '/../classes/DataStoreRedis.class.php');
 
 require_once(__DIR__ . '/../model/Model.php');
 require_once(__DIR__ . '/../model/Help.php');
+require_once(__DIR__ . '/../model/Project.php');
 
 require_once(__DIR__ . '/../actions/actionBase.php');
 require_once(__DIR__ . '/../actions/actionIndex.php');

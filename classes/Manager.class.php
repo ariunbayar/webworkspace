@@ -11,18 +11,13 @@ class Manager
      */
     public function __construct()
     {
-
         // Main directory
-        $project = DataStore::getInstance()->get('project');
-        if ($project) {
-            $directory = json_decode($project, true)['directory'];
-        } else {
-            $directory = '';
+        $project = Project::fetchFirstOrNew();
+        if (!$project->getDirectory()) {
+            $project->setDirectory(getcwd());
+            $project->save();
         }
-        if (!$directory) {
-            $directory = getcwd();
-        }
-        $this->browser = new Browser($directory);
+        $this->browser = new Browser($project->getDirectory());
 
         // Watching files
         $watches = DataStore::getInstance()->get('watches');
