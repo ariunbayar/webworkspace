@@ -19,7 +19,7 @@ class actionProject extends actionBase
 
     protected function getProjectData()
     {
-        $json = get('project');
+        $json = DataStore::getInstance()->get('project');
 
         if ($json) {
             $data = json_decode($json, true);
@@ -39,7 +39,7 @@ class actionProject extends actionBase
     {
         $data['id'] = 1;  // TODO allow multiple projects
 
-        set('project', json_encode($data));
+        DataStore::getInstance()->set('project', json_encode($data));
 
         return $data;
     }

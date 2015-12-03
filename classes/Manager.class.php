@@ -13,7 +13,7 @@ class Manager
     {
 
         // Main directory
-        $project = get('project');
+        $project = DataStore::getInstance()->get('project');
         if ($project) {
             $directory = json_decode($project, true)['directory'];
         } else {
@@ -25,7 +25,7 @@ class Manager
         $this->browser = new Browser($directory);
 
         // Watching files
-        $watches = get('watches');
+        $watches = DataStore::getInstance()->get('watches');
         $this->watches = $watches ? unserialize($watches) : [];
     }
 
@@ -36,7 +36,7 @@ class Manager
                 array_splice($this->watches, $i, 1);
             }
         }
-        set('watches', serialize($this->watches));
+        DataStore::getInstance()->set('watches', serialize($this->watches));
     }
 
     static public function getInstance()
