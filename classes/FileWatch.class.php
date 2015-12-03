@@ -9,6 +9,7 @@ class FileWatch implements Serializable
     public $file;
     public $numLines = 0;
     public $remove = 0;
+    public $isActive = false;
 
     function __construct($file)
     {
@@ -17,17 +18,26 @@ class FileWatch implements Serializable
 
     function serialize()
     {
-        return
-            $this->x . '|' .
-            $this->y . '|' .
-            $this->width . '|' .
-            $this->height . '|' .
-            $this->file;
+        $values = [
+            $this->x,
+            $this->y,
+            $this->width,
+            $this->height,
+            $this->file,
+            $this->isActive ? 1 : 0,
+        ];
+        return implode('|', $values);
     }
 
     function unserialize($data)
     {
-        list($this->x, $this->y, $this->width, $this->height, $this->file) = explode('|', $data, 5);
+        $values = explode('|', $data, 6);
+        $this->x        = $values[0];
+        $this->y        = $values[1];
+        $this->width    = $values[2];
+        $this->height   = $values[3];
+        $this->file     = $values[4];
+        $this->isActive = $values[5] ? true : false;
     }
 
     function getSource()
@@ -58,11 +68,22 @@ class FileWatch implements Serializable
             'content'  => htmlspecialchars($this->getSource()),
             'numLines' => $this->numLines,
             'filename' => $this->file,
-            'top'      => (int)$this->x,
-            'left'     => (int)$this->y,
+            'top'      => (int)$this->y,
+            'left'     => (int)$this->x,
             'width'    => (int)$this->width,
             'height'   => (int)$this->height,
+            'isActive' => $this->isActive,
         ];
+    }
+
+    function fromArray($values)
+    {
+        $this->x        = $values['left'];
+        $this->y        = $values['top'];
+        $this->width    = $values['width'];
+        $this->height   = $values['height'];
+        $this->file     = $values['filename'];
+        $this->isActive = $values['isActive'];
     }
 
 }

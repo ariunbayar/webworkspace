@@ -6,8 +6,8 @@ class actionFile extends actionBase
         $method = $this->getRequestMethod();
 
         if ($method == 'PUT' || $method == 'POST') {
-            //$data = $this->getRequestPayload();
-            //$data = $this->setFileData($data);
+            $data = $this->getRequestPayload();
+            $data = $this->setFileData($data);
         }
 
         if ($method == 'GET') {
@@ -19,7 +19,7 @@ class actionFile extends actionBase
 
     protected function getFileData()
     {
-        $raw = get('watches');  // TODO change to another format
+        $raw = DataStore::getInstance()->get('watches');  // TODO change to another format
         $files = $raw ? unserialize($raw) : [];
 
         $data = [];
@@ -34,8 +34,12 @@ class actionFile extends actionBase
 
     protected function setFileData($data)
     {
-        //set('watches', serialize($this->watches));
+        $raw = DataStore::getInstance()->get('watches');  // TODO change to another format
+        $files = $raw ? unserialize($raw) : [];
+        $file = $files[$data['id']];
+        $file->fromArray($data);
+        DataStore::getInstance()->set('watches', serialize($files));
 
-        //return $data;
+        return $data;
     }
 }
