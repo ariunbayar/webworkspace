@@ -52,7 +52,7 @@ var MainView = Backbone.View.extend({
         if (hasMainViewHandler) {
             this.keyMaps[this.currentMode][key].call(this);
         } else {
-            this.currentBox && this.currentBox.keyAction(key);
+            this.currentModel && this.currentModel.getView().keyAction(key);
         }
 
     },
@@ -363,7 +363,7 @@ var MainView = Backbone.View.extend({
         // TODO multiple letter commands
         'MODE_NORMAL': {
 
-            // TODO relative to specific box
+            // TODO make this scrolling relative to specific box
             // scroll the box
             // TODO G or gg to go to beginning or ending
             'K': function() { this.scrollUp(); },
@@ -400,6 +400,7 @@ var MainView = Backbone.View.extend({
             'H': function() { this.moveCurrentBox(-1, 0); },
             'L': function() { this.moveCurrentBox( 1, 0); },
 
+            // TODO relative to specific box
             // closes the box
             'D': function() { this.closeBox(); },
 

@@ -22,7 +22,7 @@ class File extends Model
         $manager = Manager::getInstance();
         $filename = $manager->browser->directory . $this->values['filename'];
         if (!file_exists($filename)) {
-            return '';
+            return ['', 0];
         }
         $handle = fopen($filename, "r");
 
