@@ -16,6 +16,11 @@ class actionProject extends actionBase
             $project = Project::fetchFirstOrNew();
         }
 
+        if ($method == 'DELETE') {
+            $project = new Project($id);
+            $project->delete();
+        }
+
         $this->renderJson($project->toArray());
     }
 }

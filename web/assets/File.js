@@ -117,8 +117,7 @@ var FileView = Backbone.View.extend({
 
     keyAction: function(key) {
         var keyMap = {
-            'Enter': this.openFileInEditor,
-            'D': this.closeView
+            'Enter': this.openFileInEditor
         }
         keyMap[key] && keyMap[key].apply(this);
     },
@@ -129,23 +128,6 @@ var FileView = Backbone.View.extend({
         Backbone.ajax({
             url: '/fileOpen/' + this.model.id,
         });
-    },
-
-    closeView: function () {
-
-        var msg = 'Are you sure to close box for "' + this.model.get('filename') + '"?';
-        var result = window.confirm(msg);
-        if (result) {
-            this.model.destroy();
-            setTimeout((function(el) {
-                el.addClass('hinge');
-                return function () {
-                    el.remove();
-                }
-            })(this.$el), 1000);
-        }
-
-    },
-
+    }
 
 });

@@ -335,6 +335,23 @@ var MainView = Backbone.View.extend({
 
     },
 
+    closeView: function () {
+
+        if (!this.currentModel) {
+            return;
+        }
+
+        var result = window.confirm('Are you sure to close this box?');
+        if (result) {
+            this.currentModel.destroy();
+            setTimeout((function(el) {
+                el.addClass('hinge');
+                return function () { el.remove(); };
+            })(this.currentModel.getView().$el), 1000);
+        }
+
+    },
+
     keyMaps: {
 
         // TODO multiple letter commands
@@ -376,6 +393,8 @@ var MainView = Backbone.View.extend({
             // back to normal mode
             'Esc': function() { this.switchMode('MODE_NORMAL'); },
 
+            // close current widget
+            'D': function() { this.closeView(); }
         }
 
     }

@@ -16,6 +16,11 @@ class actionHelp extends actionBase
             $help = Help::fetchFirstOrNew();
         }
 
+        if ($method == 'DELETE') {
+            $help = new Help($id);
+            $help->delete();
+        }
+
         $this->renderJson($help->toArray());
     }
 }
