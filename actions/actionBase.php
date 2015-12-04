@@ -4,8 +4,6 @@ abstract class actionBase
     private $_requestParamGet = [];
     private $_requestParamPost = [];
 
-    abstract public function execute();
-
     public function __construct()
     {
         $this->_requestParamGet = $_GET;

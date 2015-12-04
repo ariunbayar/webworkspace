@@ -1,13 +1,13 @@
 <?php
 class actionFile extends actionBase
 {
-    public function execute()
+    public function execute($id = null, $n = null)
     {
         $method = $this->getRequestMethod();
 
         if (in_array($method, ['PUT', 'POST', 'PATCH'])) {
             $data = $this->getRequestPayload();
-            $file = new File($data['id']);
+            $file = new File($id);
             $file->fromArray($data);
             $file->save();
             $data = $file->toArray();

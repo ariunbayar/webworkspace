@@ -13,18 +13,20 @@ class Application
 
     public function dispatch()
     {
-        $action = 'action' . ucfirst($this->path);
+        $urlParts = explode('/', $this->path);
+
+        $action = 'action' . ucfirst(array_shift($urlParts));
         $actionExists = preg_match('/^[a-z]+$/i', $action) && class_exists($action);
         if ($actionExists) {
-            $this->serveAction($action);
+            $this->serveAction($action, $urlParts);
         }
 
         return $actionExists;
     }
 
-    protected function serveAction($action)
+    protected function serveAction($actionName, $urlParts)
     {
-        $action = new $action();
-        $action->execute();
+        $action = new $actionName();
+        call_user_func_array([$action, 'execute'], $urlParts);
     }
 }
