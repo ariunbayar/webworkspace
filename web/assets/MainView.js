@@ -81,20 +81,6 @@ var MainView = Backbone.View.extend({
 
     },
 
-    closeBox: function () {
-
-        // TODO rewrite for this view
-        setTimeout((function(el) {
-            el.addClass('hinge');
-            return function () {
-                // switch to some other window
-                navLeft(); navRight(); navUp(); navDown();
-                el.remove();
-            }
-        })(currentBox), 1000);
-
-    },
-
     moveCurrentBox: function (x, y) {
 
         var top  = this.currentModel.get('top');
@@ -386,10 +372,6 @@ var MainView = Backbone.View.extend({
             'J': function() { this.moveCurrentBox(0,  1); },
             'H': function() { this.moveCurrentBox(-1, 0); },
             'L': function() { this.moveCurrentBox( 1, 0); },
-
-            // TODO relative to specific box
-            // closes the box
-            'D': function() { this.closeBox(); },
 
             // back to normal mode
             'Esc': function() { this.switchMode('MODE_NORMAL'); },

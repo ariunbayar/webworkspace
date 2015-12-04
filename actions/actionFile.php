@@ -1,8 +1,10 @@
 <?php
 class actionFile extends actionBase
 {
-    public function execute($id = null, $n = null)
+    public function execute($id = null)
     {
+        $data = [];
+
         $method = $this->getRequestMethod();
 
         if (in_array($method, ['PUT', 'POST', 'PATCH'])) {
@@ -15,13 +17,17 @@ class actionFile extends actionBase
 
         if ($method == 'GET') {
             $files = File::fetchAll();
-            $data = [];
             foreach ($files as $i => $file) {
                 $data[$i] = $file->toArray();
                 list($content, $numLines) = $file->getFileMeta();
                 $data[$i]['content'] = $content;
                 $data[$i]['numLines'] = $numLines;
             }
+        }
+
+        if ($method == 'DELETE') {
+            $file = new File($id);
+            $file->delete();
         }
 
         $this->renderJson($data);
