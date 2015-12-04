@@ -1,10 +1,8 @@
 <?php
 class actionFileOpen extends actionBase
 {
-    public function execute()
+    public function execute($id)
     {
-        $id = $this->getRequestParamGet('id');
-
         $file = new File($id);
         $file = Manager::getInstance()->browser->directory . $file->getFilename();
         exec("gnome-terminal -e \"gvim '$file'\"");

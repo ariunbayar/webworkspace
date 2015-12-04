@@ -1,6 +1,6 @@
 var Help = Backbone.Model.extend({
 
-    url: '/help',
+    urlRoot: '/help',
 
     defaults: {
         id: null,

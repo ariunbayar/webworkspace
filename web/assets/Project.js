@@ -1,6 +1,6 @@
 var Project = Backbone.Model.extend({
 
-    url: '/project',
+    urlRoot: '/project',
 
     defaults: {
         id: null,
