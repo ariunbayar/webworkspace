@@ -1,6 +1,6 @@
 var File = Backbone.Model.extend({
 
-    url: '/file',
+    url: '/file',  // TODO change to urlRoot
 
     defaults: {
         id: null,
@@ -29,7 +29,8 @@ var File = Backbone.Model.extend({
         // silent option make sure this.save won't trigger another change
         var options = {silent: true, patch: true};
 
-        attrs = _.pick(this.changedAttributes(), 'top', 'left', 'width', 'height', 'isActive');
+        var allowedFields = ['top', 'left', 'width', 'height', 'isActive'];
+        attrs = _.pick(this.changedAttributes(), allowedFields);
         attrs.id = this.id;
 
         this.save(attrs, options);
@@ -119,8 +120,18 @@ var FileView = Backbone.View.extend({
 
     keyAction: function(key) {
         var keyMap = {
+            'Enter': this.openFileInEditor
         }
         keyMap[key] && keyMap[key].apply(this);
+    },
+
+
+    openFileInEditor: function() {
+
+        // TODO pass scroll location to code editor
+        Backbone.ajax({
+            url: '/fileOpen?id=' + this.model.id,
+        });
     }
 
 });

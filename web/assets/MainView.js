@@ -57,15 +57,6 @@ var MainView = Backbone.View.extend({
 
     },
 
-    openFile: function() {
-
-        // TODO rewrite for this view
-        // TODO pass scroll location to code editor
-        var fileId = currentBox.attr('data-idx');
-        $.get(window.location.pathname + '?open=' + fileId);
-
-    },
-
     switchMode: function(newMode) {
 
         if (!this.currentModel) {
@@ -370,10 +361,6 @@ var MainView = Backbone.View.extend({
             'J': function() { this.scrollDown(); },
             'H': function() { this.scrollLeft(); },
             'L': function() { this.scrollRight(); },
-
-            // TODO relative to specific box
-            // opens file in editor
-            'Enter': function() { this.openFile(); },
 
             // navigate between boxes using shift and arrow letters
             'Shift+K': function() { this.navUp(); },

@@ -17,6 +17,11 @@ class File extends Model
         $this->values['filename'] = $value;
     }
 
+    public function getFilename()
+    {
+        return $this->values['filename'];
+    }
+
     public function getFileMeta()
     {
         $manager = Manager::getInstance();

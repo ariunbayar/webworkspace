@@ -37,10 +37,13 @@
         <li>
             <strong>Normal mode</strong>
             <ul>
-                <li><strong>k, j, h, l</strong> - Scrolls box up, down, left and right</li>
                 <li><strong>K, J, H, L</strong> - Navigate up, down, left and right</li>
-                <li><strong>Enter</strong> - Opens selected file</li>
                 <li><strong>e</strong> - Enter edit box mode</li>
+            </ul>
+            <strong>Normal mode: Source code</strong>
+            <ul>
+                <li><strong>k, j, h, l</strong> - Scrolls box up, down, left and right</li>
+                <li><strong>Enter</strong> - Opens selected file</li>
             </ul>
         </li>
         <li>

@@ -22,6 +22,7 @@ require_once(__DIR__ . '/../actions/actionBase.php');
 require_once(__DIR__ . '/../actions/actionIndex.php');
 require_once(__DIR__ . '/../actions/actionProject.php');
 require_once(__DIR__ . '/../actions/actionFile.php');
+require_once(__DIR__ . '/../actions/actionFileOpen.php');
 require_once(__DIR__ . '/../actions/actionHelp.php');
 
 
