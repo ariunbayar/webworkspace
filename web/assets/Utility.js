@@ -3,8 +3,8 @@ var Utility = {
     drawBoxOutline: function () {
 
         // outline borders
-        var borderWidth=150;
-        var borderRange=200;
+        var borderWidth=5;
+        var borderRange=80;
         var colors = ['#F27360', '#9AAABA', '#6E6F71', '#485868', '#F3C766', '#FBE6E1', '#BCBDC1', '#9FC2BB', '#F5A46C'];
         var fn = function(c, b, cls){
             els = $('.box');

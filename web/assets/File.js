@@ -116,10 +116,18 @@ var FileView = Backbone.View.extend({
     },
 
     keyAction: function(key) {
+
         var keyMap = {
+            'K': this.scrollUp,
+            'J': this.scrollDown,
+            'H': this.scrollLeft,
+            'L': this.scrollRight,
             'Enter': this.openFileInEditor
+            // TODO G or gg to go to beginning or ending
+
         }
         keyMap[key] && keyMap[key].apply(this);
+
     },
 
     openFileInEditor: function() {
@@ -128,6 +136,41 @@ var FileView = Backbone.View.extend({
         Backbone.ajax({
             url: '/fileOpen/' + this.model.id,
         });
+
+    },
+
+    scrollUp: function () {
+
+        var scrollTop = this.$el.scrollTop() - Constants.boxScroll;
+        scrollTop = scrollTop < 0 ? 0 : scrollTop;
+        this.$el.scrollTop(scrollTop);
+
+    },
+
+    scrollDown: function () {
+
+        var scrollHeight = this.el.scrollHeight;
+        var scrollTop = this.$el.scrollTop() + Constants.boxScroll;
+        scrollTop = scrollTop > scrollHeight ? scrollHeight : scrollTop;
+        this.$el.scrollTop(scrollTop);
+
+    },
+
+    scrollLeft: function () {
+
+        var scrollLeft = this.$el.scrollLeft() - Constants.boxScroll;
+        scrollLeft = scrollLeft < 0 ? 0 : scrollLeft;
+        this.$el.scrollLeft(scrollLeft);
+
+    },
+
+    scrollRight: function () {
+
+        var scrollWidth = this.el.scrollWidth;
+        var scrollLeft = this.$el.scrollLeft() + Constants.boxScroll;
+        scrollLeft = scrollLeft > scrollWidth ? scrollWidth : scrollLeft;
+        this.$el.scrollLeft(scrollLeft);
+
     }
 
 });

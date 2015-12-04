@@ -108,44 +108,6 @@ var MainView = Backbone.View.extend({
 
     },
 
-    scrollUp: function () {
-
-        // TODO rewrite for this view
-        var scrollTop = currentBox.scrollTop() - Constants.boxScroll;
-        scrollTop = scrollTop < 0 ? 0 : scrollTop;
-        currentBox.scrollTop(scrollTop);
-
-    },
-
-    scrollDown: function () {
-
-        // TODO rewrite for this view
-        var scrollHeight = currentBox[0].scrollHeight;
-        var scrollTop = currentBox.scrollTop() + Constants.boxScroll;
-        scrollTop = scrollTop > scrollHeight ? scrollHeight : scrollTop;
-        currentBox.scrollTop(scrollTop);
-
-    },
-
-    scrollLeft: function () {
-
-        // TODO rewrite for this view
-        var scrollLeft = currentBox.scrollLeft() - Constants.boxScroll;
-        scrollLeft = scrollLeft < 0 ? 0 : scrollLeft;
-        currentBox.scrollLeft(scrollLeft);
-
-    },
-
-    scrollRight: function () {
-
-        // TODO rewrite for this view
-        var scrollWidth = currentBox[0].scrollWidth;
-        var scrollLeft = currentBox.scrollLeft() + Constants.boxScroll;
-        scrollLeft = scrollLeft > scrollWidth ? scrollWidth : scrollLeft;
-        currentBox.scrollLeft(scrollLeft);
-
-    },
-
     switchTo: function (model) {
 
         if (this.currentModel) {
@@ -356,14 +318,6 @@ var MainView = Backbone.View.extend({
 
         // TODO multiple letter commands
         'MODE_NORMAL': {
-
-            // TODO make this scrolling relative to specific box
-            // scroll the box
-            // TODO G or gg to go to beginning or ending
-            'K': function() { this.scrollUp(); },
-            'J': function() { this.scrollDown(); },
-            'H': function() { this.scrollLeft(); },
-            'L': function() { this.scrollRight(); },
 
             // navigate between boxes using shift and arrow letters
             'Shift+K': function() { this.navUp(); },
