@@ -21,4 +21,15 @@ class Project extends Model
     {
         $this->values['directory'] = $value;
     }
+
+    static public function getDirectoryOrCWD()
+    {
+        $project = static::fetchFirstOrNew();
+        if (!$project->getDirectory()) {
+            $project->setDirectory(getcwd());
+            $project->save();
+        }
+
+        return $project->getDirectory();
+    }
 }

@@ -3,12 +3,14 @@ var MainCollection = Backbone.Collection.extend({
     fetch: function () {
 
         var project = new Project();
-        var help = new Help({top: 300, left: 20});
+        var help = new Help();
+        var browsers = new BrowserCollection();
         var files = new FileCollection();
 
         var deferredAll = $.when(
             project.fetch(),
             help.fetch(),
+            browsers.fetch(),
             files.fetch()
         );
 
@@ -16,9 +18,11 @@ var MainCollection = Backbone.Collection.extend({
             this.add(project);
             this.add(files.models);
             this.add(help);
+            this.add(browsers.models);
             project.init();
             files.init();
             help.init();
+            browsers.init();
         }, this));
 
         return deferredAll;

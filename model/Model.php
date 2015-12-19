@@ -107,7 +107,13 @@ class Model
     static public function fetchFirstOrNew()
     {
         $models = static::fetchAll();
-        $model = $models ? $models[0] : new static();
+
+        if (count($models)) {
+            $model = $models[0];
+        } else {
+            $model = new static();
+            $model->save();
+        }
 
         return $model;
     }

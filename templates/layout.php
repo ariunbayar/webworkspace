@@ -16,6 +16,7 @@
     <script src="/assets/Project.js"></script>
     <script src="/assets/File.js"></script>
     <script src="/assets/Help.js"></script>
+    <script src="/assets/Browser.js"></script>
     <script src="/assets/MainView.js"></script>
     <script src="/assets/main.js"></script>
 

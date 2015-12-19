@@ -24,8 +24,7 @@ class File extends Model
 
     public function getFileMeta()
     {
-        $manager = Manager::getInstance();
-        $filename = $manager->browser->directory . $this->values['filename'];
+        $filename = Project::getDirectoryOrCWD() . $this->values['filename'];
         if (!file_exists($filename)) {
             return ['', 0];
         }

@@ -1,14 +1,13 @@
-var Project = Backbone.Model.extend({
+var Browser = Backbone.Model.extend({
 
-    urlRoot: '/project',
+    urlRoot: '/browser',
 
     defaults: {
         id: null,
         top: 0,
         left: 0,
-        width: 0,
-        height: 0,
-        directory: '',
+        width: 150,
+        height: 200,
         isActive: false
     },
 
@@ -19,18 +18,13 @@ var Project = Backbone.Model.extend({
     init: function () {
 
         this.on('change', this.changeOccured, this);
+
     },
 
     changeOccured: function () {
 
         // silent option make sure this.save won't trigger another change
         var options = {silent: true};
-
-        if (this.hasChanged('directory')) {
-            // directory change must refresh the page
-            // TODO update changes to related boxes without refresh
-            options.success = function() { window.location.reload(); }
-        }
 
         this.save(null, options);
 
@@ -39,7 +33,7 @@ var Project = Backbone.Model.extend({
     getView: function () {
 
         if (!this.view) {
-            this.view = new ProjectView({model: this});
+            this.view = new BrowserView({model: this});
         }
         return this.view;
 
@@ -47,11 +41,30 @@ var Project = Backbone.Model.extend({
 
 });
 
-var ProjectView = Backbone.View.extend({
+var BrowserCollection = Backbone.Collection.extend({
+
+    url: '/browser',
+
+    model: Browser,
+
+    initialize: function () {
+    },
+
+    init: function () {
+
+        this.each(function(browser){
+            // TODO can we listen changes in collection?
+            browser.init();
+        })
+    }
+
+});
+
+var BrowserView = Backbone.View.extend({
 
     tagName: 'div',
 
-    className: 'box project',
+    className: 'box browser',
 
     events: {},
 
@@ -65,7 +78,7 @@ var ProjectView = Backbone.View.extend({
 
     },
 
-    template: _.template($('#template-project').html()),
+    template: _.template($('#template-browser').html()),
 
     render: function(_model) {
 
@@ -88,43 +101,14 @@ var ProjectView = Backbone.View.extend({
             this.$el.toggleClass('active', this.model.get('isActive'));
         }
 
-        if (isInitial || isAttributeChanged(['directory'])) {
-            this.$el.html(this.template({directory: this.model.get('directory')}));
+        if (isInitial) {
+            this.$el.html(this.template());
         }
 
     },
 
     keyAction: function(key) {
-
-        var keyMap = {
-            'I': this.promptDirectoryAndReload,
-            'O': this.openFileBrowser
-        }
-        keyMap[key] && keyMap[key].apply(this);
-
-    },
-
-    promptDirectoryAndReload: function() {
-
-        var msg = 'Project directory is located at';
-        var result = window.prompt(msg, this.model.get('directory'));
-        var isUserCanceled = result === null;
-        if (isUserCanceled) {
-            return;
-        }
-        this.model.set('directory', result);
-
-    },
-
-    openFileBrowser: function() {
-
-        var browser = new Browser();
-        browser.save(null, {success: function () {
-            mainCollection.add(browser);
-            browser.init();
-            browser.getView();
-        }});
-
+        // TODO
     }
 
 });

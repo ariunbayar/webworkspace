@@ -3,6 +3,7 @@ var Constants = {
     boxScroll: 30,
     viewPortPadding: 40
 }
+var mainCollection;
 
 $(function(){
 
@@ -46,7 +47,7 @@ $(function(){
         Utility.drawBoxOutline();
     }, 1000);
 
-    var mainCollection = new MainCollection();
+    mainCollection = new MainCollection();
     var mainView = new MainView({collection: mainCollection});
     mainCollection.fetch().then(function(){
         mainView.render();

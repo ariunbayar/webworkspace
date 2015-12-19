@@ -3,10 +3,6 @@ class actionIndex extends actionBase
 {
     public function execute()
     {
-        $manager = Manager::getInstance();
-
-        // TODO change them to corresponding actions
-
         $pick = $this->getRequestParamGet('pick');
         if ($pick) {
             // TODO don't add if already exists
@@ -16,8 +12,6 @@ class actionIndex extends actionBase
             $this->redirect('/');
         }
 
-        $this->render([
-            'm' => $manager,
-        ]);
+        $this->render([]);
     }
 }

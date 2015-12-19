@@ -1,23 +1,3 @@
-<!-- File browser -->
-<?php $b = $m->browser ?>
-<div class="browser box">
-    <?php echo $b->currentDir ?>
-    <ul>
-        <?php if (!$b->isMainDir()) { ?>
-        <li><a href="?path=<?php echo $b->getUpperDir() ?>">..</a></li>
-        <?php } ?>
-
-        <?php foreach ($b->dirs as $dir) { ?>
-        <li><a href="?path=<?php echo $b->getAppended($dir) ?>">/<?php echo $dir ?></a></li>
-        <?php } ?>
-
-        <?php foreach ($b->files as $file) { ?>
-        <li>+ <a href="?path=<?php echo $b->removeDirPrefix($b->currentDir)?>&pick=<?php echo $b->getAppended($file) ?>"><?php echo $file ?></a></li>
-        <?php } ?>
-    </ul>
-</div>
-
-
 <div style="top: 20px; left: 1350px;" class="box preview"><pre></pre></div>
 
 
@@ -61,4 +41,8 @@
 <script type="text/html" id="template-file">
     <div class="filename"><%= filename %></div>
     <pre data-num-lines="<%= numLines %>"><%= content %></pre>
+</script>
+
+
+<script type="text/html" id="template-browser">
 </script>
