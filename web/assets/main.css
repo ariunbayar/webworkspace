@@ -12,11 +12,17 @@ ul{ padding-left: 20px;  }
     position: absolute;
 }
 .browser ul{
-    width: 200px;
+    border-left: 1px dashed #dedede;
+    background-color: #fdf6e3;
 }
 .browser ul li{
-    font-size: 8px;
-    width: 400px;
+    width: 200px;
+    list-style: none;
+}
+.browser ul li.dir{ list-style: disc; }
+.browser ul li.dir.open{ list-style: circle; }
+.browser ul li.dir span{
+    color: #268bd2;
     list-style: none;
 }
 

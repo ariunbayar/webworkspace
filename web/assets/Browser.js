@@ -123,7 +123,6 @@ var BrowserView = Backbone.View.extend({
 
     openFileWidgetOrToggleDir: function() {
 
-        console.log(this.model.get('tree'));
         if (this.currentItem == 'FILE') {
             this.openFileWidget();
         }

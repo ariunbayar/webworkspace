@@ -45,15 +45,19 @@
 
 
 <script type="text/html" id="template-browser-helper">
-    <ul>
+    <ul <% print(collapsed ? 'style="display:none"' : '') %>>
     <% for (var name in tree) { %>
-        <li><%- name %></li>
-        <% if (tree[name] !== 1) { %>
-            <% print(_.template($('#template-browser-helper').html())({tree: tree[name]})), %>
+        <% if (tree[name] === 1) { %>
+            <li><%- name %></li>
+        <% } else { %>
+            <li class="dir">
+                <span><%- name %> (<%= _.size(tree[name]) %>)</span>
+                <% print(_.template($('#template-browser-helper').html())({tree: tree[name], collapsed: true})), %>
+            </li>
         <% } %>
     <% } %>
     </ul>
 </script>
 <script type="text/html" id="template-browser">
-    <% print(_.template($('#template-browser-helper').html())({tree: tree})), %>
+    <% print(_.template($('#template-browser-helper').html())({tree: tree, collapsed: false})), %>
 </script>
