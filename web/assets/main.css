@@ -13,11 +13,11 @@ ul{ padding-left: 20px;  }
 }
 .browser ul{
     width: 200px;
-    overflow-x: auto;
 }
 .browser ul li{
     font-size: 8px;
     width: 400px;
+    list-style: none;
 }
 
 .watch{

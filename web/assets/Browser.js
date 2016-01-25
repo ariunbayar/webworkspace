@@ -8,7 +8,8 @@ var Browser = Backbone.Model.extend({
         left: 0,
         width: 150,
         height: 200,
-        isActive: false
+        isActive: false,
+        tree: {}
     },
 
     initialize: function(attributes, options) {
@@ -102,13 +103,58 @@ var BrowserView = Backbone.View.extend({
         }
 
         if (isInitial) {
-            this.$el.html(this.template());
+            this.$el.html(this.template({
+                tree: this.model.get('tree')
+            }));
         }
 
     },
 
     keyAction: function(key) {
-        // TODO
-    }
+
+        var keyMap = {
+            'K': this.navUp,
+            'J': this.navDown,
+            'Enter': this.openFileWidgetOrToggleDir
+        }
+        keyMap[key] && keyMap[key].apply(this);
+
+    },
+
+    openFileWidgetOrToggleDir: function() {
+
+        console.log(this.model.get('tree'));
+        if (this.currentItem == 'FILE') {
+            this.openFileWidget();
+        }
+        if (this.currentItem == 'DIR') {
+            this.toggleDir();
+        }
+
+    },
+
+    openFileWidget: function () {
+
+        console.log('openFileWidget');
+
+    },
+
+    toggleDir: function () {
+
+        console.log('toggleDir');
+
+    },
+
+    navUp: function() {
+
+        console.log('navUp');
+
+    },
+
+    navDown: function() {
+
+        console.log('navDown');
+
+    },
 
 });

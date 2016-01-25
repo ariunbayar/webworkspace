@@ -3,7 +3,6 @@ class actionBrowser extends actionBase
 {
     public function execute($id = null)
     {
-        $dir = Project::getDirectoryOrCWD();
         $data = [];
 
         $method = $this->getRequestMethod();
@@ -20,6 +19,7 @@ class actionBrowser extends actionBase
             $browsers = Browser::fetchAll();
             foreach ($browsers as $i => $browser) {
                 $data[$i] = $browser->toArray();
+                $data[$i]['tree'] = $this->getTree();
             }
         }
 
@@ -31,22 +31,27 @@ class actionBrowser extends actionBase
         $this->renderJson($data);
     }
 
-    /*
-    <div class="browser box">
-        <?php echo $b->currentDir ?>
-        <ul>
-            <?php if (!$b->isMainDir()) { ?>
-            <li><a href="?path=<?php echo $b->getUpperDir() ?>">..</a></li>
-            <?php } ?>
+    public function getTree()
+    {
+        $traverseTree = function ($dir) use (&$traverseTree) {
+            $tree = [];
 
-            <?php foreach ($b->dirs as $dir) { ?>
-            <li><a href="?path=<?php echo $b->getAppended($dir) ?>">/<?php echo $dir ?></a></li>
-            <?php } ?>
+            $items = glob($dir . '/*');
+            sort($items, SORT_STRING);
+            $files = [];
 
-            <?php foreach ($b->files as $file) { ?>
-            <li>+ <a href="?path=<?php echo $b->removeDirPrefix($b->currentDir)?>&pick=<?php echo $b->getAppended($file) ?>"><?php echo $file ?></a></li>
-            <?php } ?>
-        </ul>
-    </div>
-     */
+            foreach ($items as $item) {
+                $name = basename($item);
+                if (is_file($item)) {
+                    $files[$name] = 1;
+                } else {
+                    $tree[$name] = $traverseTree($dir . '/' . $name);
+                }
+            }
+
+            return array_merge($tree, $files);
+        };
+
+        return $traverseTree(Project::getDirectoryOrCWD());
+    }
 }

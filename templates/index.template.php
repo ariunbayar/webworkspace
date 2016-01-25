@@ -44,5 +44,16 @@
 </script>
 
 
+<script type="text/html" id="template-browser-helper">
+    <ul>
+    <% for (var name in tree) { %>
+        <li><%- name %></li>
+        <% if (tree[name] !== 1) { %>
+            <% print(_.template($('#template-browser-helper').html())({tree: tree[name]})), %>
+        <% } %>
+    <% } %>
+    </ul>
+</script>
 <script type="text/html" id="template-browser">
+    <% print(_.template($('#template-browser-helper').html())({tree: tree})), %>
 </script>
