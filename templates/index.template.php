@@ -44,20 +44,16 @@
 </script>
 
 
-<script type="text/html" id="template-browser-helper">
-    <ul <% print(collapsed ? 'style="display:none"' : '') %>>
-    <% for (var name in tree) { %>
-        <% if (tree[name] === 1) { %>
-            <li><%- name %></li>
-        <% } else { %>
-            <li class="dir">
-                <span><%- name %> (<%= _.size(tree[name]) %>)</span>
-                <% print(_.template($('#template-browser-helper').html())({tree: tree[name], collapsed: true})), %>
-            </li>
-        <% } %>
-    <% } %>
-    </ul>
-</script>
 <script type="text/html" id="template-browser">
-    <% print(_.template($('#template-browser-helper').html())({tree: tree, collapsed: false})), %>
+    <ul></ul>
+</script>
+
+
+<script type="text/html" id="template-browser-item">
+    <% if (isDir) { %>
+        <span><%- name %></span>
+        <ul></ul>
+    <% } else { %>
+        <%- name %>
+    <% } %>
 </script>

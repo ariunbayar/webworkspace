@@ -69,6 +69,9 @@ var BrowserView = Backbone.View.extend({
 
     events: {},
 
+    items: null,
+    curIndex: false,
+
     initialize: function() {
 
         this.$el.appendTo('body');
@@ -103,9 +106,21 @@ var BrowserView = Backbone.View.extend({
         }
 
         if (isInitial) {
-            this.$el.html(this.template({
-                tree: this.model.get('tree')
-            }));
+            this.$el.html(this.template());
+
+            var browserItems = this.items = new BrowserItemCollection();
+            traverse = function (items, containerEl) {
+                _.each(items, function(item) {
+                    var model = browserItems.add(item);
+                    var view = model.getView(containerEl);
+
+                    var isDir = model.get('children') !== false;
+                    if (isDir) {
+                        traverse(model.get('children'), view.$el.find('ul'));
+                    }
+                });
+            };
+            traverse(this.model.get('tree'), this.$el.find('ul'));
         }
 
     },
@@ -123,11 +138,12 @@ var BrowserView = Backbone.View.extend({
 
     openFileWidgetOrToggleDir: function() {
 
-        if (this.currentItem == 'FILE') {
-            this.openFileWidget();
-        }
-        if (this.currentItem == 'DIR') {
+        var isDir = this.items.at(this.curIndex).get('children') !== false;
+
+        if (isDir) {
             this.toggleDir();
+        } else {
+            this.openFileWidget();
         }
 
     },
@@ -140,20 +156,143 @@ var BrowserView = Backbone.View.extend({
 
     toggleDir: function () {
 
-        console.log('toggleDir');
+        var collapsed = this.items.at(this.curIndex).get('collapsed');
+        this.items.at(this.curIndex).set('collapsed', !collapsed);
+
+    },
+
+    updateActiveItemByIndex: function (nextIndexAt) {
+
+        if (nextIndexAt === false) {
+            return;
+        }
+
+        if (this.curIndex !== false) {
+            this.items.at(this.curIndex).set('isActive', false);
+        }
+        this.items.at(nextIndexAt).set('isActive', true);
+        this.curIndex = nextIndexAt;
 
     },
 
     navUp: function() {
 
-        console.log('navUp');
+        var nextIndexAt = false;
+        var startSearchAt = this.curIndex === false ? this.items.length - 1 : this.curIndex - 1;
+
+        for (var i = startSearchAt; i >= 0; --i) {
+            if (this.items.at(i).getView().$el.is(':visible')) {
+                nextIndexAt = i;
+                break;
+            }
+        }
+
+        this.updateActiveItemByIndex(nextIndexAt);
 
     },
 
     navDown: function() {
 
-        console.log('navDown');
+        var nextIndexAt = false;
+        var startSearchAt = this.curIndex === false ? 0 : this.curIndex + 1;
+
+        for (var i = startSearchAt; i < this.items.length; ++i) {
+            if (this.items.at(i).getView().$el.is(':visible')) {
+                nextIndexAt = i;
+                break;
+            }
+        }
+
+        this.updateActiveItemByIndex(nextIndexAt);
 
     },
+
+});
+
+
+
+var BrowserItem = Backbone.Model.extend({
+
+    defaults: {
+        id: null,
+        name: '',
+        isActive: false,
+        collapsed: true,
+        children: false
+    },
+
+    initialize: function(attributes, options) {
+
+    },
+
+    getView: function (parent) {
+
+        if (!this.view) {
+            this.view = new BrowserItemView({model: this, parent: parent});
+        }
+        return this.view;
+
+    }
+
+});
+
+var BrowserItemCollection = Backbone.Collection.extend({
+
+    model: BrowserItem,
+
+});
+
+var BrowserItemView = Backbone.View.extend({
+
+    tagName: 'li',
+
+    className: '',
+
+    events: {},
+
+    initialize: function(options) {
+
+        this.$el.appendTo(options.parent);
+
+        this.listenTo(this.model, 'change', this.render);
+
+        this.render(false);
+
+    },
+
+    template: _.template($('#template-browser-item').html()),
+
+    render: function(_model) {
+
+        var isInitial = _model === false;
+        var model = this.model;
+        var $el = this.$el;
+        var isDir = model.get('children') !== false;
+        var isAttributeChanged = function (attrs) {
+            return _.intersection(attrs, _.keys(model.changedAttributes())).length > 0;
+        };
+
+        if (isInitial || isAttributeChanged(['isActive', 'collapsed'])) {
+            $el.toggleClass('active', model.get('isActive'));
+            if (isDir) {
+                $el.toggleClass('collapsed', model.get('collapsed'));
+            }
+        }
+
+        if (isInitial) {
+
+            $el.html(this.template({
+                name      : model.get('name'),
+                isDir     : isDir,
+                collapsed : model.get('collapsed')
+            }));
+
+            if (isDir) {
+                $el.addClass('dir');
+            }
+        }
+
+    },
+
 
 });

@@ -43,9 +43,17 @@ class actionBrowser extends actionBase
             foreach ($items as $item) {
                 $name = basename($item);
                 if (is_file($item)) {
-                    $files[$name] = 1;
+                    $files[] = [
+                        'name'     => $name,
+                        'isActive' => false,
+                    ];
                 } else {
-                    $tree[$name] = $traverseTree($dir . '/' . $name);
+                    $tree[] = [
+                        'name'     => $name,
+                        'isActive' => false,
+                        'collapsed'=> true,
+                        'children' => $traverseTree($dir . '/' . $name),
+                    ];
                 }
             }
 
