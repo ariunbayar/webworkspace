@@ -1,11 +1,13 @@
 var File = Backbone.Model.extend({
 
+    urlRoot: '/file',
+
     defaults: {
         id: null,
         top: 0,
         left: 0,
-        width: 0,
-        height: 0,
+        width: 150,
+        height: 200,
         filename: '',
         content: '',
         numLines: 0,
@@ -45,6 +47,9 @@ var File = Backbone.Model.extend({
 
 });
 
+// XXX usage for this file collection is not actually by its bunch.
+// MainCollection is being used instead.
+// When adding a file widget via browser widget, it adds to mainCollection rather than this.
 var FileCollection = Backbone.Collection.extend({
 
     url: '/file',

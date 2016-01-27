@@ -59,4 +59,6 @@ $(function(){
         mainView.keyAction(key);
     });
 
+    window.mainView = mainView;
+
 });

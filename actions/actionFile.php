@@ -13,6 +13,12 @@ class actionFile extends actionBase
             $file->fromArray($data);
             $file->save();
             $data = $file->toArray();
+            if ($method == 'POST') {
+                // Meta data is required upon creation
+                list($content, $numLines) = $file->getFileMeta();
+                $data['content'] = $content;
+                $data['numLines'] = $numLines;
+            }
         }
 
         if ($method == 'GET') {

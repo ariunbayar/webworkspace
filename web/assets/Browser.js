@@ -138,19 +138,35 @@ var BrowserView = Backbone.View.extend({
 
     openFileWidgetOrToggleDir: function() {
 
-        var isDir = this.items.at(this.curIndex).get('children') !== false;
+        var curItem = this.items.at(this.curIndex);
+        var isDir = curItem.get('children') !== false;
 
         if (isDir) {
             this.toggleDir();
         } else {
-            this.openFileWidget();
+            this.openFileWidget(curItem);
         }
 
     },
 
-    openFileWidget: function () {
+    getFilenameFor: function (item) {
 
-        console.log('openFileWidget');
+        return '/startup.sh';
+
+    },
+
+    openFileWidget: function (item) {
+
+        var filename = this.getFilenameFor(item);
+
+        // Initialize the widget
+        var file = new File({filename: filename});
+        file.save().then(function () {
+            mainView.collection.add(file);
+            file.init();
+            file.getView();
+            mainView.switchTo(file);
+        });
 
     },
 
@@ -292,7 +308,6 @@ var BrowserItemView = Backbone.View.extend({
             }
         }
 
-    },
-
+    }
 
 });
