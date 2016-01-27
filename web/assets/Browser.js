@@ -109,18 +109,19 @@ var BrowserView = Backbone.View.extend({
             this.$el.html(this.template());
 
             var browserItems = this.items = new BrowserItemCollection();
-            traverse = function (items, containerEl) {
+            traverse = function (items, containerEl, parentModel) {
                 _.each(items, function(item) {
                     var model = browserItems.add(item);
+                    model.set('isDir', !!item.children)
+                    model.set('parent', parentModel);
                     var view = model.getView(containerEl);
 
-                    var isDir = model.get('children') !== false;
-                    if (isDir) {
-                        traverse(model.get('children'), view.$el.find('ul'));
+                    if (model.get('isDir')) {
+                        traverse(item.children, view.$el.find('ul'), model);
                     }
                 });
             };
-            traverse(this.model.get('tree'), this.$el.find('ul'));
+            traverse(this.model.get('tree'), this.$el.find('ul'), false);
         }
 
     },
@@ -139,9 +140,8 @@ var BrowserView = Backbone.View.extend({
     openFileWidgetOrToggleDir: function() {
 
         var curItem = this.items.at(this.curIndex);
-        var isDir = curItem.get('children') !== false;
 
-        if (isDir) {
+        if (curItem.get('isDir')) {
             this.toggleDir();
         } else {
             this.openFileWidget(curItem);
@@ -151,7 +151,13 @@ var BrowserView = Backbone.View.extend({
 
     getFilenameFor: function (item) {
 
-        return '/startup.sh';
+        var filename = '';
+        var traversingItem = item;
+        while (traversingItem) {
+            filename = '/' + traversingItem.get('name') + filename;
+            traversingItem = traversingItem.get('parent');
+        }
+        return filename;
 
     },
 
@@ -234,17 +240,18 @@ var BrowserItem = Backbone.Model.extend({
         name: '',
         isActive: false,
         collapsed: true,
-        children: false
+        isDir: false,
+        parent: false
     },
 
     initialize: function(attributes, options) {
 
     },
 
-    getView: function (parent) {
+    getView: function (containerEl) {
 
         if (!this.view) {
-            this.view = new BrowserItemView({model: this, parent: parent});
+            this.view = new BrowserItemView({model: this, containerEl: containerEl});
         }
         return this.view;
 
@@ -268,7 +275,7 @@ var BrowserItemView = Backbone.View.extend({
 
     initialize: function(options) {
 
-        this.$el.appendTo(options.parent);
+        this.$el.appendTo(options.containerEl);
 
         this.listenTo(this.model, 'change', this.render);
 
@@ -283,14 +290,13 @@ var BrowserItemView = Backbone.View.extend({
         var isInitial = _model === false;
         var model = this.model;
         var $el = this.$el;
-        var isDir = model.get('children') !== false;
         var isAttributeChanged = function (attrs) {
             return _.intersection(attrs, _.keys(model.changedAttributes())).length > 0;
         };
 
         if (isInitial || isAttributeChanged(['isActive', 'collapsed'])) {
             $el.toggleClass('active', model.get('isActive'));
-            if (isDir) {
+            if (model.get('isDir')) {
                 $el.toggleClass('collapsed', model.get('collapsed'));
             }
         }
@@ -299,11 +305,11 @@ var BrowserItemView = Backbone.View.extend({
 
             $el.html(this.template({
                 name      : model.get('name'),
-                isDir     : isDir,
+                isDir     : model.get('isDir'),
                 collapsed : model.get('collapsed')
             }));
 
-            if (isDir) {
+            if (model.get('isDir')) {
                 $el.addClass('dir');
             }
         }
