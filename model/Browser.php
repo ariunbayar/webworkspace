@@ -56,9 +56,21 @@ class Browser extends Model
         $hasNoActiveItem = count($this->getActiveItem()) == 0;
         $hasTreeItem = count($tree) > 0;
         if ($hasNoActiveItem && $hasTreeItem) {
-            $this0>setActiveItem([0]);
+            $this->setActiveItem([0]);
         }
 
         $this->values['tree'] = $tree;
+    }
+
+    public function treeExpandCollapse($itemLocation, $isCollapsed)
+    {
+        // minor structure for sake of the loop
+        $treeItem = ['children' => &$this->values['tree']];
+        foreach ($itemLocation as $location) {
+            $treeItem = &$treeItem['children'][$location];
+        }
+        if (array_key_exists('collapsed', $treeItem)) {
+            $treeItem['collapsed'] = $isCollapsed;
+        }
     }
 }

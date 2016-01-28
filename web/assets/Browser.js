@@ -9,7 +9,8 @@ var Browser = Backbone.Model.extend({
         width: 150,
         height: 200,
         isActive: false,
-        tree: {}
+        tree: {},
+        activeItem: []
     },
 
     initialize: function(attributes, options) {

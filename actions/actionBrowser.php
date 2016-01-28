@@ -9,10 +9,20 @@ class actionBrowser extends actionBase
 
         if ($method == 'PUT' || $method == 'POST') {
             $data = $this->getRequestPayload();
+            if (array_key_exists('tree', $data)) {  // cannot override tree
+                unset($data['tree']);
+            }
+
             $browser = new Browser($id);
             $browser->fromArray($data);
-            $browser->refreshTree();
+            if ($browser->isNew()) {
+                $browser->refreshTree();
+            }
+            if (array_key_exists('collapsed', $data)) {
+                $browser->treeExpandCollapse($data['collapsed'][0], !!$data['collapsed'][1]);
+            }
             $browser->save();
+
             $data = $browser->toArray();
         }
 
