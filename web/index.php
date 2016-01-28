@@ -24,6 +24,7 @@ require_once(__DIR__ . '/../actions/actionFile.php');
 require_once(__DIR__ . '/../actions/actionFileOpen.php');
 require_once(__DIR__ . '/../actions/actionHelp.php');
 require_once(__DIR__ . '/../actions/actionBrowser.php');
+require_once(__DIR__ . '/../actions/actionFileManage.php');
 
 
 $app = new Application();

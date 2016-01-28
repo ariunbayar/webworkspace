@@ -69,8 +69,8 @@ var BrowserView = Backbone.View.extend({
 
     events: {},
 
-    items: null,
-    curIndex: false,
+    topItems: false,
+    curItem: false,
 
     initialize: function() {
 
@@ -108,20 +108,26 @@ var BrowserView = Backbone.View.extend({
         if (isInitial) {
             this.$el.html(this.template());
 
-            var browserItems = this.items = new BrowserItemCollection();
             traverse = function (items, containerEl, parentModel) {
+                var browserItems = new BrowserItemCollection();
                 _.each(items, function(item) {
                     var model = browserItems.add(item);
-                    model.set('isDir', !!item.children)
+                    model.set('isDir', !!item.children);
                     model.set('parent', parentModel);
                     var view = model.getView(containerEl);
 
                     if (model.get('isDir')) {
-                        traverse(item.children, view.$el.find('ul'), model);
+                        var childItems = traverse(item.children, view.$el.find('ul'), model);
+                        model.set('children', childItems);
                     }
                 });
+                return browserItems;
             };
-            traverse(this.model.get('tree'), this.$el.find('ul'), false);
+            this.topItems = traverse(this.model.get('tree'), this.$el.find('ul'), false);
+            if (this.topItems.length) {
+                this.curItem = this.topItems.first();
+                this.curItem.set('isActive', true);
+            }
         }
 
     },
@@ -131,6 +137,12 @@ var BrowserView = Backbone.View.extend({
         var keyMap = {
             'K': this.navUp,
             'J': this.navDown,
+
+            'A': this.manageAdd,
+            'M': this.manageMove,
+            'D': this.manageDelete,
+            'C': this.manageCopy,
+
             'Enter': this.openFileWidgetOrToggleDir
         }
         keyMap[key] && keyMap[key].apply(this);
@@ -139,12 +151,14 @@ var BrowserView = Backbone.View.extend({
 
     openFileWidgetOrToggleDir: function() {
 
-        var curItem = this.items.at(this.curIndex);
+        if (!this.curItem) {
+            return;
+        }
 
-        if (curItem.get('isDir')) {
-            this.toggleDir();
+        if (this.curItem.get('isDir')) {
+            this.toggleDir(this.curItem);
         } else {
-            this.openFileWidget(curItem);
+            this.openFileWidget(this.curItem);
         }
 
     },
@@ -176,58 +190,156 @@ var BrowserView = Backbone.View.extend({
 
     },
 
-    toggleDir: function () {
+    toggleDir: function (item) {
 
-        var collapsed = this.items.at(this.curIndex).get('collapsed');
-        this.items.at(this.curIndex).set('collapsed', !collapsed);
+        var collapsed = item.get('collapsed');
+        item.set('collapsed', !collapsed);
 
     },
 
-    updateActiveItemByIndex: function (nextIndexAt) {
-
-        if (nextIndexAt === false) {
-            return;
-        }
-
-        if (this.curIndex !== false) {
-            this.items.at(this.curIndex).set('isActive', false);
-        }
-        this.items.at(nextIndexAt).set('isActive', true);
-        this.curIndex = nextIndexAt;
-
+    updateCurItem: function (newCurItem) {
+        this.curItem.set('isActive', false);
+        newCurItem.set('isActive', true);
+        this.curItem = newCurItem;
     },
 
     navUp: function() {
 
-        var nextIndexAt = false;
-        var startSearchAt = this.curIndex === false ? this.items.length - 1 : this.curIndex - 1;
-
-        for (var i = startSearchAt; i >= 0; --i) {
-            if (this.items.at(i).getView().$el.is(':visible')) {
-                nextIndexAt = i;
-                break;
-            }
+        if (!this.curItem) {
+            return;
         }
 
-        this.updateActiveItemByIndex(nextIndexAt);
+        var item = this.curItem;
+        var items = item.collection;
+        var itemIndex = items.indexOf(item);
+        if (itemIndex == 0) {
+            if (item.get('parent')) {
+                this.updateCurItem(item.get('parent'));
+            }
+        } else {
+            var item = items.at(itemIndex - 1);
+            if (item.get('isDir')) {
+                // find exact upper item while traversing its upper directory item
+                while (!item.get('collapsed')) {
+                    if (item.get('children').length == 0) {
+                        break;
+                    }
+                    item = item.get('children').last();
+                }
+            }
+            this.updateCurItem(item);
+        }
 
     },
 
     navDown: function() {
 
-        var nextIndexAt = false;
-        var startSearchAt = this.curIndex === false ? 0 : this.curIndex + 1;
+        if (!this.curItem) {
+            return;
+        }
 
-        for (var i = startSearchAt; i < this.items.length; ++i) {
-            if (this.items.at(i).getView().$el.is(':visible')) {
-                nextIndexAt = i;
-                break;
+        var item = this.curItem;
+
+        if (item.get('isDir') && !item.get('collapsed') && item.get('children').length) {
+            this.updateCurItem(item.get('children').first());
+        } else {
+            var items = item.collection;
+            var itemIndex = items.indexOf(item);
+            var isLastItem = itemIndex == items.length - 1;
+
+            while (isLastItem) {
+                if (item.get('parent') === false) {
+                    break;
+                }
+                item = item.get('parent');
+                items = item.collection;
+                itemIndex = items.indexOf(item);
+                isLastItem = itemIndex == items.length - 1;
+            }
+
+            if (!isLastItem) {
+                this.updateCurItem(items.at(itemIndex + 1));
             }
         }
 
-        this.updateActiveItemByIndex(nextIndexAt);
+    },
+
+    manageAdd: function () {
+
+        var curItem = this.curItem;
+        var addingDir = '/';
+
+        if (curItem && curItem.get('isDir')) {
+            addingDir = this.getFilenameFor(curItem) + '/';
+        } else if (curItem && curItem.get('parent')) {
+            addingDir = this.getFilenameFor(curItem.get('parent')) + '/';
+        }
+
+        var msg = "Enter name of your new file or directory.\nDirectory ends with /";
+        var filename = window.prompt(msg, addingDir);
+        var isUserCanceled = filename === null;
+        if (isUserCanceled) {
+            return;
+        }
+
+        var addItem = _.bind(function (filename) {
+            var names = filename.split('/');
+            var name, item, parentItem = false;
+            var items = this.topItems;
+
+            names.shift();  // remove first empty one
+            name = names.shift();
+            while (name) {
+                item = items.find(function (_item) {
+                    return _item.get('name') == name;
+                });
+                if (item) {
+                    items = item.get('children');
+                } else {
+                    var isDir = names.length > 0;
+                    // TODO insert sorted
+                    item = items.add({
+                        name: name,
+                        isDir: isDir,
+                        collapsed: isDir ? false : true,
+                        parent: parentItem,
+                        children: isDir ? new BrowserItemCollection() : false
+                    });
+                    var containerEl = parentItem ? parentItem.view.$el.find('ul') : this.$el.children('ul');
+                    var view = item.getView(containerEl);
+                }
+                name = names.shift();
+                parentItem = item;
+            }
+            this.updateCurItem(item);
+        }, this);
+
+        Backbone.ajax({
+            method: 'POST',
+            url: '/fileManage/add',
+            data: {filename: filename},
+            success: function (rsp) {
+                if (rsp.isSuccess) {
+                    addItem(filename);
+                } else {
+                    alert(rsp.message);
+                }
+            }
+        });
 
     },
+
+    manageMove: function () {
+
+    },
+
+    manageDelete: function () {
+
+    },
+
+    manageCopy: function () {
+
+    }
 
 });
 
@@ -241,7 +353,8 @@ var BrowserItem = Backbone.Model.extend({
         isActive: false,
         collapsed: true,
         isDir: false,
-        parent: false
+        parent: false,
+        children: false
     },
 
     initialize: function(attributes, options) {

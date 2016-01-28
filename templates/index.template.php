@@ -25,6 +25,15 @@
                 <li><strong>k, j, h, l</strong> - Scrolls box up, down, left and right</li>
                 <li><strong>Enter</strong> - Opens selected file</li>
             </ul>
+            <strong>Normal mode: Browser</strong>
+            <ul>
+                <li><strong>k, j</strong> - Navigates up, down</li>
+                <li><strong>Enter</strong> - Opens selected file or toggles directory</li>
+                <li><strong>a</strong> - Add new file or directory</li>
+                <li><strong>m</strong> - Moves current item</li>
+                <li><strong>c</strong> - Copies current item</li>
+                <li><strong>d</strong> - Deletes current item</li>
+            </ul>
         </li>
         <li>
             <strong>Edit box mode</strong>
