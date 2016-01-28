@@ -11,6 +11,7 @@ class actionBrowser extends actionBase
             $data = $this->getRequestPayload();
             $browser = new Browser($id);
             $browser->fromArray($data);
+            $browser->refreshTree();
             $browser->save();
             $data = $browser->toArray();
         }
@@ -19,7 +20,6 @@ class actionBrowser extends actionBase
             $browsers = Browser::fetchAll();
             foreach ($browsers as $i => $browser) {
                 $data[$i] = $browser->toArray();
-                $data[$i]['tree'] = $this->getTree();
             }
         }
 
@@ -29,37 +29,5 @@ class actionBrowser extends actionBase
         }
 
         $this->renderJson($data);
-    }
-
-    public function getTree()
-    {
-        $traverseTree = function ($dir) use (&$traverseTree) {
-            $tree = [];
-
-            $items = glob($dir . '/*');
-            sort($items, SORT_STRING);
-            $files = [];
-
-            foreach ($items as $item) {
-                $name = basename($item);
-                if (is_file($item)) {
-                    $files[] = [
-                        'name'     => $name,
-                        'isActive' => false,
-                    ];
-                } else {
-                    $tree[] = [
-                        'name'     => $name,
-                        'isActive' => false,
-                        'collapsed'=> true,
-                        'children' => $traverseTree($dir . '/' . $name),
-                    ];
-                }
-            }
-
-            return array_merge($tree, $files);
-        };
-
-        return $traverseTree(Project::getDirectoryOrCWD());
     }
 }
