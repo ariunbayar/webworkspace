@@ -15,7 +15,8 @@ class actionBrowser extends actionBase
 
             $browser = new Browser($id);
             $browser->fromArray($data);
-            if ($browser->isNew()) {
+            $isCreated = $browser->isNew();
+            if ($isCreated) {
                 $browser->refreshTree();
             }
             if (array_key_exists('collapsed', $data)) {
@@ -24,11 +25,18 @@ class actionBrowser extends actionBase
             $browser->save();
 
             $data = $browser->toArray();
+            if (!$isCreated) {  // send tree data only if browser being created
+                unset($data['tree']);
+            }
         }
 
         if ($method == 'GET') {
             $browsers = Browser::fetchAll();
             foreach ($browsers as $i => $browser) {
+                if ($this->getRequestParamGet('refresh') == 1) {
+                    $browser->refreshTree();
+                    $browser->save();
+                }
                 $data[$i] = $browser->toArray();
             }
         }

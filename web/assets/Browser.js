@@ -283,49 +283,20 @@ var BrowserView = Backbone.View.extend({
             return;
         }
 
-        var addItem = _.bind(function (filename) {
-            var names = filename.split('/');
-            var name, item, parentItem = false;
-            var items = this.topItems;
-
-            names.shift();  // remove first empty one
-            name = names.shift();
-            while (name) {
-                item = items.find(function (_item) {
-                    return _item.get('name') == name;
-                });
-                if (item) {
-                    items = item.get('children');
-                } else {
-                    var isDir = names.length > 0;
-                    // TODO insert sorted
-                    item = items.add({
-                        name: name,
-                        isDir: isDir,
-                        collapsed: isDir ? false : true,
-                        parent: parentItem,
-                        children: isDir ? new BrowserItemCollection() : false
-                    });
-                    var containerEl = parentItem ? parentItem.view.$el.find('ul') : this.$el.children('ul');
-                    var view = item.getView(containerEl);
-                }
-                name = names.shift();
-                parentItem = item;
-            }
-            this.updateCurItem(item);
-        }, this);
-
+        var self = this;
         Backbone.ajax({
             method: 'POST',
             url: '/fileManage/add',
             data: {filename: filename},
-            success: function (rsp) {
+            success: _.bind(function (rsp) {
                 if (rsp.isSuccess) {
-                    addItem(filename);
+                    self.model.collection.fetch({data: $.param({refresh: 1})}).then(function(){
+                        self.render(false);
+                    });
                 } else {
                     alert(rsp.message);
                 }
-            }
+            }, self)
         });
 
     },
