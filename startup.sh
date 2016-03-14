@@ -10,6 +10,6 @@ gnome-terminal -t 'Webworkspace shell' --working-directory "$dir"
 
 # Load index page
 google-chrome
-sleep 1
+sleep 3
 google-chrome "http://localhost:8081"
 google-chrome "https://bitbucket.org/ariunbayar/webworkspace/issues?status=new&status=open"
