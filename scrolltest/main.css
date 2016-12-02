@@ -1,0 +1,80 @@
+body{
+    font-family: Helvetica;
+    font-size: 16px;
+    margin: 0px;
+}
+.wrapper{
+    width: 4500px;
+    height: 3000px;
+    position: relative;
+    transform-origin: left top;
+    transition: 0.2s;
+    border: 120px solid #ECEFF1;
+}
+.big16, .big4, .big3, .big2{
+    font-weight: bold;
+    color: #ccc;
+    background-color: #FFEB3B;
+    text-align: center;
+    position: absolute;
+    display: inline-block;
+}
+.big16{font-size: 16em;}
+.big4{ font-size: 4em }
+.big3{ font-size: 3em }
+.big2{ font-size: 2em }
+
+.rotate90{
+    transform: rotate(90deg);
+    transform-origin: center middle;
+}
+
+.box{
+    border: 1px solid #ccc;
+    border-top-width: 12px;
+    width: 150px;
+    position: absolute;
+    background-color: #fdf6e3;
+}
+
+#box1{ height: 220px; top: 170px; left: 100px; }
+#box2{ height: 450px; top: 420px; left: 100px; }
+#box3{height: 450px;top: 420px;left: 2800px;}
+#box4{height: 450px;top: 420px;left: 3780px;}
+#box5{height: 280px;top: 890px;left: 3780px;}
+#box6{height: 1450px;top: 600px;left: 3950px;}
+#box7{height: 160px;top: 420px;left: 3950px;}
+#box8{height: 700px;top: 890px;left: 2800px;}
+#box9{height: 350px;top: 810px;left: 2970px;}
+#box10{height: 150px;top: 640px;left: 2970px;}
+#box11{height: 270px;top: 700px;left: 3540px;}
+#box12{height: 490px;top: 760px;left: 3200px;}
+#box13{height: 100px;top: 580px;left: 3540px;}
+#box14{height: 140px;top: 420px;left: 3540px;}
+#box15{height: 650px;top: 420px;left: 3370px;}
+#box16{height: 320px;top: 420px;left: 3200px;}
+#box17{height: 200px;top: 420px;left: 2970px;}
+#box18{height: 370px;top: 840px;left: 1680px;}
+#box19{height: 450px;top: 1070px;left: 1490px;}
+#box20{height: 310px;top: 520px;left: 1870px;}
+#box21{height: 290px;top: 520px;left: 1680px;}
+#box22{height: 520px;top: 520px;left: 1490px;}
+#box23{height: 610px;top: 810px;left: 920px;}
+#box24{height: 250px;top: 650px;left: 1300px;}
+#box25{height: 100px;top: 520px;left: 1300px;}
+#box26{height: 450px;top: 520px;left: 1110px;}
+#box27{height: 260px;top: 520px;left: 920px;}
+#box28{height: 240px;top: 170px;left: 480px;}
+#box29{height: 180px;top: 520px;left: 290px;}
+#box30{height: 320px;top: 170px;left: 290px;}
+
+.pointer1, .pointer{
+    background-color: red;
+    width: 40px;
+    height: 40px;
+    position: absolute;
+    z-index: 2;
+}
+.pointer1 {
+    background-color: blue;
+}
