@@ -8,6 +8,11 @@ from bs4 import BeautifulSoup
 from bs4.element import NavigableString
 
 
+# XXX this file is completely replaced with following
+# pygmentize -f png -O font_name='DejaVuSansMono',style=solarizeddark,font_size=54,line_number_chars=3 -o test.png web/assets/Browser.js; display test.png
+# see: http://pygments.org/docs/quickstart/#example
+
+
 class Canvas:
 
     def __init__(self, color_bg, columns, rows, fontsize, line_spacing):
