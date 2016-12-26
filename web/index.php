@@ -16,6 +16,7 @@ require_once(__DIR__ . '/../model/Help.php');
 require_once(__DIR__ . '/../model/Project.php');
 require_once(__DIR__ . '/../model/File.php');
 require_once(__DIR__ . '/../model/Browser.php');
+require_once(__DIR__ . '/../model/BrowserItem.php');
 
 require_once(__DIR__ . '/../actions/actionBase.php');
 require_once(__DIR__ . '/../actions/actionIndex.php');

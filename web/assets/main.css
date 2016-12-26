@@ -11,22 +11,15 @@ ul{ padding-left: 20px;  }
     background-color: #eee;
     position: absolute;
 }
-.browser ul{
-    border-left: 1px dashed #dedede;
-    background-color: #fdf6e3;
-}
-.browser ul li{
-    width: 200px;
-    list-style: none;
-}
+/* TODO don't set width here */
+.browser ul{ color: #657b83; padding-left: 0; background: #fdf6e3 url(/assets/browser_dash.png) 11px;}
+.browser ul li{ list-style: none; background-color: #fdf6e3; }
+.browser ul li:before{ content: "\00a0"; color: #cb4b16; }
+.browser ul li.dir{ color: #268bd2; }
+.browser ul li.dir:before{ content: "\25be"; }
+.browser ul li.dir.collapsed:before{ content: "\25b8" }
 .browser ul li.active{ background-color: #eee8d5; }
-.browser ul li.dir{ list-style: circle; }
-.browser ul li.dir.collapsed{ list-style: disc; }
-.browser ul li.dir.collapsed ul{ display: none; }
-.browser ul li.dir span{
-    color: #268bd2;
-    list-style: none;
-}
+
 
 .watch{
     font-size: 12px;

@@ -7,59 +7,84 @@ class Browser extends Model
         'width'    => 150,
         'height'   => 200,
         'isActive' => false,
-        'tree'     => '',
-        'activeItem' => [],
+        'activeItem' => null,
+        'rootItems' => "",
     ];
 
     static protected $name = 'browser';
 
     public function getActiveItem()
     {
-        return $this->values['activeItem'];
+        $browserItem = new BrowserItem($this->values['activeItem']);
+        if ($browserItem->isNew()) {
+            return null;
+        } else {
+            return $browserItem;
+        }
     }
 
-    public function setActiveItem($value)
+    public function setActiveItem($browserItem)
     {
-        $this->values['activeItem'] = $value;
+        $this->values['activeItem'] = $browserItem->getId();
+    }
+
+    public function setRootItems($value)
+    {
+        $this->values['rootItems'] = implode(',', $value);
+    }
+
+    public function getRootItems()
+    {
+        return explode(',', $this->values['rootItems']);
     }
 
     public function refreshTree()
     {
-        // load file names from disk
-        $traverseTree = function ($dir) use (&$traverseTree) {
-            $tree = [];
+        // TODO preserve existing collapse or active state
+        // load from disk and store in redis DB
+        $traverseFromDisk = function ($dir, $parentBrowserItem = null) use (&$traverseFromDisk) {
+            $dirs = [];
+            $filenames = [];
+            $ids = [];
 
             $items = glob($dir . '/*');
             sort($items, SORT_STRING);
-            $files = [];
 
             foreach ($items as $item) {
                 $name = basename($item);
                 if (is_file($item)) {
-                    $files[] = [
-                        'name'     => $name,
-                    ];
+                    $filenames[] = $name;
                 } else {
-                    $tree[] = [
-                        'name'     => $name,
-                        'collapsed'=> true,
-                        'children' => $traverseTree($dir . '/' . $name),
-                    ];
+                    $browserItem = new BrowserItem();
+                    $browserItem->setName($name);
+                    $browserItem->setIsDir(true);
+                    $browserItem->setCollapsed(true);
+                    $childIds = $traverseFromDisk($dir . '/' . $name, $browserItem);
+                    $browserItem->setChildItems($childIds);
+                    $browserItem->save();
+                    $ids[] = $browserItem->getId();
                 }
             }
 
-            return array_merge($tree, $files);
+            foreach ($filenames as $filename) {
+                $browserItem = new BrowserItem();
+                $browserItem->setName($filename);
+                $browserItem->save();
+                $ids[] = $browserItem->getId();
+            }
+
+            return $ids;
         };
-        $tree = $traverseTree(Project::getDirectoryOrCWD());
+
+        $rootItems = $traverseFromDisk(Project::getDirectoryOrCWD());
+        $this->setRootItems($rootItems);
 
         // attempt to set default activeItem
-        $hasNoActiveItem = count($this->getActiveItem()) == 0;
-        $hasTreeItem = count($tree) > 0;
-        if ($hasNoActiveItem && $hasTreeItem) {
-            $this->setActiveItem([0]);
+        $activeItem = $this->getActiveItem();
+        $hasTreeItem = count($rootItems) > 0;
+        if (!$activeItem && $hasTreeItem) {
+            $this->setActiveItem(new BrowserItem($rootItems[0]));
         }
-
-        $this->values['tree'] = $tree;
     }
 
     public function treeExpandCollapse($itemLocation, $isCollapsed)

@@ -70,7 +70,6 @@ var BrowserView = Backbone.View.extend({
 
     events: {},
 
-    topItems: false,
     curItem: false,
 
     initialize: function() {
@@ -95,40 +94,26 @@ var BrowserView = Backbone.View.extend({
 
         if (isInitial || isAttributeChanged(['top', 'left', 'width', 'height'])) {
             this.$el.css({
-                top    : this.model.get('top'),
-                left   : this.model.get('left'),
-                width  : this.model.get('width'),
-                height : this.model.get('height')
+                top    : model.get('top'),
+                left   : model.get('left'),
+                width  : model.get('width'),
+                height : model.get('height')
             });
         }
 
         if (isInitial || isAttributeChanged(['isActive'])) {
-            this.$el.toggleClass('active', this.model.get('isActive'));
+            this.$el.toggleClass('active', model.get('isActive'));
         }
 
         if (isInitial) {
             this.$el.html(this.template());
 
-            traverse = function (items, containerEl, parentModel) {
-                var browserItems = new BrowserItemCollection();
-                _.each(items, function(item) {
-                    var model = browserItems.add(item);
-                    model.set('isDir', !!item.children);
-                    model.set('parent', parentModel);
-                    var view = model.getView(containerEl);
-
-                    if (model.get('isDir')) {
-                        var childItems = traverse(item.children, view.$el.find('ul'), model);
-                        model.set('children', childItems);
-                    }
-                });
-                return browserItems;
-            };
-            this.topItems = traverse(this.model.get('tree'), this.$el.find('ul'), false);
-            if (this.topItems.length) {
-                this.curItem = this.topItems.first();
-                this.curItem.set('isActive', true);
-            }
+            var containerEl = this.$el.find('ul');
+            var browserItems = new BrowserItemCollection();
+            _.each(model.get('tree'), function (treeItem) {
+                var browserItem = browserItems.add(treeItem);
+                browserItem.getView(containerEl);
+            });
         }
 
     },
@@ -193,6 +178,7 @@ var BrowserView = Backbone.View.extend({
 
     toggleDir: function (item) {
 
+        // TODO retrieve children for this item
         var collapsed = item.get('collapsed');
         item.set('collapsed', !collapsed);
 
@@ -325,8 +311,7 @@ var BrowserItem = Backbone.Model.extend({
         isActive: false,
         collapsed: true,
         isDir: false,
-        parent: false,
-        children: false
+        level: 0
     },
 
     initialize: function(attributes, options) {
@@ -388,15 +373,12 @@ var BrowserItemView = Backbone.View.extend({
 
         if (isInitial) {
 
-            $el.html(this.template({
-                name      : model.get('name'),
-                isDir     : model.get('isDir'),
-                collapsed : model.get('collapsed')
-            }));
+            $el.html(this.template({name: model.get('name')}));
 
             if (model.get('isDir')) {
                 $el.addClass('dir');
             }
+            $el.css('margin-left', model.get('level') + 'em');
         }
 
     }

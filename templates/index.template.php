@@ -59,10 +59,5 @@
 
 
 <script type="text/html" id="template-browser-item">
-    <% if (isDir) { %>
-        <span><%- name %></span>
-        <ul></ul>
-    <% } else { %>
-        <%- name %>
-    <% } %>
+    <%- name %>
 </script>

@@ -9,9 +9,6 @@ class actionBrowser extends actionBase
 
         if ($method == 'PUT' || $method == 'POST') {
             $data = $this->getRequestPayload();
-            if (array_key_exists('tree', $data)) {  // cannot override tree
-                unset($data['tree']);
-            }
 
             $browser = new Browser($id);
             $browser->fromArray($data);
@@ -25,9 +22,6 @@ class actionBrowser extends actionBase
             $browser->save();
 
             $data = $browser->toArray();
-            if (!$isCreated) {  // send tree data only if browser being created
-                unset($data['tree']);
-            }
         }
 
         if ($method == 'GET') {
