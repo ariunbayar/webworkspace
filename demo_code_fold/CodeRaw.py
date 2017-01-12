@@ -1,11 +1,5 @@
 from __future__ import print_function
-from utils import (
-    SPACE,
-    NEWLINE,
-    QUOTE,
-    QUOTE_DBL,
-    BACKSLASH
-    )
+from utils import (SPACE, NEWLINE)
 
 
 echo = lambda v: print(v.encode('utf-8'), end='')
@@ -58,14 +52,24 @@ class CodeRaw:
                 'end': '*/',
             },
             'string-double-quote': {
-                'begin': QUOTE_DBL,
-                'end_invalid': BACKSLASH + QUOTE_DBL,
-                'end': QUOTE_DBL,
+                'begin': '"',
+                'end': '"',
             },
             'string-single-quote': {
-                'begin': QUOTE,
-                'end_invalid': BACKSLASH + QUOTE,
-                'end': QUOTE,
+                'begin': '\'',
+                'end': '\'',
+            },
+            'regex': {
+                'begin': '/',
+                'end_start_char': '/',
+                'end_valid_chars': 'igm',
+                'end': [
+                    '/igm', '/img', '/gim', '/gmi', '/mgi', '/mig',
+                    '/ig', '/im', '/gi', '/gm', '/mg', '/mi',
+                    '/i', '/g', '/m',
+                ],
+                'end_len_max': 4,
+                'end_len_min': 2,
             },
         }
 
@@ -177,9 +181,16 @@ class CodeRaw:
         rule = self.rules[rule_name]
         rule_end_len = len(rule['end'])
         i = 0
+
         while not self.is_eof():
             ch = self.seek_get_char()
             snippet += ch
+
+            # ignores escaped string literals
+            if ch == '\\' and rule_name in ['string-single-quote', 'string-double-quote']:
+                ch = self.seek_get_char()
+                snippet += ch
+                continue
 
             if ch == rule['end'][i]:
                 i += i == rule_end_len and 0 or 1
@@ -187,11 +198,11 @@ class CodeRaw:
                 i = 0
 
             if i == rule_end_len:
-                if 'end_invalid' in rule:
-                    end_invalid = rule['end_invalid']
-                    if snippet[-len(end_invalid):] == end_invalid:
-                        i = 0
-                        continue
+                # if 'end_invalid' in rule:
+                    # end_invalid = rule['end_invalid']
+                    # if snippet[-len(end_invalid):] == end_invalid:
+                        # i = 0
+                        # continue
                 # remove rule ending from found snippet
                 snippet = snippet[:-rule_end_len]
                 return snippet
