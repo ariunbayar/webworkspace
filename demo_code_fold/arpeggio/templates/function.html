@@ -1,0 +1,11 @@
+{%- for node in tree -%}
+    {%- if node.rule_name == 'naming' -%}
+        <span class="Identifier">{{ node.value }}</span>
+    {%- elif node.rule_name == 'statements' -%}
+        {{ content }}
+    {%- elif node.rule_name == '' and node.value == 'function' -%}
+        <span class="Type">{{ node.value }}</span>
+    {%- else -%}
+        {{ node.value }}
+    {%- endif -%}
+{%- endfor -%}

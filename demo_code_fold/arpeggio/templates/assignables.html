@@ -1,0 +1,7 @@
+{%- if node.rule_name == 'type_integer' -%}
+    <span class="Constant" title="int">{{ node.value }}</span>
+{%- elif node.rule_name == 'type_float' -%}
+    <span class="Constant" title="float">{{ node.value }}</span>
+{%- elif node.rule_name == 'this_scope' -%}
+    <span class="Special">{{ node.value }}</span>
+{%- endif -%}
