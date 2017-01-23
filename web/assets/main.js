@@ -20,6 +20,7 @@ $(function(){
                     position: 'absolute',
                     borderRight: '3px solid rgba(225, 0, 0, 0.3)',
                     height: boxHeight,
+                    zIndex: 200,
                 });
                 tmpBox.appendTo('body');
             }

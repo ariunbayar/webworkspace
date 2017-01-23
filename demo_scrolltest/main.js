@@ -2,7 +2,7 @@ var container = $('.wrapper');
 var pointer = $('.pointer');
 
 // XXX yeah we probably won't need 1/25 scale
-var zoomLevels = [1 / 25, 1 / 10, 1 / 5, 1, 1 * 4];
+var zoomLevels = [1 / 25, 1 / 10, 1 / 5, 1 / 2, 1 , 1 * 4, 1 * 8];
 var curZoomIndex = 3;
 var curZoom = 1;
 var curTransformOrigin = {x: 0, y: 0};

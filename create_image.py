@@ -130,14 +130,13 @@ def get_size_in_chars(filename):
     return (columns, rows)
 
 
-filename = '/home/user/projects/team_progress/main.py'
+filename = 'web/assets/Browser.js'
 columns, rows = get_size_in_chars(filename)
-
-# XXX make sure to run vim server: gvim --servername SRV
 
 soup, styles = read_vim_gen_html('/run/shm/tohtml.html')
 
-fontsize = 18
+# fontsize = 18
+fontsize = 4
 spacing = fontsize / 4.5
 
 draw_soup(soup, styles, columns, rows, fontsize, spacing)
