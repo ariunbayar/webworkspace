@@ -2,6 +2,7 @@ from __future__ import print_function
 
 import sys
 import io
+import re
 
 from pygments import lex
 from pygments.token import Token
@@ -29,13 +30,14 @@ cyan    = getrgb('#2aa198')
 # green   = getrgb('#859900')  # original by solarized
 green   = getrgb('#719e07')  # experimental by solarized
 
-
 colors = {
+    'TODO': magenta,
+    'XXX': magenta,
+    'newline': red,
     'Token.Keyword.Declaration': {
         'var'      : yellow,
         'function' : yellow,
     },
-    # TODO mark XXX and TODO
     'Token.Comment.Single': base01,
     'Token.Keyword.Constant': {
         'null'  : yellow,
@@ -72,10 +74,10 @@ colors = {
     },
     'Token.Punctuation': {
         '.': base0,
-        '{': blue,  # TODO rainbow colors
-        '}': blue,  # TODO rainbow colors
-        '[': blue,  # TODO rainbow colors
-        ']': blue,  # TODO rainbow colors
+        '{': base0,  # TODO rainbow colors
+        '}': base0,  # TODO rainbow colors
+        '[': base0,  # TODO rainbow colors
+        ']': base0,  # TODO rainbow colors
         ',': base0,  # TODO rainbow colors following the bracket
         '(': base0,  # TODO rainbow colors
         ')': base0,  # TODO rainbow colors
@@ -84,12 +86,20 @@ colors = {
     'Token.Name.Other': base0,
 }
 
+char_pixels
 
-def generate_image(lexer_result, rows, columns, output_file):
+
+def rgb2hex(rgb):
+    return '%02x%02x%02x' % rgb
+
+
+def generate_image(lexer_result, rows, columns, output_file, is_test=False):
     char_width, char_height = (2, 4)
     image_size = (columns * char_width, rows * char_height)
 
     img = Image.new("RGBA", image_size, base03)
+    if is_test == True:
+        yield (-1, -1, '#' + rgb2hex(base03))
 
     column = 1
     row = 1
@@ -103,13 +113,33 @@ def generate_image(lexer_result, rows, columns, output_file):
             if value not in colors[token_name]:
                 raise Exception("Undefined %s -> %s" % (token_name, repr(value)))
                 continue
-            color = colors[str(token)][value]
+            color = colors[token_name][value]
         else:
-            color = colors[str(token)]
+            color = colors[token_name]
 
-        print(value, end='')
+        special_colors = {}
+        if token == Token.Comment.Single:
+            for m in re.finditer('TODO|XXX', value):
+                if m.group() == 'TODO':
+                    i = m.start()
+                    special_colors[i] = colors['TODO']
+                    special_colors[i + 1] = colors['TODO']
+                    special_colors[i + 2] = colors['TODO']
+                    special_colors[i + 3] = colors['TODO']
+                if m.group() == 'XXX':
+                    i = m.start()
+                    special_colors[i] = colors['XXX']
+                    special_colors[i + 1] = colors['XXX']
+                    special_colors[i + 2] = colors['XXX']
 
-        for char in value:
+        if token == Token.Literal.String.Single or token == Token.Literal.String.Double:
+            for m in re.finditer('\\\\n', value):
+                i = m.start()
+                special_colors[i] = colors['newline']
+                special_colors[i + 1] = colors['newline']
+
+        char_color = color
+        for i, char in enumerate(value):
             if char == '\n':
                 column = 0
                 row += 1
@@ -118,26 +148,31 @@ def generate_image(lexer_result, rows, columns, output_file):
             else:
                 if token == Token.Text:
                     raise Exception("Token.Text must only contain newline or space")
+                if token in [Token.Comment.Single, Token.Literal.String.Single, Token.Literal.String.Double]:
+                    if i in special_colors:
+                        char_color = special_colors[i]
+                    else:
+                        char_color = color
                 if char not in ' ':
                     x = (column - 1) * char_width
                     y = (row - 1) * char_height
-                    img.putpixel((x, y), color)
-                    img.putpixel((x+1, y), color)
-                    img.putpixel((x, y+1), color)
-                    img.putpixel((x+1, y+1), color)
-                    img.putpixel((x, y+2), color)
-                    img.putpixel((x+1, y+2), color)
-                    img.putpixel((x, y+3), color)
-                    img.putpixel((x+1, y+3), color)
+                    img.putpixel((x, y), char_color)
+                    img.putpixel((x+1, y), char_color)
+                    img.putpixel((x, y+1), char_color)
+                    img.putpixel((x+1, y+1), char_color)
+                    img.putpixel((x, y+2), char_color)
+                    img.putpixel((x+1, y+2), char_color)
+                    img.putpixel((x, y+3), char_color)
+                    img.putpixel((x+1, y+3), char_color)
+                    if is_test == True:
+                        yield (row, column, '#' + rgb2hex(char_color))
 
             column += 1
 
     img.save(output_file)
 
 
-if __name__ == '__main__':
-    filename = sys.argv[1]
-
+def parse_file(filename):
     feed = ""
     rows = 0
     columns = 0
@@ -148,4 +183,15 @@ if __name__ == '__main__':
             feed += line
 
     lexer_result = lex(feed, JavascriptLexer())
-    generate_image(lexer_result, rows, columns, "output.png")
+
+    return lexer_result, rows, columns
+
+
+if __name__ == '__main__':
+    filename = sys.argv[1]
+
+    lexer_result, rows, columns = parse_file(filename)
+    generator = generate_image(lexer_result, rows, columns, "output.png")
+
+    for row, column, color in generator:
+        pass
