@@ -1,5 +1,3 @@
-from __future__ import print_function
-
 import sys
 import io
 import re
@@ -55,10 +53,14 @@ colors = {
         'new'    : green,
         'return' : green,
         'while'  : green,
+        'switch' : green,
+        'case'   : green,
+        'default': green,
     },
     'Token.Literal.Number.Integer': cyan,
     'Token.Name.Builtin': {
         'window': cyan,
+        'Math'  : cyan,
     },
     'Token.Operator': {
         '>'   : green,
@@ -70,6 +72,8 @@ colors = {
         '!'   : green,
         '+'   : green,
         '-'   : green,
+        '/'   : green,
+        '*'   : green,
         ':'   : base0,  # no definition by vim yet
     },
     'Token.Punctuation': {
@@ -86,7 +90,105 @@ colors = {
     'Token.Name.Other': base0,
 }
 
-char_pixels
+char_to_pixels = {
+    #   x 01010101
+    #   y 00112233
+    #     v v v v
+    '!' : " # # #  ",
+    '\"': "##      ",
+    '#' : "######  ",
+    '$' : "######  ",
+    '%' : "  ####  ",
+    '&' : "# ####  ",
+    '\'': "#       ",
+    '(' : " ## #  #",
+    ')' : "#  # ## ",
+    '*' : "####    ",
+    '+' : "  ###   ",
+    ',' : "     #  ",
+    '-' : "  ##    ",
+    '.' : "     #  ",
+    '/' : " # ## # ",
+    '0' : "######  ",
+    '1' : " # ###  ",
+    '2' : "## ###  ",
+    '3' : "## ###  ",
+    '4' : " ### #  ",
+    '5' : "######  ",
+    '6' : "# ####  ",
+    '7' : "## ##   ",
+    '8' : "######  ",
+    '9' : "#### #  ",
+    ':' : " #   #  ",
+    ';' : " #   ## ",
+    '<' : "   ###  ",
+    '=' : "  ##    ",
+    '>' : "  # ##  ",
+    '?' : "#####   ",
+    '@' : " #####  ",
+    'A' : " #####  ",
+    'B' : "### ##  ",
+    'C' : "### ##  ",
+    'D' : "######  ",
+    'E' : "### ##  ",
+    'F' : "#####   ",
+    'G' : "######  ",
+    'H' : "######  ",
+    'I' : "##  ##  ",
+    'J' : " # ###  ",
+    'K' : "### ##  ",
+    'L' : "# # ##  ",
+    'M' : "######  ",
+    'N' : "######  ",
+    'O' : "######  ",
+    'P' : "#####   ",
+    'Q' : "######  ",
+    'R' : "######  ",
+    'S' : "######  ",
+    'T' : "##  #   ",
+    'U' : "######  ",
+    'V' : "#####   ",
+    'W' : "######  ",
+    'X' : "##  ##  ",
+    'Y' : "##  #   ",
+    'Z' : "##  ##  ",
+    '[' : "### # ##",
+    '\\': "# #  # #",
+    ']' : "## # ###",
+    '^' : "##      ",
+    '_' : "      ##",
+    '`' : "#  #    ",
+    'a' : "  ####  ",
+    'b' : "# ####  ",
+    'c' : "  ####  ",
+    'd' : " #####  ",
+    'e' : "  ####  ",
+    'f' : " ####   ",
+    'g' : "  ######",
+    'h' : "# ####  ",
+    'i' : " # ###  ",
+    'j' : " #   ###",
+    'k' : "# ####  ",
+    'l' : "# #  #  ",
+    'm' : "  ####  ",
+    'n' : "  ####  ",
+    'o' : "  ####  ",
+    'p' : "  ##### ",
+    'q' : "  #### #",
+    'r' : "  ###   ",
+    's' : "  ####  ",
+    't' : "# ###   ",
+    'u' : "  ####  ",
+    'v' : "  ###   ",
+    'w' : "   ###  ",
+    'x' : "   ##   ",
+    'y' : "  ######",
+    'z' : "  ####  ",
+    '{' : " ##### #",
+    '|' : "# # # # ",
+    '}' : "# ##### ",
+    '~' : "  ##    ",
+}
 
 
 def rgb2hex(rgb):
@@ -156,14 +258,14 @@ def generate_image(lexer_result, rows, columns, output_file, is_test=False):
                 if char not in ' ':
                     x = (column - 1) * char_width
                     y = (row - 1) * char_height
-                    img.putpixel((x, y), char_color)
-                    img.putpixel((x+1, y), char_color)
-                    img.putpixel((x, y+1), char_color)
-                    img.putpixel((x+1, y+1), char_color)
-                    img.putpixel((x, y+2), char_color)
-                    img.putpixel((x+1, y+2), char_color)
-                    img.putpixel((x, y+3), char_color)
-                    img.putpixel((x+1, y+3), char_color)
+                    if char in char_to_pixels:
+                        pixels = char_to_pixels[char]
+                        for i, p in enumerate(pixels):
+                            if p == '#':
+                                img.putpixel((x + (i % 2), y + int(i / 2)), char_color)
+                    else:
+                        print(char)
+
                     if is_test == True:
                         yield (row, column, '#' + rgb2hex(char_color))
 
