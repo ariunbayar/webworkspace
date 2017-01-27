@@ -87,7 +87,10 @@ colors = {
         ')': base0,  # TODO rainbow colors
         ';': base0,
     },
-    'Token.Name.Other': base0,
+    'Token.Name.Other': {
+        'console': cyan,
+        '': base0,
+    },
 }
 
 char_to_pixels = {
@@ -212,10 +215,13 @@ def generate_image(lexer_result, rows, columns, output_file, is_test=False):
             continue
 
         if isinstance(colors[token_name], dict):
-            if value not in colors[token_name]:
+            if value in colors[token_name]:
+                color = colors[token_name][value]
+            elif '' in colors[token_name]:
+                color = colors[token_name]['']
+            else:
                 raise Exception("Undefined %s -> %s" % (token_name, repr(value)))
                 continue
-            color = colors[token_name][value]
         else:
             color = colors[token_name]
 
