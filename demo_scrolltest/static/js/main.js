@@ -91,7 +91,7 @@ window.onload = function(){
 };
 
 //img.src = 'gkhead.jpg';
-img.src = 'code.png';
+img.src = '/static/code.png';
 
 // Adds ctx.getTransform() - returns an SVGMatrix
 // Adds ctx.transformedPoint(x,y) - returns an SVGPoint

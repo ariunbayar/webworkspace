@@ -32,41 +32,80 @@ colors = {
     'TODO': magenta,
     'XXX': magenta,
     'newline': red,
+    'tab': red,
     'Token.Keyword.Declaration': {
         'var'      : yellow,
         'function' : yellow,
     },
     'Token.Comment.Single': base01,
+    'Token.Comment.Multiline': base01,
     'Token.Keyword.Constant': {
         'null'  : yellow,
         'false' : cyan,
         'true'  : cyan,
+        'undefined': yellow,
     },
     'Token.Text'                 : None,  # usually newline or space
     'Token.Literal.String.Single': cyan,
     'Token.Literal.String.Double': cyan,
+    'Token.Literal.String.Regex' : cyan,
     'Token.Keyword': {
-        'this'   : red,
-        'break'  : green,
-        'else'   : green,
-        'if'     : green,
-        'new'    : green,
-        'return' : green,
-        'while'  : green,
-        'switch' : green,
-        'case'   : green,
-        'default': green,
+        'this'       : red,
+        'break'      : green,
+        'else'       : green,
+        'if'         : green,
+        'new'        : green,
+        'return'     : green,
+        'do'         : green,
+        'while'      : green,
+        'switch'     : green,
+        'case'       : green,
+        'default'    : green,
+        'typeof'     : green,
+        'in'         : green,
+        'for'        : green,
+        'throw'      : green,
+        'try'        : green,
+        'catch'      : green,
+        'finally'    : green,
+        'void'       : green,
+        'instanceof' : green,
+        'delete'     : green,
+        'continue'   : green,
+    },
+    'Token.Keyword.Reserved': {
+        'char': base0,  # TODO now, what can we do here?
     },
     'Token.Literal.Number.Integer': cyan,
+    'Token.Literal.Number.Float'  : cyan,
     'Token.Name.Builtin': {
-        'window': cyan,
-        'Math'  : cyan,
+        'window'    : cyan,
+        'Math'      : cyan,
+        'document'  : cyan,
+        'Array'     : cyan,
+        'parseInt'  : cyan,
+        'parseFloat': cyan,
+        'String'    : cyan,
+        'isNaN'     : cyan,
+        'Date'      : cyan,
+        'Object'    : cyan,
+        'Error'     : cyan,
+        'Function'  : cyan,
+        'eval'      : cyan,
+        'RegExp'    : cyan,
+        'isFinite'  : cyan,
+        'encodeURI' : cyan,
+        'decodeURI' : cyan,
+        'encodeURIComponent': cyan,
+        'decodeURIComponent': cyan,
     },
     'Token.Operator': {
         '>'   : green,
         '||'  : green,
         '&&'  : green,
         '===' : green,
+        '!==' : green,
+        '!='  : green,
         '=='  : green,
         '='   : green,
         '!'   : green,
@@ -74,7 +113,24 @@ colors = {
         '-'   : green,
         '/'   : green,
         '*'   : green,
+        '*='  : green,
+        '/='  : green,
+        '+='  : green,
+        '-='  : green,
+        '>='  : green,
+        '<='  : green,
+        '<<'  : green,
+        '>>'  : green,
+        '<'   : green,
+        '%'   : green,
+        '--'  : green,
+        '++'  : green,
+        '|'   : green,
+        '&'   : green,
+        '~'   : green,  # bitwise NOT
+        '^'   : green,  # bitwise XOR
         ':'   : base0,  # no definition by vim yet
+        '?'   : green,
     },
     'Token.Punctuation': {
         '.': base0,
@@ -214,7 +270,7 @@ def generate_image(lexer_result, rows, columns, output_file, is_test=False):
             raise Exception("Undefined %s -> %s" % (token_name, repr(value)))
             continue
 
-        if isinstance(colors[token_name], dict):
+        elif isinstance(colors[token_name], dict):
             if value in colors[token_name]:
                 color = colors[token_name][value]
             elif '' in colors[token_name]:
@@ -222,11 +278,12 @@ def generate_image(lexer_result, rows, columns, output_file, is_test=False):
             else:
                 raise Exception("Undefined %s -> %s" % (token_name, repr(value)))
                 continue
+
         else:
             color = colors[token_name]
 
         special_colors = {}
-        if token == Token.Comment.Single:
+        if token in [Token.Comment.Single, Token.Comment.Multiline]:
             for m in re.finditer('TODO|XXX', value):
                 if m.group() == 'TODO':
                     i = m.start()
@@ -240,18 +297,28 @@ def generate_image(lexer_result, rows, columns, output_file, is_test=False):
                     special_colors[i + 1] = colors['XXX']
                     special_colors[i + 2] = colors['XXX']
 
+        if token in Token.Literal.String.Regex:
+            # TODO
+            # test following in javascript
+            # var a = /^[\s\uFEFF\xA0]+|[\s\uFEFF\xA0]+$/g
+            pass
+
         if token == Token.Literal.String.Single or token == Token.Literal.String.Double:
             for m in re.finditer('\\\\n', value):
                 i = m.start()
                 special_colors[i] = colors['newline']
                 special_colors[i + 1] = colors['newline']
+            for m in re.finditer('\\\\t', value):
+                i = m.start()
+                special_colors[i] = colors['tab']
+                special_colors[i + 1] = colors['tab']
 
         char_color = color
         for i, char in enumerate(value):
             if char == '\n':
                 column = 0
                 row += 1
-            elif char == ' ':
+            elif char == ' ' or char == '\t':
                 pass
             else:
                 if token == Token.Text:
@@ -297,9 +364,10 @@ def parse_file(filename):
 
 if __name__ == '__main__':
     filename = sys.argv[1]
+    output = sys.argv[2]
 
     lexer_result, rows, columns = parse_file(filename)
-    generator = generate_image(lexer_result, rows, columns, "output.png")
+    generator = generate_image(lexer_result, rows, columns, output)
 
     for row, column, color in generator:
         pass
