@@ -7,7 +7,26 @@ var curZoomIndex = 4;
 var img = new Image;
 var zoom_history = [];
 
+function loadFiles() {
+    Backbone.ajax({
+        method: 'GET',
+        url: '/files',
+        data: {foo: "bar"},
+        success: function (files) {
+            _.each(files, function(file){
+                if (file.filename.substr(-2) == 'js') {
+                    var img = $('<img>');
+                    img.attr('src', '/thumbnail/' + file.id);
+                    $('body').append(img);
+                }
+            });
+        }
+    });
+}
+
 window.onload = function(){
+
+    loadFiles();
 
     var ctx = canvas.getContext('2d');
     trackTransforms(ctx);

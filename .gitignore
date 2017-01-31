@@ -1,2 +1,5 @@
 python3_env/
 activate
+.ackrc
+*.pyc
+__pycache___/
