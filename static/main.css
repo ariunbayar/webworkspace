@@ -1,5 +1,6 @@
 body{
-    background-color: #cb4b16;
+    /*background-color: #cb4b16;*/
+    background-color: #fff;
 }
 canvas{
     border: 10px solid #ccc;

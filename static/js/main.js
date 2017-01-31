@@ -4,7 +4,7 @@ canvas.height = 900;
 var zoomLevels = [1 / 25, 1 / 10, 1 / 5, 1 / 2, 1, 1 * 4];
 var curZoomIndex = 4;
 
-var img = new Image;
+var files = [];
 var zoom_history = [];
 
 function loadFiles() {
@@ -12,12 +12,14 @@ function loadFiles() {
         method: 'GET',
         url: '/files',
         data: {foo: "bar"},
-        success: function (files) {
-            _.each(files, function(file){
+        success: function (rsp) {
+            _.each(rsp, function(file){
                 if (file.filename.substr(-2) == 'js') {
-                    var img = $('<img>');
-                    img.attr('src', '/thumbnail/' + file.id);
-                    $('body').append(img);
+                    file.thumbnail = new Image();
+                    file.thumbnail.onload = function() {
+                        files.push(file);
+                    };
+                    file.thumbnail.src = '/thumbnail/' + file.id;
                 }
             });
         }
@@ -43,17 +45,39 @@ window.onload = function(){
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         ctx.restore();
 
-        ctx.drawImage(img, 0, 0);
-        ctx.drawImage(img, 260, 0);
-        ctx.drawImage(img, 520, 0);
-        ctx.drawImage(img, 780, 0);
-        ctx.drawImage(img, 1040, 0);
-        ctx.drawImage(img, 1300, 0);
-        ctx.drawImage(img, 1560, 0);
-        ctx.drawImage(img, 1820, 0);
-        //ctx.fillStyle = 'rgba(255, 0, 0, 1)';
-        //ctx.fillRect(0, 0, 20, 20);
+        _.each(files, function(file){
+            ctx.drawImage(file.thumbnail, 0, 0, file.width, file.height, file.left, file.top, file.width, file.height);
 
+            ctx.strokeStyle = '#ccc';
+
+            ctx.beginPath();
+            ctx.moveTo(file.left + file.width + 0.5, file.top);
+            ctx.lineTo(file.left + file.width + 0.5, file.top + file.height + 0.5);
+            ctx.lineTo(file.left - 0.5, file.top + file.height + 0.5);
+            ctx.lineTo(file.left - 0.5, file.top);
+            ctx.lineWidth = 1;
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.moveTo(file.left - 1, file.top - 5);
+            ctx.lineTo(file.left + file.width + 1, file.top - 5);
+            ctx.lineWidth = 10;
+            ctx.stroke();
+
+            ctx.font = "bold 12px monospace";
+            ctx.fillStyle = 'rgb(101, 123, 131)';
+            ctx.fillText(file.filename, file.left, file.top);
+
+        });
+
+        ctx.beginPath();
+        ctx.moveTo(-4, 0.5);
+        ctx.lineTo(5, 0.5);
+        ctx.moveTo(0.5, -4);
+        ctx.lineTo(0.5, 5);
+        ctx.strokeStyle = '#f00';
+        ctx.lineWidth = 1;
+        ctx.stroke();
     }
     redraw();
 
@@ -92,6 +116,9 @@ window.onload = function(){
 
     var zoom = function(clicks){
         var pt = ctx.transformedPoint(lastX, lastY);
+        // TODO confirm this fix
+        //pt.x = Math.round(pt.x);
+        //pt.y = Math.round(pt.y);
         ctx.translate(pt.x, pt.y);
         var factor = Math.pow(scaleFactor, clicks);
         ctx.scale(factor, factor);
@@ -108,9 +135,6 @@ window.onload = function(){
     canvas.addEventListener('DOMMouseScroll', handleScroll, false);
     canvas.addEventListener('mousewheel', handleScroll, false);
 };
-
-//img.src = 'gkhead.jpg';
-img.src = '/static/code.png';
 
 // Adds ctx.getTransform() - returns an SVGMatrix
 // Adds ctx.transformedPoint(x,y) - returns an SVGPoint
