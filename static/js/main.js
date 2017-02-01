@@ -12,6 +12,17 @@
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             ctx.restore();
 
+            function drawOutline(i, color) {
+                ctx.fillStyle = color;
+                _.each(files, function(file){
+                    ctx.fillRect(file.left - i, file.top - i, file.width + i * 2, file.height + i * 2);
+                });
+            }
+            drawOutline(160, '#073642');
+            drawOutline(156, '#ffffff');
+            drawOutline(120, '#ddeeff');
+
+            // draws file boxes
             _.each(files, function(file){
                 ctx.drawImage(file.thumbnail, 0, 0, file.width, file.height, file.left, file.top, file.width, file.height);
 
