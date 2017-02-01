@@ -47,5 +47,6 @@ if __name__ == "__main__":
     else:
         server = Server(app.wsgi_app)
         server.watch('static')
+        server.watch('static/js')
         server.watch('templates')
         server.serve(port=8000)
