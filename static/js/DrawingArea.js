@@ -5,11 +5,12 @@ function DrawingArea(canvas_element_id) {
 
     var updateables = new (function() {
         var n = 0;
+        this.manual = false;
         this.incr = function(){ n += 1 };
         this.decr = function(){ n -= 1 };
         this.exist = function(){ return n > 0 };
     });
-    var update = false;
+    this.updateables = updateables;
 
     var fpsLabel;
     var outlines;
@@ -45,58 +46,56 @@ function DrawingArea(canvas_element_id) {
     }
 
     function tick(event) {
-        if (updateables.exist() || update == true) {
-            update = false;
+        if (updateables.exist() || updateables.manual == true) {
+            updateables.manual = false;
             stage.update(event);
             fpsLabel.text = Math.round(createjs.Ticker.getMeasuredFPS()) + " fps";
         }
     }
 
     this.addFile = function addFile(img, filename, x, y, w, h) {
-        file = new createjs.Container();
-        file.x = x;
-        file.y = y;
+        var file = new createjs.Container();
         container.addChild(file);
 
         var numItems = outlines.numChildren / 3;
 
         var outline1 = new createjs.Shape();
-        outline1.graphics.f('#ddeeff').rr(x - 60, y - 60, w + 2 * 60, h + 2 * 60, 40);
         outlines.addChild(outline1);
         outlines.setChildIndex(outline1, numItems * 3);
 
         var outline2 = new createjs.Shape();
-        outline2.graphics.f('#ffffff').rr(x - 80, y - 80, w + 2 * 80, h + 2 * 80, 60);
         outlines.addChild(outline2);
         outlines.setChildIndex(outline2, numItems * 2);
 
         var outline3 = new createjs.Shape();
-        outline3.graphics.f('#073642').rr(x - 85, y - 85, w + 2 * 85, h + 2 * 85, 65);
         outlines.addChild(outline3);
         outlines.setChildIndex(outline3, numItems);
 
-        var index = outlines.numChildren - 1;
-        outlines.setChildIndex(outline1, index);
-
         var border = new createjs.Shape();
-        //border.graphics.s('#073642').ss(8).dr(0, 0, w, h);
-        border.graphics.s("#073642").ss(12).dr(6, 6, w - 12, h - 12);
         file.addChild(border)
 
         var label = new createjs.Text(filename, "bold 12px Monospace", "rgb(101, 123, 131)");
         file.addChild(label);
 
-        var thumbnail = new createjs.Bitmap(img).set({
-            scaleX: 1, scaleY: 1,
-            regX: 0, regY: 0,
-            cursor: 'pointer',
-            x: 0, y: 0
-        });
+        var thumbnail = new createjs.Bitmap(img).set({cursor: 'pointer'});
         thumbnail.mask = new createjs.Shape();
-        thumbnail.mask.graphics.dr(1, 12, w - 2, h - 13);
         file.addChild(thumbnail);
 
-        update = true;
+        var fileUpdateable = function fileUpdateable(x, y, w, h){
+            outline1.graphics.c().f('#ddeeff').rr(x - 60, y - 60, w + 2 * 60, h + 2 * 60, 40);
+            outline2.graphics.c().f('#ffffff').rr(x - 80, y - 80, w + 2 * 80, h + 2 * 80, 60);
+            outline3.graphics.c().f('#073642').rr(x - 85, y - 85, w + 2 * 85, h + 2 * 85, 65);
+            file.x = x;
+            file.y = y;
+            border.graphics.c().s("#073642").ss(12).dr(6, 6, w - 12, h - 12);
+            thumbnail.x = 1;
+            thumbnail.y = 12;
+            thumbnail.mask.graphics.c().dr(1, 12, w - 2, h - 13);
+            updateables.manual = true;
+        }
+        fileUpdateable(x, y, w, h);
+
+        return fileUpdateable;
     }
 
     function initElements() {
@@ -134,7 +133,7 @@ function DrawingArea(canvas_element_id) {
         stage.addEventListener('stagemousemove', function(event) {
             container.x = event.stageX + offset.x;
             container.y = event.stageY + offset.y;
-            update = true;
+            updateables.manual = true;
         });
 
         stage.addEventListener('stagemouseup', function(){

@@ -1,8 +1,11 @@
-import redis
 import json
+
+import redis
 from livereload import Server
+
 from flask import Flask
 from flask import render_template, jsonify, send_file
+from flask import request
 
 from thumbnail import generate_thumbnail
 
@@ -30,6 +33,27 @@ def files():
     rval = files
 
     return jsonify(rval)
+
+
+@app.route("/file/<int:file_id>", methods=['PUT', 'POST', 'PATCH'])
+def file_save(file_id):
+    # TODO GET
+    file_item = json.loads(cache.get('file_%s' % file_id))
+
+    values = request.get_json()
+    file_item.update(values)
+
+    cache.set('file_%s' % file_id, json.dumps(file_item))
+    file_item['top'] = file_item['left']
+
+    return jsonify({'success': True})
+
+
+@app.route("/file/<int:file_id>", methods=['DELETE'])
+def file_delete(file_id):
+    cache.delete('file_%s' % file_id)
+
+    return jsonify({'success': True})
 
 
 @app.route("/thumbnail/<int:file_id>")
