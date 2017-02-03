@@ -3,12 +3,12 @@ function DrawingArea(canvas_element_id) {
     var canvas = document.getElementById(canvas_element_id);
     var stage = new createjs.Stage(canvas);
 
-    var updateables = new (function() {
+    var updateables = new (function Updateable() {
         var n = 0;
         this.manual = false;
-        this.incr = function(){ n += 1 };
-        this.decr = function(){ n -= 1 };
-        this.exist = function(){ return n > 0 };
+        this.incr = function incr(){ n += 1 };
+        this.decr = function decr(){ n -= 1 };
+        this.exist = function exist(){ return n > 0 };
     });
     this.updateables = updateables;
 
@@ -16,29 +16,36 @@ function DrawingArea(canvas_element_id) {
     var outlines;
     var container;
 
-    var zoomLevels = [1 / 25, 1 / 10, 1 / 5, 1 / 2, 1, 1 * 4];
-    var curZoomIndex = 4;
+    var scaler = new (function Scaler(){
+        var zoomLevels = [1 / 25, 1 / 10, 1 / 5, 1 / 2, 1, 1 * 4];
+        var n = 4;
+        var self = this;
+        this.scale = zoomLevels[n];
+        this.zoomIn = function zoomIn() {
+            n = Math.min(zoomLevels.length - 1, n + 1);
+            self.scale = zoomLevels[n];
+        };
+        this.zoomOut = function zoomOut() {
+            n = Math.max(0, n - 1);
+            self.scale = zoomLevels[n];
+        };
+    });
+
 
     function handleScroll(event) {
         var delta = event.wheelDelta ? event.wheelDelta / 40 : event.detail ? -event.detail : 0;
         if (delta) {
             var is_zoom_in = Math.max(-1, Math.min(1, delta)) > 0;
-            if (is_zoom_in) {
-                curZoomIndex = Math.min(zoomLevels.length - 1, curZoomIndex + 1);
-            } else {
-                curZoomIndex = Math.max(0, curZoomIndex - 1);
-            }
+            is_zoom_in ? scaler.zoomIn() : scaler.zoomOut();
+
             var local  =  container.globalToLocal(stage.mouseX, stage.mouseY);
             container.regX = local.x;
             container.regY = local.y;
             container.x = stage.mouseX;
             container.y = stage.mouseY;
-            var props = {
-                scaleX: zoomLevels[curZoomIndex],
-                scaleY: zoomLevels[curZoomIndex]
-            }
-            var easing = createjs.Ease.linear;
 
+            var props = {scaleX: scaler.scale, scaleY: scaler.scale}
+            var easing = createjs.Ease.linear;
             createjs.Tween.get(container, {override: true}).to(props, 200, easing).call(updateables.decr);
             updateables.incr();
         }
@@ -119,6 +126,7 @@ function DrawingArea(canvas_element_id) {
 
     stage.enableDOMEvents(true);
     stage.enableMouseOver(5);
+    //stage.mouseMoveOutside = true; // keep tracking the mouse even when it leaves the canvas
     createjs.Touch.enable(stage);
 
     createjs.Ticker.setFPS(60);

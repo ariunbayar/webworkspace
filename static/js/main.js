@@ -7,6 +7,4 @@
         files.init();
     });
 
-    window.files = files;
-
 })();
