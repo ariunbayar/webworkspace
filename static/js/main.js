@@ -3,7 +3,16 @@
     var isEditMode = false;
 
     function initKeyBindings() {
-        $(document).keydown(function(e){
+        document.addEventListener('keydown', function(e){
+            var isBrowserKey = _.any([
+                e.ctrlKey && e.key == 'r',  // browser Refresh
+                e.key == 'F5',  // browser Refresh
+                e.key == 'F12',  // inspector
+                e.ctrlKey && e.key == 'I',  // inspector
+            ]);
+            if (isBrowserKey) {
+                return false;  // don't intercept browser shortcuts
+            }
             if (isEditMode == false && e.key == 'd') {  // zoom out
                 drawingArea.zoom(false);
             }
@@ -15,6 +24,10 @@
                 drawingArea.setPanZoom(isEditMode == false);
                 files.setEditMode(isEditMode);
             }
+            e.preventDefault();
+        });
+        document.addEventListener('mousewheel', function(e){
+            e.preventDefault();
         });
     }
 
