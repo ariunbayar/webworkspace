@@ -1,7 +1,7 @@
 function DrawingArea(canvas_element_id) {
 
     var canvas = document.getElementById(canvas_element_id);
-    var stage, container, outlines, fpsLabel;
+    var stage, container, outlines, fpsLabel, indicator;
 
     var updateables = new (function Updateable() {
         var n = 0;
@@ -12,7 +12,7 @@ function DrawingArea(canvas_element_id) {
     });
 
     var scaler = new (function Scaler(){
-        var zoomLevels = [1 / 25, 1 / 10, 1 / 5, 1 / 2, 1, 1 * 4];
+        var zoomLevels = [1 / 25, 1 / 10, 1 / 5, 1 / 2, 1, 1 * 4, 1 * 6, 1 * 8];
         var n = 4;
         var self = this;
         this.scale = zoomLevels[n];
@@ -62,8 +62,12 @@ function DrawingArea(canvas_element_id) {
         fpsLabel.x = 350;
         fpsLabel.y = 200;
 
+        indicator = new createjs.Shape();
+        indicator.graphics.ss(20).s('#FF0000').r(10, 10, canvas.width - 20, canvas.height - 20);
+        indicator.visible = false;
+
         container.addChild(outlines);
-        stage.addChild(container, fpsLabel);
+        stage.addChild(container, fpsLabel, indicator);
     }
 
     initElements();
@@ -104,9 +108,19 @@ function DrawingArea(canvas_element_id) {
         if (key == 'E') {
             if (this.dragMode == 'global') {
                 this.dragMode = 'box';
+                indicator.visible = true;
+                updateables.updateOnce = true;
             } else {
                 this.dragMode = 'global';
+                indicator.visible = false;
+                updateables.updateOnce = true;
             }
+        }
+        if (key == 'D') {
+            handleScroll({detail: 1});
+        }
+        if (key == 'F') {  // zoom in
+            handleScroll({detail: -1});
         }
     }, this));
 }
