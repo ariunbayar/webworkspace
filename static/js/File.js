@@ -61,8 +61,17 @@ var FileCollection = Backbone.Collection.extend({
         this.each(function(file){
             // TODO can we listen changes in collection?
             file.init();
-        })
-    }
+        });
+    },
+
+    setEditMode: function (isTurnOn) {
+        this.each(function(file){
+            // TODO not only JS files but all type of files
+            if (file.view) {
+                file.view.setEditMode(isTurnOn);
+            }
+        });
+    },
 
 });
 
@@ -133,13 +142,12 @@ var FileView = Backbone.View.extend({
         this.label = new createjs.Text(model.get('filename'), "bold 12px Monospace", "rgb(101, 123, 131)");
         this.thumbnail = new createjs.Bitmap(img).set({cursor: 'pointer'});
         this.thumbnail.mask = new createjs.Shape();
+        this.resizer = new createjs.Shape();
 
         this.file = new createjs.Container();
 
-        this.file.addChild(this.border, this.label, this.thumbnail);
+        this.file.addChild(this.border, this.label, this.thumbnail, this.resizer);
         container.addChild(this.file);
-
-        this.daHandleDrag();
 
         this.daMoveFileBox(model.get('left'), model.get('top'));
         this.daResizeFileBox(model.get('width'), model.get('height'));
@@ -147,30 +155,34 @@ var FileView = Backbone.View.extend({
         window.drawingArea.updateables.updateOnce = true;
     },
 
-    daHandleDrag: function daHandleDrag() {
+    daHandleDrag: function daHandleDrag(e) {
         var container = window.drawingArea.container;
         var thumbnail = this.thumbnail;
         var self = this;
 
-        thumbnail.on('mousedown', function(e){
-            if (window.drawingArea.dragMode != 'box') return;
+        var local = container.globalToLocal(e.stageX, e.stageY);
+        var offset = {x: local.x - self.file.x, y: local.y - self.file.y};
 
-            var local = container.globalToLocal(e.stageX, e.stageY);
-            var offset = {x: local.x - self.file.x, y: local.y - self.file.y};
-
-            thumbnail.on('pressmove', function(event) {
-                var local = container.globalToLocal(event.stageX, event.stageY);
-                var x = self.snapTo(local.x - offset.x);
-                var y = self.snapTo(local.y - offset.y);
-                self.model.set('left', x);
-                self.model.set('top', y);
-            });
-
-            thumbnail.on('pressup', function(event){
-                thumbnail.removeAllEventListeners('pressup');
-                thumbnail.removeAllEventListeners('pressmove');
-            });
+        thumbnail.on('pressmove', function(event) {
+            var local = container.globalToLocal(event.stageX, event.stageY);
+            var x = self.snapTo(local.x - offset.x);
+            var y = self.snapTo(local.y - offset.y);
+            self.model.set('left', x);
+            self.model.set('top', y);
         });
+
+        thumbnail.on('pressup', function(event){
+            thumbnail.removeAllEventListeners('pressup');
+            thumbnail.removeAllEventListeners('pressmove');
+        });
+    },
+
+    setEditMode: function setEditMode(isTurnOn) {
+        if (isTurnOn) {
+            this.listenerHandleDrag = this.thumbnail.on('mousedown', this.daHandleDrag, this);
+        } else {
+            this.thumbnail.off('mousedown', this.listenerHandleDrag);
+        }
     },
 
     daMoveFileBox: function daMoveFileBox(x, y, autoupdate) {
@@ -190,6 +202,8 @@ var FileView = Backbone.View.extend({
         this.thumbnail.x = 1;
         this.thumbnail.y = 12;
         this.thumbnail.mask.graphics.c().dr(1, 12, w - 2, h - 13);
+        this.resizer.graphics.c().s("#FFFF00").ss(1).r(w - 0.5, h - 0.5, 20, 20);
+        this.resizer.graphics.s("#073642").ss(1).r(w + 0.5, h + 0.5, 18, 18);
 
         window.drawingArea.updateables.updateOnce = autoupdate === true;
     }

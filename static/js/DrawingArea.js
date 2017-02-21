@@ -1,7 +1,8 @@
 function DrawingArea(canvas_element_id) {
 
     var canvas = document.getElementById(canvas_element_id);
-    var stage, container, outlines, fpsLabel, indicator;
+    var stage, container, outlines, fpsLabel, indicatorEditMode;
+    var listenerHandleMove;
 
     var updateables = new (function Updateable() {
         var n = 0;
@@ -26,23 +27,18 @@ function DrawingArea(canvas_element_id) {
         };
     });
 
-    function handleScroll(event) {
-        var delta = event.wheelDelta ? event.wheelDelta / 40 : event.detail ? -event.detail : 0;
-        if (delta) {
-            var is_zoom_in = Math.max(-1, Math.min(1, delta)) > 0;
-            is_zoom_in ? scaler.zoomIn() : scaler.zoomOut();
+    function zoom(is_zoom_in) {
+        is_zoom_in ? scaler.zoomIn() : scaler.zoomOut();
 
-            var local = container.globalToLocal(stage.mouseX, stage.mouseY);
-            container.regX = local.x;
-            container.regY = local.y;
-            container.x = stage.mouseX;
-            container.y = stage.mouseY;
+        var local = container.globalToLocal(stage.mouseX, stage.mouseY);
+        container.regX = local.x;
+        container.regY = local.y;
+        container.x = stage.mouseX;
+        container.y = stage.mouseY;
 
-            var props = {scaleX: scaler.scale, scaleY: scaler.scale}
-            createjs.Tween.get(container, {override: true}).to(props, 200).call(updateables.decr);
-            updateables.incr();
-        }
-        return event.preventDefault() && false;
+        var props = {scaleX: scaler.scale, scaleY: scaler.scale}
+        createjs.Tween.get(container, {override: true}).to(props, 200).call(updateables.decr);
+        updateables.incr();
     }
 
     function tick(event) {
@@ -62,33 +58,15 @@ function DrawingArea(canvas_element_id) {
         fpsLabel.x = 350;
         fpsLabel.y = 200;
 
-        indicator = new createjs.Shape();
-        indicator.graphics.ss(20).s('#FF0000').r(10, 10, canvas.width - 20, canvas.height - 20);
-        indicator.visible = false;
+        indicatorEditMode = new createjs.Shape();
+        indicatorEditMode.graphics.ss(20).s('#FF0000').r(10, 10, canvas.width - 20, canvas.height - 20);
+        indicatorEditMode.visible = false;
 
         container.addChild(outlines);
-        stage.addChild(container, fpsLabel, indicator);
+        stage.addChild(container, fpsLabel, indicatorEditMode);
     }
 
-    initElements();
-    this.container = container;
-    this.outlines = outlines;
-    this.updateables = updateables;
-    this.dragMode = 'global';  // global, box
-
-    stage.enableDOMEvents(true);
-    stage.enableMouseOver(5);
-    stage.mouseMoveOutside = true; // keep tracking the mouse even when it leaves the canvas
-    createjs.Touch.enable(stage);
-
-    createjs.Ticker.setFPS(60);
-    createjs.Ticker.addEventListener("tick", tick);
-
-    stage.canvas.addEventListener('DOMMouseScroll', handleScroll, false);
-    stage.canvas.addEventListener('mousewheel',     handleScroll, false);
-
-    stage.on('stagemousedown', function(event) {
-        if (this.dragMode != 'global') return;
+    function handleMove(event) {
         var offset = {x: container.x - event.stageX, y: container.y - event.stageY};
 
         stage.on('stagemousemove', function(event) {
@@ -101,26 +79,42 @@ function DrawingArea(canvas_element_id) {
             stage.removeAllEventListeners('stagemouseup');
             stage.removeAllEventListeners('stagemousemove');
         });
-    }, this);
+    }
 
-    $(document).keydown(_.bind(function(e){
-        var key = (65 <= e.which && e.which <= 90) ? String.fromCharCode(e.which) : '';
-        if (key == 'E') {
-            if (this.dragMode == 'global') {
-                this.dragMode = 'box';
-                indicator.visible = true;
-                updateables.updateOnce = true;
-            } else {
-                this.dragMode = 'global';
-                indicator.visible = false;
-                updateables.updateOnce = true;
-            }
+    function setPanZoom(isTurnOn) {
+        if (isTurnOn) {
+            listenerHandleMove = stage.on('stagemousedown', handleMove);
+            indicatorEditMode.visible = false;
+        } else {
+            stage.off('stagemousedown', listenerHandleMove);
+            indicatorEditMode.visible = true;
         }
-        if (key == 'D') {
-            handleScroll({detail: 1});
-        }
-        if (key == 'F') {  // zoom in
-            handleScroll({detail: -1});
-        }
-    }, this));
+        updateables.updateOnce = true;
+    }
+
+    initElements();
+    this.container = container;
+    this.outlines = outlines;
+    this.updateables = updateables;
+    this.setPanZoom = setPanZoom;
+    this.zoom = zoom;
+
+    stage.enableDOMEvents(true);
+    stage.enableMouseOver(5);
+    stage.mouseMoveOutside = true; // keep tracking the mouse even when it leaves the canvas
+    createjs.Touch.enable(stage);
+
+    createjs.Ticker.setFPS(60);
+    createjs.Ticker.addEventListener("tick", tick);
+
+    setPanZoom(true);
+
+    // XXX disabled as key D and F are being user for zoom
+    //stage.canvas.addEventListener('DOMMouseScroll', handleScroll, false);
+    //stage.canvas.addEventListener('mousewheel',     handleScroll, false);
+    //var delta = event.wheelDelta ? event.wheelDelta / 40 : event.detail ? -event.detail : 0;
+    //if (delta) {
+        //var is_zoom_in = Math.max(-1, Math.min(1, delta)) > 0;
+    //}
+    //return event.preventDefault() && false;
 }
