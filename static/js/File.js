@@ -117,7 +117,7 @@ var FileView = Backbone.View.extend({
     },
 
     snapTo: function (n) {
-        return Math.round(n / 10) * 10;
+        return Math.round(n / 20) * 20;
     },
 
     daAddFileBox: function areaAddFile(img) {
@@ -143,6 +143,8 @@ var FileView = Backbone.View.extend({
         this.thumbnail = new createjs.Bitmap(img).set({cursor: 'pointer'});
         this.thumbnail.mask = new createjs.Shape();
         this.resizer = new createjs.Shape();
+        this.resizer.cursor = 'se-resize';
+        this.resizer.visible = false;
 
         this.file = new createjs.Container();
 
@@ -155,7 +157,7 @@ var FileView = Backbone.View.extend({
         window.drawingArea.updateables.updateOnce = true;
     },
 
-    daHandleDrag: function daHandleDrag(e) {
+    daHandleMove: function daHandleMove(e) {
         var container = window.drawingArea.container;
         var thumbnail = this.thumbnail;
         var self = this;
@@ -177,12 +179,39 @@ var FileView = Backbone.View.extend({
         });
     },
 
+    daHandleResize: function daHandleResize(e) {
+        var container = window.drawingArea.container;
+        var resizer = this.resizer;
+        var file = this.file;
+        var self = this;
+
+        var local = container.globalToLocal(e.stageX, e.stageY);
+        var offset = {x: local.x - file.x - resizer.x, y: local.y - file.y - resizer.y};
+
+        resizer.on('pressmove', function(event){
+            var local = container.globalToLocal(event.stageX, event.stageY);
+            var width = self.snapTo(local.x - file.x - offset.x);
+            var height = self.snapTo(local.y - file.y - offset.y);
+            self.model.set('width', width);
+            self.model.set('height', height);
+        });
+        resizer.on('pressup', function(event){
+            resizer.removeAllEventListeners('pressup');
+            resizer.removeAllEventListeners('pressmove');
+        });
+    },
+
     setEditMode: function setEditMode(isTurnOn) {
         if (isTurnOn) {
-            this.listenerHandleDrag = this.thumbnail.on('mousedown', this.daHandleDrag, this);
+            this.listenerHandleMove = this.thumbnail.on('mousedown', this.daHandleMove, this);
+            this.listenerHandleResize = this.resizer.on('mousedown', this.daHandleResize, this);
+            this.resizer.visible = true;
         } else {
-            this.thumbnail.off('mousedown', this.listenerHandleDrag);
+            this.thumbnail.off('mousedown', this.listenerHandleMove);
+            this.resizer.off('mousedown', this.listenerHandleResize);
+            this.resizer.visible = false;
         }
+        window.drawingArea.updateables.updateOnce = true;
     },
 
     daMoveFileBox: function daMoveFileBox(x, y, autoupdate) {
@@ -198,12 +227,13 @@ var FileView = Backbone.View.extend({
         this.outline1.graphics.c().f('#073642').rr(-85, -85, w + 2 * 85, h + 2 * 85, 65);
         this.outline2.graphics.c().f('#ffffff').rr(-80, -80, w + 2 * 80, h + 2 * 80, 60);
         this.outline3.graphics.c().f('#ddeeff').rr(-60, -60, w + 2 * 60, h + 2 * 60, 40);
-        this.border.graphics.c().s("#073642").ss(12).dr(6, 6, w - 12, h - 12);
+        this.border.graphics.c().f("#073642").r(0, 0, w, h);
         this.thumbnail.x = 1;
         this.thumbnail.y = 12;
-        this.thumbnail.mask.graphics.c().dr(1, 12, w - 2, h - 13);
-        this.resizer.graphics.c().s("#FFFF00").ss(1).r(w - 0.5, h - 0.5, 20, 20);
-        this.resizer.graphics.s("#073642").ss(1).r(w + 0.5, h + 0.5, 18, 18);
+        this.thumbnail.mask.graphics.c().r(1, 12, w - 2, h - 13);
+        this.resizer.x = w;
+        this.resizer.y = h;
+        this.resizer.graphics.c().s("#073642").ss(1).f("#FFFF00").r(-0.5, -0.5, 20, 20);
 
         window.drawingArea.updateables.updateOnce = autoupdate === true;
     }

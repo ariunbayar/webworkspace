@@ -45,7 +45,7 @@ function DrawingArea(canvas_element_id) {
         if (updateables.exist() || updateables.updateOnce == true) {
             updateables.updateOnce = false;
             stage.update(event);
-            fpsLabel.text = Math.round(createjs.Ticker.getMeasuredFPS()) + " fps";
+            fpsLabel.text = Math.round(createjs.Ticker.getMeasuredFPS()) + " fps at " + (+new Date() / 1000);
         }
     }
 
@@ -55,15 +55,15 @@ function DrawingArea(canvas_element_id) {
         outlines = new createjs.Container();
 
         fpsLabel = new createjs.Text("-- fps", "12px Monospace", "#777");
-        fpsLabel.x = 350;
-        fpsLabel.y = 200;
+        fpsLabel.x = canvas.width - 200;
+        fpsLabel.y = canvas.height - 16;
 
         indicatorEditMode = new createjs.Shape();
         indicatorEditMode.graphics.ss(20).s('#FF0000').r(10, 10, canvas.width - 20, canvas.height - 20);
         indicatorEditMode.visible = false;
 
         container.addChild(outlines);
-        stage.addChild(container, fpsLabel, indicatorEditMode);
+        stage.addChild(container, indicatorEditMode, fpsLabel);
     }
 
     function handleMove(event) {
