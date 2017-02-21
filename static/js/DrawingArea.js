@@ -13,7 +13,7 @@ function DrawingArea(canvas_element_id) {
     });
 
     var scaler = new (function Scaler(){
-        var zoomLevels = [1 / 25, 1 / 10, 1 / 5, 1 / 2, 1, 1 * 4, 1 * 6, 1 * 8];
+        var zoomLevels = [1 / 25, 1 / 10, 1 / 5, 1 / 2, 1, 2, 4];
         var n = 4;
         var self = this;
         this.scale = zoomLevels[n];
@@ -37,7 +37,7 @@ function DrawingArea(canvas_element_id) {
         container.y = stage.mouseY;
 
         var props = {scaleX: scaler.scale, scaleY: scaler.scale}
-        createjs.Tween.get(container, {override: true}).to(props, 200).call(updateables.decr);
+        createjs.Tween.get(container, {override: false}).to(props, 200).call(updateables.decr);
         updateables.incr();
     }
 
@@ -50,6 +50,8 @@ function DrawingArea(canvas_element_id) {
     }
 
     function initElements() {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
         stage = new createjs.Stage(canvas);
         container = new createjs.Container();
         outlines = new createjs.Container();

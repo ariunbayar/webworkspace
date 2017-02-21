@@ -7,4 +7,5 @@ body{
 }
 canvas{
     background-color: #efefef;
+    position: fixed;
 }
