@@ -8,4 +8,6 @@ body{
 canvas{
     background-color: #efefef;
     position: fixed;
+    top: 0;
+    left: 0;
 }
