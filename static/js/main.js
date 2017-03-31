@@ -9,6 +9,7 @@
                 e.key == 'F5',  // browser Refresh
                 e.key == 'F12',  // inspector
                 e.ctrlKey && e.key == 'I',  // inspector
+                e.ctrlKey && e.key == 'l',  // focus to navbar
             ]);
             if (isBrowserKey) {
                 return false;  // don't intercept browser shortcuts
