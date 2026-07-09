@@ -12,6 +12,23 @@ ul{ padding-left: 20px;  }
     position: absolute;
     cursor: move;
     touch-action: none;      /* let pointer drags work on touch without scrolling */
+    z-index: 1;              /* sit above the background grid */
+}
+/* always-on alignment grid; emphasized and raised to the front while dragging */
+#dragGrid{
+    position: absolute;
+    top: 0; left: 0;
+    pointer-events: none;
+    z-index: 0;
+    background-image:
+        linear-gradient(to right, rgba(88,110,117,.16) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(88,110,117,.16) 1px, transparent 1px);
+}
+#dragGrid.front{
+    z-index: 9998;
+    background-image:
+        linear-gradient(to right, rgba(38,139,210,.38) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(38,139,210,.38) 1px, transparent 1px);
 }
 /* bottom-right resize grip */
 .box::after{

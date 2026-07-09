@@ -7,10 +7,24 @@ $(function () {
     var HANDLE = 18;            // bottom-right region (px) that starts a resize
     var THRESHOLD = 3;          // movement under this counts as a click, not a drag
     var MIN_W = 60, MIN_H = 40;
-    var topZ = 100;
+    var topZ = 9999;           // dragged boxes float above the grid overlay (z 9998)
     var drag = null;
 
     function snap(v) { return Math.round(v / GRID) * GRID; }
+
+    // grid: always visible in the background; raised to the front during a drag
+    var grid = document.createElement('div');
+    grid.id = 'dragGrid';
+    grid.style.backgroundSize = GRID + 'px ' + GRID + 'px';
+    document.body.appendChild(grid);
+
+    function sizeGrid() {
+        var doc = document.documentElement;
+        grid.style.width = Math.max(doc.scrollWidth, window.innerWidth) + 'px';
+        grid.style.height = Math.max(doc.scrollHeight, window.innerHeight) + 'px';
+    }
+    sizeGrid();
+    $(window).on('resize', sizeGrid);
 
     // the Backbone model whose rendered box is this DOM element
     function modelForBox(boxEl) {
@@ -41,6 +55,7 @@ $(function () {
         if (window.mainView && mainView.switchTo) { mainView.switchTo(model); }
         boxEl.style.zIndex = ++topZ;
         boxEl.classList.add('dragging');
+        grid.classList.add('front');       // emphasize the grid while dragging
         try { boxEl.setPointerCapture(oe.pointerId); } catch (err) {}
         e.preventDefault();
     });
@@ -67,6 +82,8 @@ $(function () {
         var d = drag;
         drag = null;
         d.el.classList.remove('dragging');
+        grid.classList.remove('front');
+        sizeGrid();                 // the box may have moved past the old bounds
 
         if (!d.moved) { return; }   // a click: selection already handled, don't move
 
