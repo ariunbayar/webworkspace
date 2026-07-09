@@ -1,22 +1,8 @@
-# Single-service demo. redis runs inside the same container (see Dockerfile /
-# entrypoint) so runserver.py's hard-coded 127.0.0.1:6379 needs no changes.
+# Single-service demo. redis runs inside the same container (see Dockerfile.php /
+# entrypoint) so the app's hard-coded 127.0.0.1:6379 needs no changes.
 services:
-  web:
-    build: .
-    ports:
-      - "${PORT:-8000}:8000"
-    # flask run ignores SIGTERM (Docker's default stop signal), so stop waited
-    # the full 10s grace before SIGKILL. SIGINT exits it cleanly; cap the wait.
-    stop_signal: SIGINT
-    stop_grace_period: 3s
-    environment:
-      - PORT=8000
-      - DEMO_DIR=${DEMO_DIR:-/app}
-      - THUMB_FONT_SIZE=${THUMB_FONT_SIZE:-7}
-
-  # Original PHP app (feature-richer): file browser, project mgmt, open-in-editor.
-  # Self-contained with its own redis; run just this one with:
-  #   docker compose up --build php
+  # PHP app: file browser, project management, open-in-editor. Self-contained
+  # with its own redis (db 2), seeded with demo boxes.
   php:
     build:
       context: .
@@ -25,5 +11,7 @@ services:
       - "${PHP_PORT:-8081}:8081"
     environment:
       - DEMO_DIR=${PHP_DEMO_DIR:-/app}
+    # php -S ignores SIGTERM (Docker's default stop signal), so stop waited the
+    # full 10s grace before SIGKILL. SIGINT exits it cleanly; cap the wait.
     stop_signal: SIGINT
     stop_grace_period: 3s
