@@ -1,0 +1,10 @@
+# Single-service demo. redis runs inside the same container (see Dockerfile /
+# entrypoint) so runserver.py's hard-coded 127.0.0.1:6379 needs no changes.
+services:
+  web:
+    build: .
+    ports:
+      - "${PORT:-8000}:8000"
+    environment:
+      - PORT=8000
+      - DEMO_DIR=${DEMO_DIR:-/app/static/js}

@@ -1,0 +1,9 @@
+# Minimal deps to run the Flask app (runserver.py) in the demo container.
+# Pinned for a Python 3.9 base image. redis 2.10.x is required because
+# runserver.py passes the legacy `charset=` kwarg to StrictRedis (dropped in redis-py 3.0).
+Flask==2.2.5
+redis==2.10.6
+livereload==2.6.3
+Pillow==9.5.0
+# matches pip.txt — thumbnail.py's token color map was written against this
+Pygments==2.1.3
