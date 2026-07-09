@@ -2,11 +2,9 @@
 # redis so the app's hard-coded 127.0.0.1:6379 connection works unmodified.
 FROM python:3.9-slim
 
-# redis-server + redis-cli (redis-tools) for the in-container datastore;
-# fontconfig + a TTF font so Pygments' ImageFormatter can render thumbnails
+# redis-server + redis-cli (redis-tools) for the in-container datastore
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends \
-        redis-server fontconfig fonts-dejavu-core \
+    && apt-get install -y --no-install-recommends redis-server \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
