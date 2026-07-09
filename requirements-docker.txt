@@ -5,5 +5,5 @@ Flask==2.2.5
 redis==2.10.6
 livereload==2.6.3
 Pillow==9.5.0
-# matches pip.txt — thumbnail.py's token color map was written against this
-Pygments==2.1.3
+# thumbnail.py now uses ImageFormatter, so any modern Pygments works
+Pygments==2.15.1
