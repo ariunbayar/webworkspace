@@ -12,33 +12,36 @@ function DrawingArea(canvas_element_id) {
         this.exist = function exist(){ return n > 0 };
     });
 
-    var scaler = new (function Scaler(){
-        var zoomLevels = [1 / 25, 1 / 10, 1 / 5, 1 / 2, 1, 2, 4];
-        var n = 4;
-        var self = this;
-        this.scale = zoomLevels[n];
-        this.zoomIn = function zoomIn() {
-            n = Math.min(zoomLevels.length - 1, n + 1);
-            self.scale = zoomLevels[n];
-        };
-        this.zoomOut = function zoomOut() {
-            n = Math.max(0, n - 1);
-            self.scale = zoomLevels[n];
-        };
-    });
+    var MIN_SCALE = 1 / 25;
+    var MAX_SCALE = 4;
+    var currentScale = 1;
 
-    function zoom(is_zoom_in) {
-        is_zoom_in ? scaler.zoomIn() : scaler.zoomOut();
+    function clampScale(s) {
+        return Math.max(MIN_SCALE, Math.min(MAX_SCALE, s));
+    }
 
-        var local = container.globalToLocal(stage.mouseX, stage.mouseY);
+    // Continuous zoom by `factor`, keeping the global point (gx, gy) — a
+    // canvas-relative pixel — pinned under itself (Google-Maps style).
+    function zoomAt(factor, gx, gy) {
+        var newScale = clampScale(currentScale * factor);
+        if (newScale === currentScale) {
+            return;
+        }
+
+        var local = container.globalToLocal(gx, gy);
         container.regX = local.x;
         container.regY = local.y;
-        container.x = stage.mouseX;
-        container.y = stage.mouseY;
+        container.x = gx;
+        container.y = gy;
 
-        var props = {scaleX: scaler.scale, scaleY: scaler.scale}
-        createjs.Tween.get(container, {override: false}).to(props, 200).call(updateables.decr);
-        updateables.incr();
+        currentScale = newScale;
+        container.scaleX = container.scaleY = newScale;
+        updateables.updateOnce = true;
+    }
+
+    // d / f keys: step zoom centred on the current pointer position.
+    function zoom(is_zoom_in) {
+        zoomAt(is_zoom_in ? 1.3 : 1 / 1.3, stage.mouseX, stage.mouseY);
     }
 
     function tick(event) {
@@ -111,12 +114,54 @@ function DrawingArea(canvas_element_id) {
 
     setPanZoom(true);
 
-    // XXX disabled as key D and F are being user for zoom
-    //stage.canvas.addEventListener('DOMMouseScroll', handleScroll, false);
-    //stage.canvas.addEventListener('mousewheel',     handleScroll, false);
-    //var delta = event.wheelDelta ? event.wheelDelta / 40 : event.detail ? -event.detail : 0;
-    //if (delta) {
-        //var is_zoom_in = Math.max(-1, Math.min(1, delta)) > 0;
-    //}
-    //return event.preventDefault() && false;
+    // --- Google-Maps-style zoom: wheel + pinch, both zoom toward the pointer ---
+
+    function canvasPoint(clientX, clientY) {
+        var rect = canvas.getBoundingClientRect();
+        return {x: clientX - rect.left, y: clientY - rect.top};
+    }
+
+    canvas.addEventListener('wheel', function (event) {
+        event.preventDefault();
+        var p = canvasPoint(event.clientX, event.clientY);
+        // smooth, delta-proportional factor; deltaY < 0 (scroll up) => zoom in
+        zoomAt(Math.pow(1.0015, -event.deltaY), p.x, p.y);
+    }, {passive: false});
+
+    var pinchDist = null;
+
+    function touchDistMid(touches) {
+        var a = touches[0], b = touches[1];
+        var dx = a.clientX - b.clientX, dy = a.clientY - b.clientY;
+        return {
+            dist: Math.sqrt(dx * dx + dy * dy),
+            mid: canvasPoint((a.clientX + b.clientX) / 2, (a.clientY + b.clientY) / 2)
+        };
+    }
+
+    canvas.addEventListener('touchstart', function (event) {
+        if (event.touches.length === 2) {
+            pinchDist = touchDistMid(event.touches).dist;
+            // cancel any in-progress single-touch pan so it doesn't fight the pinch
+            stage.removeAllEventListeners('stagemousemove');
+            stage.removeAllEventListeners('stagemouseup');
+        }
+    }, {passive: false});
+
+    canvas.addEventListener('touchmove', function (event) {
+        if (event.touches.length === 2 && pinchDist !== null) {
+            event.preventDefault();  // suppress native page zoom
+            var t = touchDistMid(event.touches);
+            zoomAt(t.dist / pinchDist, t.mid.x, t.mid.y);
+            pinchDist = t.dist;
+        }
+    }, {passive: false});
+
+    function endPinch(event) {
+        if (event.touches.length < 2) {
+            pinchDist = null;
+        }
+    }
+    canvas.addEventListener('touchend', endPinch);
+    canvas.addEventListener('touchcancel', endPinch);
 }
