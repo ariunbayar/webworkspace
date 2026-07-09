@@ -9,3 +9,17 @@ services:
       - PORT=8000
       - DEMO_DIR=${DEMO_DIR:-/app/static/js}
       - THUMB_FONT_SIZE=${THUMB_FONT_SIZE:-7}
+
+  # Original PHP app (feature-richer): file browser, project mgmt, open-in-editor.
+  # Self-contained with its own redis; run just this one with:
+  #   docker compose up --build php
+  php:
+    build:
+      context: .
+      dockerfile: Dockerfile.php
+    ports:
+      - "${PHP_PORT:-8081}:8081"
+    environment:
+      - DEMO_DIR=${PHP_DEMO_DIR:-/app/static/js}
+    stop_signal: SIGINT
+    stop_grace_period: 3s
