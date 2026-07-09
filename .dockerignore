@@ -1,0 +1,6 @@
+.git
+.gitignore
+__pycache__/
+*.pyc
+python3_env/
+classes/dummy.db
