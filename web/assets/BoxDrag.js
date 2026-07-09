@@ -19,9 +19,10 @@ $(function () {
     document.body.appendChild(grid);
 
     function sizeGrid() {
+        // cover the whole pan/zoom canvas, not just the current viewport
         var doc = document.documentElement;
-        grid.style.width = Math.max(doc.scrollWidth, window.innerWidth) + 'px';
-        grid.style.height = Math.max(doc.scrollHeight, window.innerHeight) + 'px';
+        grid.style.width = Math.max(doc.scrollWidth, window.innerWidth, 8000) + 'px';
+        grid.style.height = Math.max(doc.scrollHeight, window.innerHeight, 8000) + 'px';
     }
     sizeGrid();
     $(window).on('resize', sizeGrid);
@@ -63,9 +64,10 @@ $(function () {
     $(document).on('pointermove', function (e) {
         if (!drag) { return; }
         var oe = e.originalEvent;
-        var dx = oe.clientX - drag.startX;
-        var dy = oe.clientY - drag.startY;
-        if (!drag.moved && Math.abs(dx) + Math.abs(dy) > THRESHOLD) { drag.moved = true; }
+        var s = window.canvasScale || 1;                 // zoom-aware: screen px -> content px
+        var dx = (oe.clientX - drag.startX) / s;
+        var dy = (oe.clientY - drag.startY) / s;
+        if (!drag.moved && (Math.abs(dx) + Math.abs(dy)) * s > THRESHOLD) { drag.moved = true; }
         if (!drag.moved) { return; }
 
         if (drag.resize) {
@@ -88,8 +90,9 @@ $(function () {
         if (!d.moved) { return; }   // a click: selection already handled, don't move
 
         var oe = e.originalEvent;
-        var dx = oe.clientX - d.startX;
-        var dy = oe.clientY - d.startY;
+        var s = window.canvasScale || 1;
+        var dx = (oe.clientX - d.startX) / s;
+        var dy = (oe.clientY - d.startY) / s;
         if (d.resize) {
             d.model.set({
                 width:  Math.max(MIN_W, snap(d.width  + dx)),
