@@ -4,17 +4,30 @@
 $(function () {
 
     var MIN = 0.2, MAX = 3;
+    var GRID = (window.Constants && Constants.gridSize) || 30;
     var scale = 1, panX = 0, panY = 0;
     var body = document.body;
 
     function clamp(s) { return Math.max(MIN, Math.min(MAX, s)); }
 
+    // Adaptive grid: cell size doubles/halves with zoom so the on-screen spacing
+    // stays ~GRID px. gridStep = GRID * 2^round(log2(1/scale)). Snapping follows it.
+    function gridStepFor(s) {
+        var k = Math.round(Math.log(1 / s) / Math.LN2);
+        return GRID * Math.pow(2, k);
+    }
+
     function apply() {
         body.style.transform = 'translate(' + panX + 'px,' + panY + 'px) scale(' + scale + ')';
         window.canvasScale = scale;
+        var step = gridStepFor(scale);
+        window.canvasGridStep = step;
+        var grid = document.getElementById('dragGrid');
+        if (grid) { grid.style.backgroundSize = step + 'px ' + step + 'px'; }
     }
     body.style.transformOrigin = '0 0';
     window.canvasScale = 1;
+    window.canvasGridStep = GRID;
     apply();
 
     // zoom by `factor`, keeping the screen point (cx, cy) pinned to its content

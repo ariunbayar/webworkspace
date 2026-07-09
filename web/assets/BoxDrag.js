@@ -10,7 +10,8 @@ $(function () {
     var topZ = 9999;           // dragged boxes float above the grid overlay (z 9998)
     var drag = null;
 
-    function snap(v) { return Math.round(v / GRID) * GRID; }
+    // snap to the current (zoom-adaptive) grid step, set by ZoomPan
+    function snap(v) { var g = window.canvasGridStep || GRID; return Math.round(v / g) * g; }
 
     // grid: always visible in the background; raised to the front during a drag
     var grid = document.createElement('div');
@@ -19,8 +20,9 @@ $(function () {
     document.body.appendChild(grid);
 
     // large grid centred on the origin so it covers any pan (including negative
-    // coords); OFFSET is a multiple of GRID so cells stay aligned to content 0,0
-    var OFFSET = 700 * GRID;          // 21000px each way with the default 30px grid
+    // coords); OFFSET is a power-of-two multiple of GRID so lines stay aligned to
+    // content 0,0 at every adaptive step (GRID/4 .. GRID*4+)
+    var OFFSET = 1024 * GRID;         // 30720px each way with the default 30px grid
     function sizeGrid() {
         grid.style.left = -OFFSET + 'px';
         grid.style.top = -OFFSET + 'px';
