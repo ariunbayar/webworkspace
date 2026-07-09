@@ -41,3 +41,24 @@ co-located redis (db 2), seeded with demo boxes:
 Then open http://127.0.0.1:8081/ (override with `PHP_PORT`). Press `?` in the
 app for keybindings. It's independent from the Flask `web` service and has its
 own redis, so the two don't share data.
+
+Thumbnail cache
+---
+
+File thumbnails are rendered once and cached to disk at `THUMB_CACHE_DIR`
+(default `/tmp/thumb_cache` inside the container). There is no size limit or
+TTL — entries are only ever replaced or discarded, as follows:
+
+- **A single thumbnail re-renders** when its cache key changes. The key is
+  `path + mtime + THUMB_FONT_SIZE + THUMB_LINE_PAD + THUMB_STYLE`, so editing
+  the file or changing any of those settings produces a new entry (the old one
+  is left orphaned, not deleted).
+- **The whole cache is cleared on container recreate.** `/tmp/thumb_cache` is
+  not a volume, so `docker compose up --build` (or `up -d`) starts a fresh
+  container with an empty cache. A `docker compose restart` keeps it.
+- **Clear it manually** without a recreate:
+
+      docker compose exec web rm -rf /tmp/thumb_cache
+
+To persist the cache across recreates instead, mount `THUMB_CACHE_DIR` as a
+volume.
