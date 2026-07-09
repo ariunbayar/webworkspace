@@ -5,10 +5,12 @@ var Utility = {
     _mergeFilter: 'blur(10px) contrast(14)',
     _outlineContainers: null,
 
-    // toggle the merge filter off during interaction (drag/zoom) for smoothness
-    setOutlineMerge: function (on) {
-        var f = on ? this._mergeFilter : 'none';
-        (this._outlineContainers || []).forEach(function (c) { c.style.filter = f; });
+    // Show/hide the merged outline. Shown (and merged) at rest in normal mode;
+    // hidden entirely while dragging/resizing/panning so interaction stays smooth.
+    showOutline: function (on) {
+        (this._outlineContainers || []).forEach(function (c) {
+            c.style.display = on ? '' : 'none';
+        });
     },
 
     // Layered rounded outline behind each box. Each box owns its 3 layers, kept
@@ -31,7 +33,7 @@ var Utility = {
         });
         // one container per colour layer, merged with a pure-CSS "goo": blur
         // rounds/joins nearby shapes, contrast slams the gradient back to a hard
-        // edge. Toggled off during drag/zoom via setOutlineMerge() to stay smooth.
+        // edge. Hidden during drag/zoom via showOutline() to stay smooth.
         var containers = LAYERS.map(function () {
             return $('<div>').addClass('outline-layer').appendTo('body').css({
                 position: 'absolute', top: 0, left: 0,

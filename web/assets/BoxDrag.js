@@ -62,7 +62,7 @@ $(function () {
         boxEl.style.zIndex = ++topZ;
         boxEl.classList.add('dragging');
         grid.classList.add('front');       // emphasize the grid while dragging
-        if (window.Utility) { Utility.setOutlineMerge(false); }   // smooth while dragging
+        if (window.Utility) { Utility.showOutline(false); }   // hide while dragging
         try { boxEl.setPointerCapture(oe.pointerId); } catch (err) {}
         e.preventDefault();
     });
@@ -92,7 +92,7 @@ $(function () {
         d.el.classList.remove('dragging');
         grid.classList.remove('front');
         sizeGrid();                 // the box may have moved past the old bounds
-        if (window.Utility) { Utility.setOutlineMerge(true); }   // re-merge at rest
+        if (window.Utility) { Utility.showOutline(true); }   // show again at rest
 
         if (!d.moved) { return; }   // a click: selection already handled, don't move
 
