@@ -98,4 +98,37 @@ class Browser extends Model
             $treeItem['collapsed'] = $isCollapsed;
         }
     }
+
+    /**
+     * Flat, pre-order list of the tree the frontend renders (BrowserView
+     * indents each row by its `level`). Assembled from the stored BrowserItems.
+     */
+    private function buildTree($ids, $level)
+    {
+        $rows = [];
+        foreach ($ids as $id) {
+            if ($id === '') {
+                continue;
+            }
+            $item = new BrowserItem($id);
+            $rows[] = [
+                'id'        => (int) $id,
+                'name'      => $item->getName(),
+                'isDir'     => $item->getIsDir(),
+                'collapsed' => $item->getCollapsed(),
+                'level'     => $level,
+            ];
+            if ($item->getIsDir()) {
+                $rows = array_merge($rows, $this->buildTree($item->getChildItems(), $level + 1));
+            }
+        }
+        return $rows;
+    }
+
+    public function toArray()
+    {
+        $values = $this->values;
+        $values['tree'] = $this->buildTree($this->getRootItems(), 0);
+        return $values;
+    }
 }
