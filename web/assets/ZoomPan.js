@@ -42,9 +42,24 @@ $(function () {
         apply();
     }
 
+    // pause the (expensive) outline-merge filter while interacting, resume at rest
+    var mergeTimer = null;
+    function pauseMerge() {
+        if (window.Utility) { Utility.setOutlineMerge(false); }
+        if (mergeTimer) { clearTimeout(mergeTimer); mergeTimer = null; }
+    }
+    function resumeMergeSoon() {
+        if (mergeTimer) { clearTimeout(mergeTimer); }
+        mergeTimer = setTimeout(function () {
+            if (window.Utility) { Utility.setOutlineMerge(true); }
+        }, 200);
+    }
+
     document.addEventListener('wheel', function (e) {
         e.preventDefault();
+        pauseMerge();
         zoomAt(Math.pow(1.0015, -e.deltaY), e.clientX, e.clientY);
+        resumeMergeSoon();
     }, { passive: false });
 
     // pinch to zoom toward the midpoint of two touches
@@ -55,7 +70,7 @@ $(function () {
                  x: (a.clientX + b.clientX) / 2, y: (a.clientY + b.clientY) / 2 };
     }
     document.addEventListener('touchstart', function (e) {
-        if (e.touches.length === 2) { pinch = twoTouch(e.touches); }
+        if (e.touches.length === 2) { pinch = twoTouch(e.touches); pauseMerge(); }
     }, { passive: false });
     document.addEventListener('touchmove', function (e) {
         if (e.touches.length === 2 && pinch) {
@@ -65,7 +80,9 @@ $(function () {
             pinch = t;
         }
     }, { passive: false });
-    document.addEventListener('touchend', function (e) { if (e.touches.length < 2) { pinch = null; } });
+    document.addEventListener('touchend', function (e) {
+        if (e.touches.length < 2) { pinch = null; resumeMergeSoon(); }
+    });
 
     // drag empty space to pan (drags that start on a box move the box instead)
     var pan = null;
@@ -75,6 +92,7 @@ $(function () {
         if (e.target.closest && e.target.closest('.box')) { return; }
         pan = { x: oe.clientX, y: oe.clientY, panX: panX, panY: panY };
         body.style.cursor = 'grabbing';
+        pauseMerge();
     });
     $(document).on('pointermove', function (e) {
         if (!pan || pinch) { return; }        // don't pan while pinch-zooming
@@ -84,7 +102,7 @@ $(function () {
         apply();
     });
     $(document).on('pointerup pointercancel', function () {
-        if (pan) { pan = null; body.style.cursor = ''; }
+        if (pan) { pan = null; body.style.cursor = ''; resumeMergeSoon(); }
     });
 
 });

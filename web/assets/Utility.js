@@ -1,5 +1,16 @@
 var Utility = {
 
+    // pure-CSS goo: blur softens edges into gradients, contrast slams them back
+    // to hard edges so nearby outlines fuse
+    _mergeFilter: 'blur(10px) contrast(14)',
+    _outlineContainers: null,
+
+    // toggle the merge filter off during interaction (drag/zoom) for smoothness
+    setOutlineMerge: function (on) {
+        var f = on ? this._mergeFilter : 'none';
+        (this._outlineContainers || []).forEach(function (c) { c.style.filter = f; });
+    },
+
     // Layered rounded outline behind each box. Each box owns its 3 layers, kept
     // glued to it: a MutationObserver on the box's inline style repositions them
     // whenever it moves or resizes (mouse drag/resize or keyboard).
@@ -12,35 +23,23 @@ var Utility = {
         ];
         var self = this;
 
-        // "goo" filter: blur + alpha threshold so nearby outlines merge with
-        // smooth necks (metaball effect) instead of just overlapping.
-        if (!document.getElementById('gooFilter')) {
-            var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-            svg.id = 'gooFilter';
-            svg.setAttribute('style', 'position:absolute;width:0;height:0');
-            svg.innerHTML =
-                '<defs><filter id="goo">' +
-                '<feGaussianBlur in="SourceGraphic" stdDeviation="14" result="b"/>' +
-                '<feColorMatrix in="b" mode="matrix" ' +
-                'values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 22 -11"/>' +
-                '</filter></defs>';
-            document.body.appendChild(svg);
-        }
-
         // size the filtered containers to span all boxes (+ halo margin)
         var maxR = 0, maxB = 0;
         $('.box').each(function () {
             maxR = Math.max(maxR, this.offsetLeft + this.offsetWidth);
             maxB = Math.max(maxB, this.offsetTop + this.offsetHeight);
         });
-        // one goo container per colour layer; nearby boxes' layers fuse within it
+        // one container per colour layer, merged with a pure-CSS "goo": blur
+        // rounds/joins nearby shapes, contrast slams the gradient back to a hard
+        // edge. Toggled off during drag/zoom via setOutlineMerge() to stay smooth.
         var containers = LAYERS.map(function () {
             return $('<div>').addClass('outline-layer').appendTo('body').css({
                 position: 'absolute', top: 0, left: 0,
                 width: (maxR + 300) + 'px', height: (maxB + 300) + 'px',
-                filter: 'url(#goo)'
+                filter: self._mergeFilter
             })[0];
         });
+        this._outlineContainers = containers;
 
         $('.box').each(function () {
             var box = this;
