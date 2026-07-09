@@ -12,11 +12,41 @@ var Utility = {
         ];
         var self = this;
 
+        // "goo" filter: blur + alpha threshold so nearby outlines merge with
+        // smooth necks (metaball effect) instead of just overlapping.
+        if (!document.getElementById('gooFilter')) {
+            var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+            svg.id = 'gooFilter';
+            svg.setAttribute('style', 'position:absolute;width:0;height:0');
+            svg.innerHTML =
+                '<defs><filter id="goo">' +
+                '<feGaussianBlur in="SourceGraphic" stdDeviation="14" result="b"/>' +
+                '<feColorMatrix in="b" mode="matrix" ' +
+                'values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 22 -11"/>' +
+                '</filter></defs>';
+            document.body.appendChild(svg);
+        }
+
+        // size the filtered containers to span all boxes (+ halo margin)
+        var maxR = 0, maxB = 0;
+        $('.box').each(function () {
+            maxR = Math.max(maxR, this.offsetLeft + this.offsetWidth);
+            maxB = Math.max(maxB, this.offsetTop + this.offsetHeight);
+        });
+        // one goo container per colour layer; nearby boxes' layers fuse within it
+        var containers = LAYERS.map(function () {
+            return $('<div>').addClass('outline-layer').appendTo('body').css({
+                position: 'absolute', top: 0, left: 0,
+                width: (maxR + 300) + 'px', height: (maxB + 300) + 'px',
+                filter: 'url(#goo)'
+            })[0];
+        });
+
         $('.box').each(function () {
             var box = this;
             box.style.zIndex = box.style.zIndex || 100;   // box sits above its outline
-            var layers = LAYERS.map(function (spec) {
-                var el = $('<div>').appendTo('body').addClass(spec.cls).css({
+            var layers = LAYERS.map(function (spec, i) {
+                var el = $('<div>').appendTo(containers[i]).addClass(spec.cls).css({
                     backgroundColor: spec.color,
                     position: 'absolute',
                     borderRadius: spec.b + 'px'
