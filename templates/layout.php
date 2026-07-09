@@ -19,6 +19,8 @@
     <script src="/assets/Browser.js"></script>
     <script src="/assets/MainView.js"></script>
     <script src="/assets/main.js"></script>
+    <script src="/assets/BoxDrag.js"></script>
+    <script src="/assets/ZoomPan.js"></script>
 
 </body>
 </html>
