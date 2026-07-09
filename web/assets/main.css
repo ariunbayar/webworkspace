@@ -10,7 +10,20 @@ ul{ padding-left: 20px;  }
     border-width: 10px 1px 1px 1px;
     background-color: #eee;
     position: absolute;
+    cursor: move;
+    touch-action: none;      /* let pointer drags work on touch without scrolling */
 }
+/* bottom-right resize grip */
+.box::after{
+    content: '';
+    position: absolute;
+    right: 0; bottom: 0;
+    width: 14px; height: 14px;
+    cursor: nwse-resize;
+    background: linear-gradient(135deg, transparent 45%, #b0b0b0 45%, #b0b0b0 55%,
+        transparent 55%, transparent 70%, #b0b0b0 70%, #b0b0b0 80%, transparent 80%);
+}
+.box.dragging{ cursor: grabbing; user-select: none; }
 /* TODO don't set width here */
 .browser ul{ color: #657b83; padding-left: 0; background: #fdf6e3 url(/assets/browser_dash.png) 11px;}
 .browser ul li{ list-style: none; background-color: #fdf6e3; }
