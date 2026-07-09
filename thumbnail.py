@@ -22,6 +22,8 @@ from pygments.util import ClassNotFound
 FONT_SIZE = int(os.environ.get("THUMB_FONT_SIZE", 7))
 FONT_NAME = os.environ.get("THUMB_FONT_NAME", "DejaVu Sans Mono")
 STYLE = os.environ.get("THUMB_STYLE", "monokai")
+# vertical gap between lines; 0 crams rows so glyphs overlap at small sizes
+LINE_PAD = int(os.environ.get("THUMB_LINE_PAD", 2))
 CACHE_DIR = os.environ.get("THUMB_CACHE_DIR", "/tmp/thumb_cache")
 
 FORMATTER = ImageFormatter(
@@ -29,7 +31,7 @@ FORMATTER = ImageFormatter(
     font_name=FONT_NAME,
     font_size=FONT_SIZE,
     line_numbers=False,
-    line_pad=0,
+    line_pad=LINE_PAD,
 )
 
 
@@ -51,7 +53,7 @@ def generate_thumbnail(filename):
     except OSError:
         mtime = 0
 
-    seed = "%s:%s:fs%s:%s" % (filename, mtime, FONT_SIZE, STYLE)
+    seed = "%s:%s:fs%s:lp%s:%s" % (filename, mtime, FONT_SIZE, LINE_PAD, STYLE)
     path = os.path.join(CACHE_DIR, hashlib.md5(seed.encode()).hexdigest() + ".png")
 
     if os.path.exists(path):
