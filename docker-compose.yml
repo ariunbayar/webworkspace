@@ -11,7 +11,7 @@ services:
     stop_grace_period: 3s
     environment:
       - PORT=8000
-      - DEMO_DIR=${DEMO_DIR:-/app/static/js}
+      - DEMO_DIR=${DEMO_DIR:-/app}
       - THUMB_FONT_SIZE=${THUMB_FONT_SIZE:-7}
 
   # Original PHP app (feature-richer): file browser, project mgmt, open-in-editor.
@@ -24,6 +24,6 @@ services:
     ports:
       - "${PHP_PORT:-8081}:8081"
     environment:
-      - DEMO_DIR=${PHP_DEMO_DIR:-/app/static/js}
+      - DEMO_DIR=${PHP_DEMO_DIR:-/app}
     stop_signal: SIGINT
     stop_grace_period: 3s
