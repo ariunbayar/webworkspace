@@ -18,11 +18,14 @@ $(function () {
     grid.style.backgroundSize = GRID + 'px ' + GRID + 'px';
     document.body.appendChild(grid);
 
+    // large grid centred on the origin so it covers any pan (including negative
+    // coords); OFFSET is a multiple of GRID so cells stay aligned to content 0,0
+    var OFFSET = 700 * GRID;          // 21000px each way with the default 30px grid
     function sizeGrid() {
-        // cover the whole pan/zoom canvas, not just the current viewport
-        var doc = document.documentElement;
-        grid.style.width = Math.max(doc.scrollWidth, window.innerWidth, 8000) + 'px';
-        grid.style.height = Math.max(doc.scrollHeight, window.innerHeight, 8000) + 'px';
+        grid.style.left = -OFFSET + 'px';
+        grid.style.top = -OFFSET + 'px';
+        grid.style.width = 2 * OFFSET + 'px';
+        grid.style.height = 2 * OFFSET + 'px';
     }
     sizeGrid();
     $(window).on('resize', sizeGrid);
