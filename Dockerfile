@@ -18,7 +18,7 @@ COPY . .
 
 ENV FLASK_APP=runserver:app \
     REDIS_HOST=127.0.0.1 \
-    DEMO_DIR=/app/static/js \
+    DEMO_DIR=/app \
     PORT=8000
 
 EXPOSE 8000

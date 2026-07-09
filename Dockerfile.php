@@ -14,7 +14,7 @@ WORKDIR /app
 COPY . .
 RUN chmod +x docker/php-entrypoint.sh
 
-ENV DEMO_DIR=/app/static/js
+ENV DEMO_DIR=/app
 EXPOSE 8081
 
 ENTRYPOINT ["/app/docker/php-entrypoint.sh"]
