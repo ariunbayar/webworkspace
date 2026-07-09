@@ -54,11 +54,11 @@ $(function () {
         if (!drag.moved) { return; }
 
         if (drag.resize) {
-            drag.el.style.width  = Math.max(MIN_W, drag.width  + dx) + 'px';
-            drag.el.style.height = Math.max(MIN_H, drag.height + dy) + 'px';
+            drag.el.style.width  = Math.max(MIN_W, snap(drag.width  + dx)) + 'px';
+            drag.el.style.height = Math.max(MIN_H, snap(drag.height + dy)) + 'px';
         } else {
-            drag.el.style.left = (drag.left + dx) + 'px';
-            drag.el.style.top  = (drag.top  + dy) + 'px';
+            drag.el.style.left = snap(drag.left + dx) + 'px';
+            drag.el.style.top  = snap(drag.top  + dy) + 'px';
         }
     });
 
@@ -75,8 +75,8 @@ $(function () {
         var dy = oe.clientY - d.startY;
         if (d.resize) {
             d.model.set({
-                width:  snap(Math.max(MIN_W, d.width  + dx)),
-                height: snap(Math.max(MIN_H, d.height + dy))
+                width:  Math.max(MIN_W, snap(d.width  + dx)),
+                height: Math.max(MIN_H, snap(d.height + dy))
             });
         } else {
             d.model.set({ left: snap(d.left + dx), top: snap(d.top + dy) });
