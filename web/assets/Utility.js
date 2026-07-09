@@ -1,41 +1,56 @@
 var Utility = {
 
+    // Layered rounded outline behind each box. Each box owns its 3 layers, kept
+    // glued to it: a MutationObserver on the box's inline style repositions them
+    // whenever it moves or resizes (mouse drag/resize or keyboard).
     drawBoxOutline: function () {
 
-        // outline borders
-        var borderWidth=5;
-        var borderRange=80;
-        var colors = ['#F27360', '#9AAABA', '#6E6F71', '#485868', '#F3C766', '#FBE6E1', '#BCBDC1', '#9FC2BB', '#F5A46C'];
-        var fn = function(c, b, cls){
-            els = $('.box');
-            els.css('z-index', 100);
-            els.each(function(){
-                el=$(this);
-                p=el.position();
-                w=el.width();
-                h=el.height();
-                $('<div>').appendTo('body').css({
-                    backgroundColor: c,
+        var LAYERS = [
+            {color: '#9AAABA', b: 85, cls: 'back'},   // grey-blue, outermost
+            {color: '#fff',    b: 80, cls: 'front'},  // white
+            {color: '#DDEEFF', b: 60, cls: 'front1'}  // light blue, innermost
+        ];
+        var self = this;
+
+        $('.box').each(function () {
+            var box = this;
+            box.style.zIndex = box.style.zIndex || 100;   // box sits above its outline
+            var layers = LAYERS.map(function (spec) {
+                var el = $('<div>').appendTo('body').addClass(spec.cls).css({
+                    backgroundColor: spec.color,
                     position: 'absolute',
-                    top: (p.top-b)+'px',
-                    left: (p.left-b)+'px',
-                    borderRadius: b+'px',
-                    width: (w+b*2)+'px',
-                    height: (h+b*2)+'px'
-                }).addClass(cls);
+                    borderRadius: spec.b + 'px'
+                })[0];
+                return {el: el, b: spec.b};
             });
-        };
-        fn(colors[1], borderRange+borderWidth, 'back');
-        fn('#fff', borderRange, 'front');
-        fn('#DDEEFF', borderRange-20, 'front1');
+            $(box).data('outline', layers);
+            self.updateBoxOutline(box);
+        });
 
-        // change colors
-        //var i = 0;
-        //setInterval(function(){
-            //$('.back').css('background-color', colors[i]);
-            //i = (i + 1) % colors.length;
-        //}, 3000)
+        if (!this._outlineObserver) {
+            this._outlineObserver = new MutationObserver(function (muts) {
+                muts.forEach(function (m) {
+                    if (m.target.classList && m.target.classList.contains('box')) {
+                        self.updateBoxOutline(m.target);
+                    }
+                });
+            });
+            this._outlineObserver.observe(document.body, {
+                attributes: true, attributeFilter: ['style'], subtree: true
+            });
+        }
+    },
 
+    updateBoxOutline: function (box) {
+        var layers = $(box).data('outline');
+        if (!layers) { return; }
+        var t = box.offsetTop, l = box.offsetLeft, w = box.offsetWidth, h = box.offsetHeight;
+        layers.forEach(function (layer) {
+            layer.el.style.top = (t - layer.b) + 'px';
+            layer.el.style.left = (l - layer.b) + 'px';
+            layer.el.style.width = (w + layer.b * 2) + 'px';
+            layer.el.style.height = (h + layer.b * 2) + 'px';
+        });
     },
 
     translateKeys: function (e) {
