@@ -120,28 +120,9 @@ var MainView = Backbone.View.extend({
         model.set('isActive', true);
         this.currentModel = model;
 
-        // scroll window to show current box fully in viewport
-        var winBound = {
-            left   : $(window).scrollLeft(),
-            top    : $(window).scrollTop(),
-            right  : $(window).scrollLeft() + $(window).width(),
-            bottom : $(window).scrollTop()  + $(window).height()
-        };
-        var boxBound = this.getBoundaries(model);
-        var scrollProps = {scrollTop: winBound.top, scrollLeft: winBound.left};
-        if (boxBound.bottom > winBound.bottom) {
-            scrollProps.scrollTop = boxBound.bottom + Constants.viewPortPadding - $(window).height();
-        }
-        if (boxBound.right > winBound.right) {
-            scrollProps.scrollLeft = boxBound.right + Constants.viewPortPadding - $(window).width();
-        }
-        if (winBound.top > boxBound.top) {
-            scrollProps.scrollTop = boxBound.top - Constants.viewPortPadding;
-        }
-        if (winBound.left > boxBound.left) {
-            scrollProps.scrollLeft = boxBound.left - Constants.viewPortPadding;
-        }
-        $('html, body').stop().animate(scrollProps, 100);
+        // Note: scroll-into-view removed — the canvas now pans/zooms via a CSS
+        // transform (ZoomPan.js), so animating window scroll here both nudged the
+        // view on mousedown and offset the wheel-zoom cursor mapping.
 
     },
 
