@@ -18,7 +18,9 @@ from pygments.styles import get_style_by_name
 from pygments.util import ClassNotFound
 
 
-CHAR_W, CHAR_H = 2, 3            # block size per character
+# block size per character (px); override with THUMB_CHAR_W / THUMB_CHAR_H
+CHAR_W = int(os.environ.get("THUMB_CHAR_W", 4))
+CHAR_H = int(os.environ.get("THUMB_CHAR_H", 6))
 TAB_WIDTH = 4
 STYLE = get_style_by_name("monokai")
 DEFAULT_FG = "888888"
@@ -82,7 +84,8 @@ def generate_thumbnail(filename):
     except OSError:
         mtime = 0
 
-    key = hashlib.md5(("%s:%s" % (filename, mtime)).encode()).hexdigest()
+    seed = "%s:%s:%sx%s" % (filename, mtime, CHAR_W, CHAR_H)
+    key = hashlib.md5(seed.encode()).hexdigest()
     path = os.path.join(CACHE_DIR, key + ".png")
 
     if os.path.exists(path):

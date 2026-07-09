@@ -8,3 +8,5 @@ services:
     environment:
       - PORT=8000
       - DEMO_DIR=${DEMO_DIR:-/app/static/js}
+      - THUMB_CHAR_W=${THUMB_CHAR_W:-4}
+      - THUMB_CHAR_H=${THUMB_CHAR_H:-6}
