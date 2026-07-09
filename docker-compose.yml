@@ -5,6 +5,10 @@ services:
     build: .
     ports:
       - "${PORT:-8000}:8000"
+    # flask run ignores SIGTERM (Docker's default stop signal), so stop waited
+    # the full 10s grace before SIGKILL. SIGINT exits it cleanly; cap the wait.
+    stop_signal: SIGINT
+    stop_grace_period: 3s
     environment:
       - PORT=8000
       - DEMO_DIR=${DEMO_DIR:-/app/static/js}
