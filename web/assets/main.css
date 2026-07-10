@@ -45,6 +45,26 @@ ul{ padding-left: 20px;  }
         transparent 55%, transparent 70%, #b0b0b0 70%, #b0b0b0 80%, transparent 80%);
 }
 .box.dragging{ cursor: grabbing; user-select: none; }
+
+/* live stats panel, pinned to the viewport bottom-right (see ZoomPan.js) */
+#statsPanel{
+    position: fixed;
+    right: 8px; bottom: 8px;
+    z-index: 10000;
+    padding: 6px 9px;
+    font-size: 11px;
+    line-height: 1.45;
+    color: #657b83;
+    background: rgba(253, 246, 227, 0.92);
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    pointer-events: none;
+    user-select: none;
+    min-width: 168px;
+}
+#statsPanel .stat-row{ display: flex; justify-content: space-between; gap: 14px; }
+#statsPanel .stat-key{ color: #93a1a1; text-transform: uppercase; letter-spacing: .04em; }
+#statsPanel .stat-val{ font-weight: bold; white-space: nowrap; }
 /* TODO don't set width here */
 .browser ul{ color: #657b83; padding-left: 0; background: #fdf6e3 url(/assets/browser_dash.png) 11px;}
 .browser ul li{ list-style: none; background-color: #fdf6e3; }
