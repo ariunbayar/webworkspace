@@ -17,6 +17,28 @@ $(function () {
         return GRID * Math.pow(2, k);
     }
 
+    // Live stats panel pinned to the viewport's bottom-right. It must live
+    // outside the transformed <body> — position:fixed inside a transformed
+    // ancestor is relative to that ancestor, not the viewport — so attach it to
+    // <html>. Rows update from the zoom/pan math, pointer moves, and a
+    // MutationObserver watching box style/class changes (move/resize/select).
+    var ROWS = [
+        ['zoom', 'zoom'], ['cursor', 'cursor'], ['mode', 'mode'],
+        ['selected', 'file'], ['box', 'box'], ['action', 'action']
+    ];
+    var panel = document.createElement('div');
+    panel.id = 'statsPanel';
+    var cells = {};
+    ROWS.forEach(function (r) {
+        var row = document.createElement('div'); row.className = 'stat-row';
+        var k = document.createElement('span'); k.className = 'stat-key'; k.textContent = r[1];
+        var v = document.createElement('span'); v.className = 'stat-val'; v.textContent = '—';
+        row.appendChild(k); row.appendChild(v); panel.appendChild(row);
+        cells[r[0]] = v;
+    });
+    document.documentElement.appendChild(panel);
+    function setStat(k, v) { if (cells[k]) { cells[k].textContent = v; } }
+
     function apply() {
         body.style.transform = 'translate(' + panX + 'px,' + panY + 'px) scale(' + scale + ')';
         window.canvasScale = scale;
@@ -24,6 +46,7 @@ $(function () {
         window.canvasGridStep = step;
         var grid = document.getElementById('dragGrid');
         if (grid) { grid.style.backgroundSize = step + 'px ' + step + 'px'; }
+        setStat('zoom', Math.round(scale * 100) + '%');
     }
     body.style.transformOrigin = '0 0';
     window.canvasScale = 1;
@@ -104,5 +127,48 @@ $(function () {
     $(document).on('pointerup pointercancel', function () {
         if (pan) { pan = null; body.style.cursor = ''; resumeMergeSoon(); }
     });
+
+    // ---- live stats: mode, selection, and move/resize action ----
+    var dragSnap = null;   // box geometry captured when a drag begins
+    function refresh() {
+        setStat('mode', (window.mainView && mainView.currentMode === 'MODE_EDIT') ? 'edit' : 'normal');
+
+        // a box mid-drag reports live geometry from the DOM (the model only
+        // updates on release), and whether it's moving or resizing
+        var dragging = document.querySelector('.box.dragging');
+        if (dragging) {
+            var w = dragging.offsetWidth, h = dragging.offsetHeight;
+            var x = dragging.offsetLeft, y = dragging.offsetTop;
+            if (!dragSnap) { dragSnap = { w: w, h: h }; }
+            setStat('action', (w !== dragSnap.w || h !== dragSnap.h) ? 'resizing' : 'moving');
+            setStat('box', w + ' × ' + h + '  @ ' + x + ', ' + y);
+            return;
+        }
+        dragSnap = null;
+        setStat('action', 'idle');
+
+        // at rest, report the selected box from its model
+        var m = window.mainView && mainView.currentModel;
+        if (m) {
+            setStat('selected', m.get('filename') || '(browser)');
+            setStat('box', Math.round(m.get('width')) + ' × ' + Math.round(m.get('height')) +
+                           '  @ ' + Math.round(m.get('left')) + ', ' + Math.round(m.get('top')));
+        } else {
+            setStat('selected', 'none');
+            setStat('box', '—');
+        }
+    }
+
+    // cursor position in content coords (undo pan/zoom)
+    document.addEventListener('mousemove', function (e) {
+        setStat('cursor', Math.round((e.clientX - panX) / scale) + ', ' +
+                          Math.round((e.clientY - panY) / scale));
+    });
+
+    // box style/class changes = move/resize/select/mode switch -> refresh
+    new MutationObserver(refresh).observe(document.body, {
+        attributes: true, attributeFilter: ['style', 'class'], subtree: true
+    });
+    refresh();
 
 });
