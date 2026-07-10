@@ -25,12 +25,21 @@ $(function(){
                 tmpBox.appendTo('body');
             }
 
-            // position the indicator
-            var left = pre.offset().left;
-            tmpBox.css({
-                left: left,
-                top: e.pageY - boxHeight / 2,
-            });
+            // position the indicator on the box's left border, centred on the
+            // cursor. tmpBox lives in <body>, which is pan/zoom transformed, so
+            // work in content space (layout offsets + canvasScale) rather than
+            // screen coords — otherwise the transform is applied twice and the
+            // bar drifts far from the box.
+            var box = pre.closest('.box')[0];
+            if (box) {
+                var scale = window.canvasScale || 1;
+                var boxRect = box.getBoundingClientRect();
+                var contentY = box.offsetTop + (e.clientY - boxRect.top) / scale;
+                tmpBox.css({
+                    left: box.offsetLeft,
+                    top: contentY - boxHeight / 2,
+                });
+            }
 
             // define line range
             var height = parseInt(pre.css('height'));
