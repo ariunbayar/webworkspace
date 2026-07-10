@@ -47,6 +47,13 @@ $(function () {
         var model = modelForBox(boxEl);
         if (!model) { return; }
 
+        // a click always selects the box
+        if (window.mainView && mainView.switchTo) { mainView.switchTo(model); }
+
+        // move/resize is only allowed in edit mode (press 'e'; 'Esc' to exit);
+        // otherwise the click is just a selection
+        if (!window.mainView || mainView.currentMode !== 'MODE_EDIT') { return; }
+
         var rect = boxEl.getBoundingClientRect();
         var isResize = (oe.clientX - rect.left) >= rect.width - HANDLE
                     && (oe.clientY - rect.top) >= rect.height - HANDLE;
@@ -58,7 +65,6 @@ $(function () {
             width: model.get('width'), height: model.get('height')
         };
 
-        if (window.mainView && mainView.switchTo) { mainView.switchTo(model); }
         boxEl.style.zIndex = ++topZ;
         boxEl.classList.add('dragging');
         grid.classList.add('front');       // emphasize the grid while dragging
