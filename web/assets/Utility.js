@@ -1,42 +1,40 @@
 var Utility = {
 
-    // pure-CSS goo: blur softens edges into gradients, contrast slams them back
-    // to hard edges so nearby outlines fuse
-    _mergeFilter: 'blur(10px) contrast(14)',
     _outlineContainers: null,
 
-    // toggle the merge filter off during interaction (drag/zoom) for smoothness
-    setOutlineMerge: function (on) {
-        var f = on ? this._mergeFilter : 'none';
-        (this._outlineContainers || []).forEach(function (c) { c.style.filter = f; });
+    // Show the outline (normal/rest mode) or hide it entirely (during
+    // move/resize/pan/zoom) for smoothness. Toggles display so the layers keep
+    // their true colours at rest — no blur/contrast to wash them out.
+    showOutline: function (on) {
+        (this._outlineContainers || []).forEach(function (c) {
+            c.style.display = on ? '' : 'none';
+        });
     },
 
-    // Layered rounded outline behind each box. Each box owns its 3 layers, kept
-    // glued to it: a MutationObserver on the box's inline style repositions them
-    // whenever it moves or resizes (mouse drag/resize or keyboard).
+    // Layered rounded outline behind each box: three concentric colour layers,
+    // kept glued to it by a MutationObserver on the box's inline style, so they
+    // reposition whenever the box moves or resizes (mouse drag/resize or keyboard).
     drawBoxOutline: function () {
 
         var LAYERS = [
-            {color: '#9AAABA', b: 85, cls: 'back'},   // grey-blue, outermost
-            {color: '#fff',    b: 80, cls: 'front'},  // white
-            {color: '#DDEEFF', b: 60, cls: 'front1'}  // light blue, innermost
+            {color: '#9AAABA', b: 85, cls: 'outline1'},   // grey-blue, outermost
+            {color: '#fff',    b: 80, cls: 'outline2'},   // white, middle
+            {color: '#DDEEFF', b: 60, cls: 'outline3'}    // light blue, innermost
         ];
         var self = this;
 
-        // size the filtered containers to span all boxes (+ halo margin)
+        // size the containers to span all boxes (+ halo margin)
         var maxR = 0, maxB = 0;
         $('.box').each(function () {
             maxR = Math.max(maxR, this.offsetLeft + this.offsetWidth);
             maxB = Math.max(maxB, this.offsetTop + this.offsetHeight);
         });
-        // one container per colour layer, merged with a pure-CSS "goo": blur
-        // rounds/joins nearby shapes, contrast slams the gradient back to a hard
-        // edge. Toggled off during drag/zoom via setOutlineMerge() to stay smooth.
+        // one container per colour layer; hidden as a group during interaction
+        // via showOutline() and shown at rest (see the toggle above).
         var containers = LAYERS.map(function () {
             return $('<div>').addClass('outline-layer').appendTo('body').css({
                 position: 'absolute', top: 0, left: 0,
-                width: (maxR + 300) + 'px', height: (maxB + 300) + 'px',
-                filter: self._mergeFilter
+                width: (maxR + 300) + 'px', height: (maxB + 300) + 'px'
             })[0];
         });
         this._outlineContainers = containers;

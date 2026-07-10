@@ -42,16 +42,16 @@ $(function () {
         apply();
     }
 
-    // pause the (expensive) outline-merge filter while interacting, resume at rest
+    // hide the outline while interacting (pan/zoom), show it again at rest
     var mergeTimer = null;
     function pauseMerge() {
-        if (window.Utility) { Utility.setOutlineMerge(false); }
+        if (window.Utility) { Utility.showOutline(false); }
         if (mergeTimer) { clearTimeout(mergeTimer); mergeTimer = null; }
     }
     function resumeMergeSoon() {
         if (mergeTimer) { clearTimeout(mergeTimer); }
         mergeTimer = setTimeout(function () {
-            if (window.Utility) { Utility.setOutlineMerge(true); }
+            if (window.Utility) { Utility.showOutline(true); }
         }, 200);
     }
 
