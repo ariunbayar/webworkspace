@@ -14,6 +14,7 @@ import argparse
 import json
 import re
 import subprocess
+import sys
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -506,7 +507,12 @@ def main():
     ap.add_argument("--no-focus", action="store_true", help="serve read-only, refuse focus requests")
     args = ap.parse_args()
     Handler.allow_focus = not args.no_focus
-    srv = ThreadingHTTPServer((args.host, args.port), Handler)
+    try:
+        srv = ThreadingHTTPServer((args.host, args.port), Handler)
+    except OSError as e:
+        # the common case: a second launch while one is already serving
+        sys.exit(f"cannot listen on {args.host}:{args.port} ({e}) — "
+                 f"another winlist is probably already running")
     print(f"winlist → http://{args.host}:{args.port}  (Ctrl-C to stop)")
     try:
         srv.serve_forever()
