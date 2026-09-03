@@ -6,6 +6,7 @@ uses, and focuses one on click or keyboard pick.
 
 Run:  python3 winlist_server.py           # then open http://localhost:8766
       python3 winlist_server.py --port N  # custom port
+      python3 winlist_server.py --open      # and bring the page up in the browser
       python3 winlist_server.py --no-focus  # read-only, refuse focus requests
 
 X11 only: it reads EWMH properties via xprop/xdotool.
@@ -15,6 +16,7 @@ import json
 import re
 import subprocess
 import sys
+import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -232,11 +234,54 @@ def focus(wid):
     return True, "ok"
 
 
+BROWSERS = {"Google Chrome", "Chromium", "Firefox"}
+PAGE_TITLE = "Open windows"
+DEFAULT_PORT = 8766
+
+
+def page_title(port):
+    """Off the default port the title carries it, so one winlist's page is
+    never mistaken for another's."""
+    return PAGE_TITLE if port == DEFAULT_PORT else "%s :%d" % (PAGE_TITLE, port)
+
+
+def find_page_window(title):
+    """The browser window showing our page, if one is up."""
+    pattern = "^%s( [-—] .*)?$" % re.escape(title)   # browsers append their own name
+    for num in re.findall(r"\d+", sh("xdotool", "search", "--name", pattern)):
+        wid = "0x%x" % int(num)
+        cls = unquote(sh("xprop", "-id", wid, "WM_CLASS").split(",")[-1])
+        if PRETTY.get(cls.lower()) in BROWSERS:
+            return wid
+    return None
+
+
+def show_page(url, port):
+    """Bring the page up, reusing a browser window already showing it.
+
+    Plain xdg-open adds a tab on every launch, and leaves it in whichever
+    window the browser picked — which may be on another workspace entirely.
+    So look for the page first, and raise whatever we end up with."""
+    want = page_title(port)
+    wid = find_page_window(want)
+    if wid:
+        sh("xdotool", "windowactivate", wid)
+        return "raised the window already showing it"
+    sh("xdg-open", url)
+    for _ in range(12):
+        time.sleep(0.25)
+        wid = find_page_window(want)
+        if wid:
+            sh("xdotool", "windowactivate", wid)
+            break
+    return "opened it in the browser"
+
+
 # ---- page -----------------------------------------------------------------
 
 PAGE = r"""<!doctype html>
 <meta charset="utf-8">
-<title>Open windows</title>
+<title>__TITLE__</title>
 <style>
   :root { --bg:#f7f7f5; --panel:#fff; --line:#e3e2dd; --fg:#1c1b19; --dim:#6f6d67;
           --accent:#b8562f; --chip:#efeee9; --empty:#f2f1ed }
@@ -280,7 +325,13 @@ PAGE = r"""<!doctype html>
   ul { list-style:none; margin:0; padding:4px; display:flex; flex-direction:column; gap:1px; flex:1 }
   li { display:flex; align-items:center; gap:6px; padding:3px 5px; border-radius:4px;
        min-width:0; cursor:pointer }
-  li:hover { background:var(--chip) }
+  li.win { padding-left:16px }
+  li.head { cursor:default; color:var(--dim); font-size:10.5px; letter-spacing:.03em;
+            padding:4px 5px 1px; text-transform:uppercase }
+  li.head:hover { background:none }
+  li.head + li.win, li.win + li.win { border-left:1px solid var(--line); margin-left:8px;
+                                      padding-left:8px; border-radius:0 4px 4px 0 }
+  li:hover:not(.head) { background:var(--chip) }
   li.focused { background:color-mix(in srgb, var(--accent) 15%, transparent) }
   li.sel, .rect.sel { outline:2px solid var(--accent); outline-offset:-1px }
   li.off { opacity:.28 }
@@ -345,6 +396,20 @@ function visible() {
 
 function onWorkspace(i) { return data.windows.filter(w => w.desktop === i); }
 
+// Windows of one app sit together, apps ordered by their topmost window, so two
+// windows sharing a title never end up split by something stacked between them.
+function byApp(ws) {
+  const order = [], groups = new Map();
+  ws.forEach(w => {
+    if (!groups.has(w.app)) { groups.set(w.app, []); order.push(w.app); }
+    groups.get(w.app).push(w);
+  });
+  return order.map(app => [app, groups.get(app)]);
+}
+
+// the on-screen order, which is what the arrow keys walk
+function ordered(i) { return byApp(onWorkspace(i)).flatMap(([, group]) => group); }
+
 function render() {
   if (!data) return;
   const match = visible(), grid = $('#grid');
@@ -379,14 +444,22 @@ function render() {
       });
     } else {
       const ul = document.createElement('ul');
-      ws.forEach(w => {
-        const li = document.createElement('li');
-        li.className = (w.focused ? 'focused ' : '') + (match(w) ? '' : 'off ') + (w.id === sel ? 'sel' : '');
-        li.title = `${w.app} · pid ${w.pid} · ${w.id}`;
-        li.innerHTML = `<span class="dot" style="background:${colorOf(w.app)}"></span>
-          <span class="t2">${esc(w.title)}</span><span class="app">${esc(w.app)}</span>`;
-        li.onclick = () => activate(w.id);
-        ul.append(li);
+      byApp(ws).forEach(([app, group]) => {
+        const head = document.createElement('li');
+        head.className = 'head';
+        head.innerHTML = `<span class="dot" style="background:${colorOf(app)}"></span>
+          <span class="t2">${esc(app)}</span>
+          <span class="app">${group.length > 1 ? group.length : ''}</span>`;
+        ul.append(head);
+        group.forEach(w => {
+          const li = document.createElement('li');
+          li.className = 'win' + (w.focused ? ' focused' : '') + (match(w) ? '' : ' off')
+            + (w.id === sel ? ' sel' : '');
+          li.title = `${w.app} · pid ${w.pid} · ${w.id}`;
+          li.innerHTML = `<span class="t2">${esc(w.title)}</span>`;
+          li.onclick = () => activate(w.id);
+          ul.append(li);
+        });
       });
       card.append(ul);
     }
@@ -425,7 +498,7 @@ function move(dx, dy) {
   if (!cur) { sel = pick[0].id; return render(); }
 
   if (dy && !dx) {                       // within a workspace, then on to the next one
-    const here = onWorkspace(cur.desktop).filter(match);
+    const here = ordered(cur.desktop).filter(match);
     const at = here.findIndex(w => w.id === cur.id);
     if (at + dy >= 0 && at + dy < here.length) { sel = here[at + dy].id; return render(); }
   }
@@ -435,7 +508,7 @@ function move(dx, dy) {
     i += dx + dy * cols;
     if (i < 0) i += cells;
     if (i >= cells) i -= cells;
-    const there = onWorkspace(i).filter(match);
+    const there = ordered(i).filter(match);
     if (there.length) { sel = there[dy > 0 ? 0 : there.length - 1].id; return render(); }
   }
 }
@@ -469,6 +542,12 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, *a):
         pass
 
+    def handle(self):
+        try:
+            super().handle()
+        except (BrokenPipeError, ConnectionResetError):
+            pass  # a reloaded page walking away mid-poll is not an error
+
     def _send(self, body, ctype="application/json", code=200):
         if isinstance(body, str):
             body = body.encode()
@@ -482,7 +561,8 @@ class Handler(BaseHTTPRequestHandler):
         if self.path.startswith("/api/windows"):
             self._send(json.dumps(sample()))
         elif self.path in ("/", "/index.html"):
-            self._send(PAGE, "text/html; charset=utf-8")
+            page = PAGE.replace("__TITLE__", page_title(self.server.server_address[1]))
+            self._send(page, "text/html; charset=utf-8")
         else:
             self._send(json.dumps({"error": "not found"}), code=404)
 
@@ -502,18 +582,25 @@ class Handler(BaseHTTPRequestHandler):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--port", type=int, default=8766)
+    ap.add_argument("--port", type=int, default=DEFAULT_PORT)
     ap.add_argument("--host", default="127.0.0.1")
+    ap.add_argument("--open", action="store_true", help="show the page in the browser once serving")
     ap.add_argument("--no-focus", action="store_true", help="serve read-only, refuse focus requests")
     args = ap.parse_args()
     Handler.allow_focus = not args.no_focus
+    url = f"http://{args.host}:{args.port}/"
     try:
         srv = ThreadingHTTPServer((args.host, args.port), Handler)
     except OSError as e:
-        # the common case: a second launch while one is already serving
+        # the common case: launched a second time while one is already serving
+        if args.open:
+            print(f"winlist is already serving {url} — {show_page(url, args.port)}")
+            return
         sys.exit(f"cannot listen on {args.host}:{args.port} ({e}) — "
                  f"another winlist is probably already running")
-    print(f"winlist → http://{args.host}:{args.port}  (Ctrl-C to stop)")
+    if args.open:
+        threading.Thread(target=show_page, args=(url, args.port), daemon=True).start()
+    print(f"winlist → {url}  (Ctrl-C to stop)")
     try:
         srv.serve_forever()
     except KeyboardInterrupt:
