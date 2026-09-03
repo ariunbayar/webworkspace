@@ -27,12 +27,16 @@ Open windows
 Live list of every visible window, arranged in the same workspace grid the
 desktop uses, stdlib only:
 
-    python3 winlist_server.py
+    python3 winlist_server.py --open
 
-Then open http://127.0.0.1:8766/ — polls every 2s. Each workspace is a cell of
-the grid (read from the wsmatrix extension's `num-columns`/`num-rows`, falling
-back to `_NET_DESKTOP_LAYOUT`), empty workspaces included so cells stay put.
-Windows are labelled by app, resolved from `WM_CLASS` plus the process running
+Serves http://127.0.0.1:8766/ and brings the page up in the browser — raising
+the window that already shows it rather than opening another tab, so launching
+this twice costs nothing. Drop `--open` to just serve. The page polls every 2s.
+
+Each workspace is a cell of the grid (read from the wsmatrix extension's
+`num-columns`/`num-rows`, falling back to `_NET_DESKTOP_LAYOUT`), empty
+workspaces included so cells stay put. Within a workspace, windows are grouped
+under the app they belong to, resolved from `WM_CLASS` plus the process running
 inside the window — a terminal running `claude` or `vim` says so instead of
 "XTerm". "Titles" lists window titles per workspace; "Map" draws each workspace
 to scale with the real window rectangles.
