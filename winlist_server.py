@@ -508,16 +508,13 @@ PAGE = r"""<!doctype html>
   .btn[aria-pressed=true] { background:var(--accent); border-color:var(--accent); color:#fff }
   #full { font-size:14px; line-height:1; padding:5px 9px }
   #zoom { width:96px; accent-color:var(--accent) }
-  .pan { display:none; position:relative; overflow:auto; border:1px solid var(--line);
+  /* the surface is placed, not scrolled: overflow is hidden and the canvas is
+     translated, so a drag can carry everything as far as you like */
+  .pan { display:none; position:relative; overflow:hidden; border:1px solid var(--line);
          border-radius:8px; background:var(--empty); height:min(78vh,900px); min-height:380px;
-         overscroll-behavior:contain; touch-action:none; user-select:none;
-         -webkit-user-select:none }
+         touch-action:none; user-select:none; -webkit-user-select:none; cursor:grab }
   .pan.grabbing { cursor:grabbing }
-  .canvas { position:relative; transform-origin:0 0 }
-  .zone { position:absolute; border:1px dashed var(--line); border-radius:8px }
-  .zone.current { border-color:var(--accent); border-style:solid; opacity:.7 }
-  .zone i { position:absolute; top:4px; left:9px; font-style:normal; font-weight:700;
-            color:var(--dim); opacity:.45; font-variant-numeric:tabular-nums }
+  .canvas { position:absolute; top:0; left:0; width:0; height:0; will-change:transform }
   .tile { position:absolute; border-radius:5px; overflow:hidden; background:var(--panel);
           border:1px solid var(--line); box-shadow:0 2px 8px rgba(0,0,0,.16);
           display:flex; flex-direction:column; cursor:grab; touch-action:none }
@@ -548,7 +545,7 @@ PAGE = r"""<!doctype html>
     <button id="full" class="btn" aria-pressed="false"
             title="Give it the whole browser window (f)">⤢</button>
     <span class="ctl" id="ctl">
-      <input type="range" id="zoom" min="5" max="70" step="1" title="Zoom">
+      <input type="range" id="zoom" min="2" max="100" step="1" title="Zoom">
       <button id="fit" class="btn">Fit</button>
       <button id="reset" class="btn">Reset layout</button>
     </span>
@@ -556,9 +553,7 @@ PAGE = r"""<!doctype html>
       <kbd>/</kbd> filter · <kbd>f</kbd> full window · <kbd>Esc</kbd> clear</span>
   </div>
   <div class="grid" id="grid"></div>
-  <div class="pan" id="pan"><div class="canvas" id="canvas">
-    <div id="zones"></div><div id="tiles"></div>
-  </div></div>
+  <div class="pan" id="pan"><div class="canvas" id="canvas"><div id="tiles"></div></div></div>
   <footer id="foot"></footer>
 </div>
 <script>
@@ -584,6 +579,7 @@ let view = store.get('view', 'list');
 let full = store.get('full', false);       // fill the browser window, F11 not involved
 let layout = store.get('layout', {});      // window id -> [x, y] on the virtual screen
 let zoom = store.get('zoom', 0);           // 0 until we have measured a fit
+let origin = store.get('origin', [0, 0]);  // where the surface sits in the frame
 let fitting = store.get('fitting', true);  // keep fitting until you take the wheel
 const GUTTER = 140;                        // virtual px between one workspace and the next
 
@@ -622,8 +618,12 @@ function setFull(v) {
   render();
 }
 $('#full').onclick = () => setFull(!full);
-$('#zoom').addEventListener('input', () => { setZoom($('#zoom').value / 100); });
-$('#fit').onclick = () => { hold(true); render(); };
+// squared, so the slider gives fine control down at the small end where the
+// whole surface lives and still reaches far enough in to read a window
+$('#zoom').addEventListener('input', () => {
+  setZoom(MAX_ZOOM * Math.pow($('#zoom').value / 100, 2));
+});
+$('#fit').onclick = () => { hold(true); fitAll(); render(); };
 $('#reset').onclick = () => {
   layout = {};
   store.set('layout', layout);
@@ -756,8 +756,9 @@ function status(match, q) {
       + `desktop is never touched. The arrangement is remembered in this browser; `
       + `<b>Reset layout</b> puts everything back where the desktop has it. Scroll or `
       + `pinch to zoom, drag the background or slide two fingers to pan, and click a window `
-      + `(or press <kbd>Enter</kbd>) to focus it for real. `
-      + `Dashed boxes are the workspaces the windows came from.`);
+      + `(or press <kbd>Enter</kbd>) to focus it for real. Windows start out grouped by `
+      + `the workspace they live on, packed together rather than spread over the desktop's `
+      + `own grid.`);
   }
   $('#foot').innerHTML = `Grid from ${data.grid.source} `
     + `(<code>${data.grid.cols}</code> × <code>${data.grid.rows}</code>, row-major); `
@@ -773,28 +774,48 @@ function status(match, q) {
 
 
 // ---- the virtual screen ----------------------------------------------------
-// One surface holding every window there is. A tile starts life where its
-// window really sits — its workspace's cell, offset by the window's own
-// position — and from then on you put it wherever you like. Nothing here talks
-// to the window manager: dragging rearranges the picture, not the desktop.
+// One surface holding every window there is, and it goes on forever: the
+// surface is drawn at an offset and a scale of our choosing rather than scrolled
+// inside a box, so a drag can carry everything anywhere and the zoom has no
+// stops. A tile starts life where its window really sits and from then on you
+// put it wherever you like. Nothing here talks to the window manager: dragging
+// rearranges the picture, not the desktop.
 
 const tileEls = new Map();   // window id -> element, kept so a drag survives a poll
+const MIN_ZOOM = 0.02, MAX_ZOOM = 4;
+
+// Where a window starts out. The desktop's own 3x6 grid is no use here: it is
+// far taller than any browser window and most of its cells are empty, so the
+// workspaces that actually hold something get packed into a squarish block
+// instead. Windows that shared a workspace still start out together.
+let seating = { key: '', cols: 1, at: new Map() };
+function plan() {
+  const used = [...new Set(data.windows.map(w => w.desktop))].sort((a, b) => a - b);
+  const key = used.join(',');
+  if (key !== seating.key) {
+    seating = { key, cols: Math.max(1, Math.ceil(Math.sqrt(used.length))),
+                at: new Map(used.map((d, i) => [d, i])) };
+  }
+  return seating;
+}
 
 function seat(w) {
-  const col = w.desktop % data.grid.cols, row = Math.floor(w.desktop / data.grid.cols);
+  const p = plan(), i = p.at.get(w.desktop) || 0;
+  const col = i % p.cols, row = Math.floor(i / p.cols);
   return [col * (data.screen.w + GUTTER) + Math.max(0, w.x),
           row * (data.screen.h + GUTTER) + Math.max(0, w.y)];
 }
 const seatOf = w => layout[w.id] || seat(w);
 
-function extent() {
-  let W = data.grid.cols * (data.screen.w + GUTTER) - GUTTER;
-  let H = data.grid.rows * (data.screen.h + GUTTER) - GUTTER;
+// what the windows actually cover, which is the thing worth fitting
+function bounds() {
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
   data.windows.forEach(w => {
     const [x, y] = seatOf(w);
-    W = Math.max(W, x + Math.max(240, w.w)); H = Math.max(H, y + Math.max(160, w.h));
+    x0 = Math.min(x0, x); y0 = Math.min(y0, y);
+    x1 = Math.max(x1, x + Math.max(240, w.w)); y1 = Math.max(y1, y + Math.max(160, w.h));
   });
-  return [W + GUTTER, H + GUTTER];
+  return isFinite(x0) ? [x0, y0, x1, y1] : [0, 0, 1, 1];
 }
 
 function hold(auto) {
@@ -802,11 +823,43 @@ function hold(auto) {
   store.set('fitting', auto);
 }
 
-function setZoom(z) {
-  zoom = Math.min(0.7, Math.max(0.05, z));
+const clamp = z => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, z));
+
+function shift(dx, dy) {          // slide the whole surface, no edges to run into
+  origin = [origin[0] + dx, origin[1] + dy];
+  store.set('origin', origin);
+  $('#canvas').style.transform = `translate(${origin[0]}px,${origin[1]}px)`;
+}
+
+// zoom about a point: whatever is under the mouse, or between the fingers, is
+// the one thing that must not move
+function zoomAbout(next, cx, cy) {
+  next = clamp(next);
+  if (next === zoom) return;
+  const box = $('#pan').getBoundingClientRect();
+  const fx = cx - box.left, fy = cy - box.top;
+  origin = [fx - (fx - origin[0]) / zoom * next, fy - (fy - origin[1]) / zoom * next];
+  zoom = next;
   store.set('zoom', zoom);
+  store.set('origin', origin);
   hold(false);
   render();
+}
+
+function setZoom(z) {
+  const box = $('#pan').getBoundingClientRect();
+  zoomAbout(z, box.left + box.width / 2, box.top + box.height / 2);   // about the middle
+}
+
+function fitAll() {
+  const pan = $('#pan'), [x0, y0, x1, y1] = bounds();
+  const pad = 24;
+  zoom = clamp(Math.min((pan.clientWidth - pad * 2) / (x1 - x0),
+                        (pan.clientHeight - pad * 2) / (y1 - y0)));
+  origin = [(pan.clientWidth - (x1 - x0) * zoom) / 2 - x0 * zoom,
+            (pan.clientHeight - (y1 - y0) * zoom) / 2 - y0 * zoom];
+  store.set('zoom', zoom);
+  store.set('origin', origin);
 }
 
 // cut this window out of its workspace photo — percentages, so the photo's own
@@ -877,30 +930,9 @@ function drag(e, w, el) {
 }
 
 function renderCanvas(match, q) {
-  const [W, H] = extent();
-  if (fitting || !zoom) {
-    // fit the width and scroll down for the rest: a stack of workspaces is far
-    // taller than it is wide, and fitting its height would shrink it to nothing
-    zoom = Math.max(0.05, ($('#pan').clientWidth - 16) / W);
-    store.set('zoom', zoom);
-  }
-  $('#zoom').value = Math.round(zoom * 100);
-  $('#canvas').style.width = W * zoom + 'px';
-  $('#canvas').style.height = H * zoom + 'px';
-
-  // the workspaces the windows came from, drawn behind as a faint reminder
-  const zones = $('#zones');
-  zones.innerHTML = '';
-  for (let i = 0; i < data.grid.cols * data.grid.rows; i++) {
-    const col = i % data.grid.cols, row = Math.floor(i / data.grid.cols);
-    const z = document.createElement('div');
-    z.className = 'zone' + (i === data.current ? ' current' : '');
-    z.style.cssText = `left:${col * (data.screen.w + GUTTER) * zoom}px;`
-      + `top:${row * (data.screen.h + GUTTER) * zoom}px;`
-      + `width:${data.screen.w * zoom}px;height:${data.screen.h * zoom}px`;
-    z.innerHTML = `<i style="font-size:${Math.max(10, 60 * zoom)}px">${i + 1}</i>`;
-    zones.append(z);
-  }
+  if (fitting || !zoom) fitAll();
+  $('#zoom').value = Math.round(Math.sqrt(zoom / MAX_ZOOM) * 100);
+  $('#canvas').style.transform = `translate(${origin[0]}px,${origin[1]}px)`;
 
   const live = new Set();
   data.windows.slice().sort((a, b) => a.z - b.z).forEach(w => {
@@ -927,30 +959,8 @@ function renderCanvas(match, q) {
 }
 
 // ---- getting about: wheel, drag, and two fingers -------------------------
-// Zoom always happens about a point — the mouse, or the middle of a pinch — so
-// whatever you are looking at stays where it is instead of sliding off.
 
 let letGo = null;   // how to call off whatever single-pointer gesture is running
-
-function zoomAbout(next, cx, cy) {
-  const pan = $('#pan'), box = pan.getBoundingClientRect();
-  const fx = cx - box.left, fy = cy - box.top;                    // the point, in the frame
-  const on = [(pan.scrollLeft + fx) / zoom, (pan.scrollTop + fy) / zoom];   // ...on the surface
-  next = Math.min(0.7, Math.max(0.05, next));
-  if (next === zoom) return;
-  zoom = next;
-  store.set('zoom', zoom);
-  hold(false);
-  render();
-  pan.scrollLeft = on[0] * zoom - fx;
-  pan.scrollTop = on[1] * zoom - fy;
-}
-
-function panBy(dx, dy) {
-  const pan = $('#pan');
-  pan.scrollLeft -= dx;
-  pan.scrollTop -= dy;
-}
 
 $('#pan').addEventListener('wheel', e => {
   if (view !== 'canvas') return;
@@ -958,18 +968,19 @@ $('#pan').addEventListener('wheel', e => {
   zoomAbout(zoom * Math.exp(-e.deltaY * 0.0015), e.clientX, e.clientY);
 }, { passive: false });
 
-// one pointer on the background drags the surface along
+// one pointer anywhere on the background carries the whole surface with it
 $('#canvas').addEventListener('pointerdown', e => {
   if (e.target.closest('.tile') || pointers.size > 1) return;   // one finger drags, two pinch
   const pan = $('#pan');
   let px = e.clientX, py = e.clientY;
   pan.classList.add('grabbing');
-  const move = ev => { panBy(ev.clientX - px, ev.clientY - py); px = ev.clientX; py = ev.clientY; };
+  const move = ev => { shift(ev.clientX - px, ev.clientY - py); px = ev.clientX; py = ev.clientY; };
   const done = () => {
     pan.classList.remove('grabbing');
     removeEventListener('pointermove', move);
     removeEventListener('pointerup', done);
     removeEventListener('pointercancel', done);
+    hold(false);                 // you have said where you want to be looking
     letGo = null;
   };
   letGo = done;
@@ -1003,7 +1014,7 @@ $('#pan').addEventListener('pointermove', e => {
   if (pointers.size !== 2 || !pinch) return;
   e.preventDefault();
   const now = pair();
-  panBy(now.x - pinch.x, now.y - pinch.y);
+  shift(now.x - pinch.x, now.y - pinch.y);
   pinch.x = now.x;
   pinch.y = now.y;
   // measured against where the fingers started, so the zoom cannot drift
@@ -1032,8 +1043,16 @@ function selected() {
 }
 
 function reveal() {
-  const el = view === 'canvas' && sel && tileEls.get(sel);
-  if (el) el.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  if (view !== 'canvas' || !sel) return;
+  const w = data.windows.find(x => x.id === sel);
+  const pan = $('#pan');
+  if (!w || !pan.clientWidth) return;
+  const [x, y] = seatOf(w);                       // bring the pick to the middle
+  origin = [pan.clientWidth / 2 - (x + w.w / 2) * zoom,
+            pan.clientHeight / 2 - (y + w.h / 2) * zoom];
+  store.set('origin', origin);
+  hold(false);
+  $('#canvas').style.transform = `translate(${origin[0]}px,${origin[1]}px)`;
 }
 
 function move(dx, dy) {

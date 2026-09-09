@@ -56,14 +56,17 @@ only runs while a browser actually has the map or the virtual screen open — an
 dominated by reading the screen, not by scaling it).
 
 "Screen" puts every window on a single surface, each one cut out of its
-workspace's photo. A window starts where it really sits — its workspace's block
-of the surface, offset by its own position — and from there you drag it
-wherever you want it. **Dragging moves the tile and nothing else**: the window
+workspace's photo. Windows start out grouped by the workspace they live on,
+those groups packed into a squarish block — the desktop's own grid is not drawn
+and not used, since it is far taller than any browser window and mostly empty —
+and from there you drag each window wherever you want it. **Dragging moves the tile and nothing else**: the window
 manager is never touched, so this is a place to arrange your windows as you
 think about them rather than as the desktop has them. The arrangement is
 remembered in the browser (per window), "Reset layout" puts it back, the wheel
-and the slider zoom, dragging the background pans, and clicking a window still
-focuses it for real.
+and the slider zoom, dragging the background carries the whole surface with it,
+and clicking a window still focuses it for real. The surface is placed rather
+than scrolled, so it has no edges: you can drag it as far as you like, and zoom
+runs free from 2% to 400%. "Fit" brings everything back into view.
 
 It works the same under a finger: drag a window to move it, drag the background
 to pan, and pinch to zoom — two fingers sliding pan as they pinch, and a pinch
