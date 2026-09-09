@@ -39,7 +39,8 @@ workspaces included so cells stay put. Within a workspace, windows are grouped
 under the app they belong to, resolved from `WM_CLASS` plus the process running
 inside the window — a terminal running `claude` or `vim` says so instead of
 "XTerm". "Titles" lists window titles per workspace; "Map" draws each workspace
-to scale with the real window rectangles.
+to scale with the real window rectangles; "Screen" is one big virtual workspace
+holding every window there is.
 
 The map also photographs your workspaces. X only hands out the pixels actually
 on the glass, so a window on another workspace cannot be captured — only the
@@ -49,11 +50,31 @@ clicking a window to jump somewhere gets that workspace photographed once you
 land. Window outlines stay on top of the photo, and filtering greys out the
 windows that do not match. Needs ImageMagick's `convert` (`apt install
 imagemagick`); without it the map stays a plain diagram and says so. Grabbing
-only runs while a browser actually has the map open — and `--no-screens` turns
-it off entirely.
+only runs while a browser actually has the map or the virtual screen open — and
+`--no-screens` turns it off entirely. `--shot-width PX` sets the resolution
+(1280 by default; a bigger number costs bytes, not time — the capture is
+dominated by reading the screen, not by scaling it).
+
+"Screen" puts every window on a single surface, each one cut out of its
+workspace's photo. A window starts where it really sits — its workspace's block
+of the surface, offset by its own position — and from there you drag it
+wherever you want it. **Dragging moves the tile and nothing else**: the window
+manager is never touched, so this is a place to arrange your windows as you
+think about them rather than as the desktop has them. The arrangement is
+remembered in the browser (per window), "Reset layout" puts it back, the wheel
+and the slider zoom, dragging the background pans, and clicking a window still
+focuses it for real. The wheel zooms about the pointer, so whatever is under
+the cursor stays put. Dashed boxes mark the workspaces the windows came from.
+
+The `⤢` button (or `f`) hands the page the whole browser window — the heading,
+the footer and the margins go, and every view gets the full width. It is a
+layout, not F11: the browser stays a browser. On the virtual screen it also
+pins the surface to the viewport so the canvas is the window, and the zoom
+keeps fitting until you work the slider or start dragging tiles.
 
 Click a window — or pick one with the arrow keys / `hjkl` and press Enter — to
-focus it, which also switches to its workspace. `/` filters, `Esc` clears.
+focus it, which also switches to its workspace. `/` filters, `Esc` clears
+(then leaves the full window).
 Run with `--no-focus` to serve read-only, `--no-screens` to never photograph
 the screen, `--port N` to change the port.
 

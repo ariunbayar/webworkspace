@@ -155,14 +155,15 @@ def resolve_app(cls, pid, ttl=8):
 # cell as you move around, each one showing when it was last seen.
 
 SHOTS_ON = True
-SHOT_WIDTH = 480      # a map cell is a few hundred px wide, so this stays sharp
+SHOT_WIDTH = 1280     # the virtual screen cuts single windows out of this
 SHOT_QUALITY = 72
 SHOT_TTL = 2.0        # seconds before the workspace on screen is worth regrabbing
 WATCH_FOR = 15.0      # keep grabbing this long after a page last asked for shots
 AFTER_FOCUS = 30.0    # ...and this long after a click sent us somewhere new
 SWITCH_SETTLE = 0.9   # let a workspace switch land before photographing it
 
-_shots = {}           # desktop -> {"data": jpeg, "at": epoch, "clock": "10:07:12"}
+# desktop -> {"data": jpeg, "at": epoch, "clock": "10:07:12", "rects": {id: [x,y,w,h]}}
+_shots = {}
 _shots_lock = threading.Lock()
 _shot_error = ""
 _want_until = 0.0     # a page is watching the map until this moment
@@ -228,8 +229,14 @@ def keep_shots():
         if not data:
             time.sleep(5)  # a capture that cannot work is not worth retrying twice a second
             continue
+        # right after the shutter, so the rectangles match what is in the photo
+        ids = re.findall(r"0x[0-9a-f]+", prop(sh("xprop", "-root", "_NET_CLIENT_LIST"),
+                                              "_NET_CLIENT_LIST"))
+        rects = {wid: [g.get("x", 0), g.get("y", 0), g.get("width", 0), g.get("height", 0)]
+                 for wid, g in geometries(ids).items()}
         with _shots_lock:
-            _shots[desktop] = {"data": data, "at": time.time(), "clock": time.strftime("%H:%M:%S")}
+            _shots[desktop] = {"data": data, "at": time.time(),
+                               "clock": time.strftime("%H:%M:%S"), "rects": rects}
 
 
 def shot_index():
@@ -249,6 +256,21 @@ def shot_bytes(desktop):
 # ---- sampling -------------------------------------------------------------
 
 
+def geometries(ids):
+    """{window id: {x, y, width, height}} for the lot, in one xdotool call."""
+    chain = []
+    for wid in ids:
+        chain += ["getwindowgeometry", "--shell", wid]
+    geoms, cur = {}, {}
+    for line in sh("xdotool", *chain).splitlines() if chain else []:
+        k, _, v = line.partition("=")
+        if k == "WINDOW":
+            cur = geoms.setdefault("0x%x" % int(v), {})
+        elif k in ("X", "Y", "WIDTH", "HEIGHT") and cur is not None:
+            cur[k.lower()] = int(v)
+    return geoms
+
+
 def sample():
     roots = sh("xprop", "-root", "_NET_CLIENT_LIST", "_NET_CLIENT_LIST_STACKING",
                "_NET_NUMBER_OF_DESKTOPS", "_NET_CURRENT_DESKTOP", "_NET_DESKTOP_GEOMETRY")
@@ -265,17 +287,9 @@ def sample():
     names = re.findall(r'"((?:[^"\\]|\\.)*)"', sh("xprop", "-root", "_NET_DESKTOP_NAMES"))
     cols, rows, grid_src = grid_layout(n_desktops)
 
-    # one xdotool call for every geometry, in client-list order
-    chain = []
-    for wid in ids:
-        chain += ["getwindowgeometry", "--shell", wid]
-    geoms, cur = {}, {}
-    for line in sh("xdotool", *chain).splitlines() if chain else []:
-        k, _, v = line.partition("=")
-        if k == "WINDOW":
-            cur = geoms.setdefault("0x%x" % int(v), {})
-        elif k in ("X", "Y", "WIDTH", "HEIGHT") and cur is not None:
-            cur[k.lower()] = int(v)
+    geoms = geometries(ids)
+    with _shots_lock:                       # where each window sat when its
+        crops = {d: s["rects"] for d, s in _shots.items()}   # workspace was photographed
 
     windows = []
     for wid in ids:
@@ -312,6 +326,9 @@ def sample():
             "x": g.get("x", 0), "y": g.get("y", 0),
             "w": g.get("width", 0), "h": g.get("height", 0),
             "z": order.get(wid, 0),
+            # where to cut this window out of its workspace photo, which is not
+            # quite where it is now if it has been moved since
+            "crop": crops.get(desktop, {}).get(wid),
         })
 
     windows.sort(key=lambda w: (w["desktop"], -w["z"]))  # topmost first within a workspace
@@ -412,6 +429,18 @@ PAGE = r"""<!doctype html>
   .seg button:first-child { border-left:0 }
   .seg button[aria-pressed=true] { background:var(--accent); color:#fff }
   .keys { margin-left:auto; color:var(--dim); font-size:11px }
+
+  /* the whole browser window, without going properly fullscreen: the page just
+     stops being a column of content and becomes the app */
+  body.full .wrap { max-width:none; padding:10px 12px 16px }
+  body.full h1, body.full footer, body.full .keys { display:none }
+  body.full .sub { margin-bottom:8px }
+  body.full .bar { margin-bottom:10px }
+  /* the virtual screen is the one view that wants the viewport itself: the
+     grids keep scrolling the page, which is what makes their rows size right */
+  body.app { overflow:hidden }
+  body.app .wrap { height:100vh; padding-bottom:10px; display:flex; flex-direction:column }
+  body.app .pan { flex:1; min-height:0; height:auto }
   kbd { font:11px ui-monospace,monospace; border:1px solid var(--line); border-bottom-width:2px;
         border-radius:3px; padding:0 4px; background:var(--panel) }
 
@@ -447,8 +476,10 @@ PAGE = r"""<!doctype html>
   .dot { width:7px; height:7px; border-radius:2px; flex:none }
   .t2 { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:12px }
   .app { color:var(--dim); font-size:10.5px; flex:none }
-  .map { position:relative; margin:6px; border:1px solid var(--line); border-radius:4px;
-         background:var(--empty); overflow:hidden }
+  /* aspect-ratio, not percentage padding: a percentage would resolve against an
+     indefinite width while the grid sizes its rows, and the cell would collapse */
+  .map { position:relative; flex:none; margin:6px; border:1px solid var(--line);
+         border-radius:4px; background:var(--empty); overflow:hidden }
   .map .shot { position:absolute; inset:0; width:100%; height:100%; display:block }
   .rect { position:absolute; border-radius:2px; overflow:hidden; padding:1px 3px; font-size:9px;
           line-height:1.2; color:#fff; text-shadow:0 1px 1px rgba(0,0,0,.5); cursor:pointer;
@@ -468,6 +499,38 @@ PAGE = r"""<!doctype html>
              background:var(--panel); border:1px solid var(--line); border-radius:99px;
              padding:1px 7px; opacity:.9 }
   .blank { flex:1; min-height:32px }
+
+  /* the virtual screen: every window on one surface, arranged however you like */
+  .ctl { display:none; gap:8px; align-items:center }
+  .btn { border:1px solid var(--line); background:var(--panel); color:var(--dim); font:inherit;
+         font-size:12px; padding:5px 10px; border-radius:6px; cursor:pointer }
+  .btn:hover { color:var(--fg); border-color:var(--dim) }
+  .btn[aria-pressed=true] { background:var(--accent); border-color:var(--accent); color:#fff }
+  #full { font-size:14px; line-height:1; padding:5px 9px }
+  #zoom { width:96px; accent-color:var(--accent) }
+  .pan { display:none; position:relative; overflow:auto; border:1px solid var(--line);
+         border-radius:8px; background:var(--empty); height:min(78vh,900px); min-height:380px;
+         overscroll-behavior:contain }
+  .pan.grabbing { cursor:grabbing }
+  .canvas { position:relative; transform-origin:0 0 }
+  .zone { position:absolute; border:1px dashed var(--line); border-radius:8px }
+  .zone.current { border-color:var(--accent); border-style:solid; opacity:.7 }
+  .zone i { position:absolute; top:4px; left:9px; font-style:normal; font-weight:700;
+            color:var(--dim); opacity:.45; font-variant-numeric:tabular-nums }
+  .tile { position:absolute; border-radius:5px; overflow:hidden; background:var(--panel);
+          border:1px solid var(--line); box-shadow:0 2px 8px rgba(0,0,0,.16);
+          display:flex; flex-direction:column; cursor:grab; touch-action:none }
+  .tile:hover { border-color:var(--dim) }
+  .tile.dragging { cursor:grabbing; box-shadow:0 12px 34px rgba(0,0,0,.4); z-index:60 }
+  .tile.focused { border-color:var(--accent) }
+  .tile.sel { outline:2px solid var(--accent); outline-offset:1px }
+  .tile.off { opacity:.3 }
+  .cap { display:flex; align-items:center; gap:5px; padding:3px 6px; flex:none;
+         border-bottom:1px solid var(--line); background:var(--panel) }
+  .cap .t2 { font-size:11px }
+  .pic { flex:1; min-height:0; background-repeat:no-repeat; background-origin:border-box }
+  .pic.none { display:flex; align-items:center; justify-content:center; color:#fff;
+              font-size:10px; text-shadow:0 1px 2px rgba(0,0,0,.4) }
   footer { color:var(--dim); font-size:11px; margin-top:18px; border-top:1px solid var(--line); padding-top:9px }
   code { font-size:10.5px; background:var(--chip); padding:1px 4px; border-radius:3px }
 </style>
@@ -479,11 +542,22 @@ PAGE = r"""<!doctype html>
     <div class="seg" id="view">
       <button data-v="list" aria-pressed="true">Titles</button>
       <button data-v="map" aria-pressed="false">Map</button>
+      <button data-v="canvas" aria-pressed="false">Screen</button>
     </div>
+    <button id="full" class="btn" aria-pressed="false"
+            title="Give it the whole browser window (f)">⤢</button>
+    <span class="ctl" id="ctl">
+      <input type="range" id="zoom" min="5" max="70" step="1" title="Zoom">
+      <button id="fit" class="btn">Fit</button>
+      <button id="reset" class="btn">Reset layout</button>
+    </span>
     <span class="keys"><kbd>↑↓←→</kbd>/<kbd>hjkl</kbd> pick · <kbd>Enter</kbd> focus ·
-      <kbd>/</kbd> filter · <kbd>Esc</kbd> clear</span>
+      <kbd>/</kbd> filter · <kbd>f</kbd> full window · <kbd>Esc</kbd> clear</span>
   </div>
   <div class="grid" id="grid"></div>
+  <div class="pan" id="pan"><div class="canvas" id="canvas">
+    <div id="zones"></div><div id="tiles"></div>
+  </div></div>
   <footer id="foot"></footer>
 </div>
 <script>
@@ -495,34 +569,77 @@ const colorOf = a => COLORS[a] || (COLORS[a] = PALETTE[Object.keys(COLORS).lengt
 const $ = s => document.querySelector(s);
 const esc = s => s.replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 
-let data = null, view = "list", sel = null, failures = 0;
+// The arrangement lives here, not on the desktop: dragging a window on the
+// virtual screen moves the tile and nothing else. Kept per window id, so a
+// window we have not seen before falls back to where it really is.
+const store = {
+  get(k, fb) { try { return JSON.parse(localStorage.getItem('winlist.' + k)) ?? fb; }
+               catch (e) { return fb; } },
+  set(k, v) { try { localStorage.setItem('winlist.' + k, JSON.stringify(v)); } catch (e) {} },
+};
+
+let data = null, failures = 0, sel = null;
+let view = store.get('view', 'list');
+let full = store.get('full', false);       // fill the browser window, F11 not involved
+let layout = store.get('layout', {});      // window id -> [x, y] on the virtual screen
+let zoom = store.get('zoom', 0);           // 0 until we have measured a fit
+let fitting = store.get('fitting', true);  // keep fitting until you take the wheel
+const GUTTER = 140;                        // virtual px between one workspace and the next
 
 // One <img> per workspace, kept across renders: re-appending the same node
 // leaves the picture on screen, so nothing blinks and nothing is refetched
 // until the capture time in its url actually moves.
 const shotEls = new Map();
-function shotFor(i) {
+function shotUrl(i) {
   const s = data.shots && data.shots[i];
-  if (!s) return null;
+  return s ? `/api/screen/${i}?v=${encodeURIComponent(s.clock)}` : null;
+}
+function shotFor(i) {
+  const src = shotUrl(i);
+  if (!src) return null;
   let img = shotEls.get(i);
   if (!img) { img = new Image(); img.className = 'shot'; img.alt = ''; shotEls.set(i, img); }
-  const src = `/api/screen/${i}?v=${encodeURIComponent(s.clock)}`;
   if (img.getAttribute('src') !== src) img.setAttribute('src', src);
   return img;
 }
 const ago = s => s < 3 ? 'live' : s < 60 ? Math.round(s) + 's'
   : s < 3600 ? Math.round(s / 60) + 'm' : Math.round(s / 3600) + 'h';
 
-$('#view').onclick = e => { const b = e.target.closest('button'); if (!b) return;
-  view = b.dataset.v;
-  [...$('#view').children].forEach(x => x.setAttribute('aria-pressed', x === b));
-  render(); };
+function setView(v) {
+  view = v;
+  store.set('view', v);
+  [...$('#view').children].forEach(x => x.setAttribute('aria-pressed', x.dataset.v === v));
+  render();
+}
+$('#view').onclick = e => { const b = e.target.closest('button'); if (b) setView(b.dataset.v); };
+
+function setFull(v) {
+  full = v;
+  store.set('full', v);
+  document.body.classList.toggle('full', v);
+  $('#full').setAttribute('aria-pressed', v);
+  render();
+}
+$('#full').onclick = () => setFull(!full);
+$('#zoom').addEventListener('input', () => { setZoom($('#zoom').value / 100); });
+$('#fit').onclick = () => { hold(true); render(); };
+$('#reset').onclick = () => {
+  layout = {};
+  store.set('layout', layout);
+  hold(true);
+  render();
+};
+// the canvas keeps fitting the window — through a resize, through going
+// full-window — until you either work the slider or start arranging tiles
+addEventListener('resize', () => { if (view === 'canvas') render(); });
 $('#q').addEventListener('input', () => { sel = null; render(); });
 
 async function poll() {
   try {
-    // asking for screens is what keeps the grabber awake, so only the map does
-    const r = await fetch('/api/windows' + (view === 'map' ? '?screens=1' : ''));
+    // asking for screens is what keeps the grabber awake, so only the views that
+    // show photographs do it
+    const wants = view === 'map' || view === 'canvas';
+    const r = await fetch('/api/windows' + (wants ? '?screens=1' : ''));
     data = await r.json();
     failures = 0;
   } catch (e) { failures++; }
@@ -552,7 +669,17 @@ function ordered(i) { return byApp(onWorkspace(i)).flatMap(([, group]) => group)
 
 function render() {
   if (!data) return;
-  const match = visible(), grid = $('#grid'), q = $('#q').value.trim();
+  const match = visible(), q = $('#q').value.trim(), canvas = view === 'canvas';
+  document.body.classList.toggle('app', full && canvas);
+  $('#grid').style.display = canvas ? 'none' : 'grid';
+  $('#pan').style.display = canvas ? 'block' : 'none';
+  $('#ctl').style.display = canvas ? 'flex' : 'none';
+  if (canvas) renderCanvas(match, q); else renderGrid(match, q);
+  status(match, q);
+}
+
+function renderGrid(match, q) {
+  const grid = $('#grid');
   grid.style.gridTemplateColumns = `repeat(${data.grid.cols}, minmax(0,1fr))`;
   grid.innerHTML = "";
   // one cell per workspace, row-major, empty ones included so positions hold still
@@ -571,7 +698,7 @@ function render() {
     if (!ws.length) { card.innerHTML += '<div class="blank"></div>'; grid.append(card); continue; }
     if (view === 'map') {
       const img = shotFor(i);
-      card.innerHTML += `<div class="map" style="padding-bottom:${data.screen.h / data.screen.w * 100}%">`
+      card.innerHTML += `<div class="map" style="aspect-ratio:${data.screen.w}/${data.screen.h}">`
         + (img || !data.shots_on || data.shot_error ? ''
            : '<span class="waiting">no photo yet — visit this workspace</span>') + '</div>';
       const map = card.querySelector('.map');
@@ -614,11 +741,23 @@ function render() {
     }
     grid.append(card);
   }
+}
+
+function status(match, q) {
   const hits = data.windows.filter(match);
   $('#stat').textContent = `${hits.length}${q ? " of " + data.windows.length : ""} windows · `
     + `${data.grid.cols}×${data.grid.rows} workspaces · ${new Set(data.windows.map(w => w.desktop)).size} in use`;
   $('#ts').innerHTML = failures ? `<span class="stale">disconnected — retrying</span>`
     : `updated ${data.captured}`;
+  if (view === 'canvas') {
+    return void ($('#foot').innerHTML = `Every window on one surface, seeded from where it `
+      + `really sits and then yours to arrange: drag a tile and only the tile moves — the `
+      + `desktop is never touched. The arrangement is remembered in this browser; `
+      + `<b>Reset layout</b> puts everything back where the desktop has it. Scroll to `
+      + `zoom, drag the background to pan, and click a window (or press <kbd>Enter</kbd>) to `
+      + `focus it for real. `
+      + `Dashed boxes are the workspaces the windows came from.`);
+  }
   $('#foot').innerHTML = `Grid from ${data.grid.source} `
     + `(<code>${data.grid.cols}</code> × <code>${data.grid.rows}</code>, row-major); `
     + `windows placed by <code>_NET_WM_DESKTOP</code>, app resolved from WM_CLASS plus the `
@@ -630,6 +769,185 @@ function render() {
         : ` X can only photograph the workspace in front of you, so each cell shows the last `
           + `look at it and how long ago that was; visit a workspace to fill its cell in.`);
 }
+
+
+// ---- the virtual screen ----------------------------------------------------
+// One surface holding every window there is. A tile starts life where its
+// window really sits — its workspace's cell, offset by the window's own
+// position — and from then on you put it wherever you like. Nothing here talks
+// to the window manager: dragging rearranges the picture, not the desktop.
+
+const tileEls = new Map();   // window id -> element, kept so a drag survives a poll
+
+function seat(w) {
+  const col = w.desktop % data.grid.cols, row = Math.floor(w.desktop / data.grid.cols);
+  return [col * (data.screen.w + GUTTER) + Math.max(0, w.x),
+          row * (data.screen.h + GUTTER) + Math.max(0, w.y)];
+}
+const seatOf = w => layout[w.id] || seat(w);
+
+function extent() {
+  let W = data.grid.cols * (data.screen.w + GUTTER) - GUTTER;
+  let H = data.grid.rows * (data.screen.h + GUTTER) - GUTTER;
+  data.windows.forEach(w => {
+    const [x, y] = seatOf(w);
+    W = Math.max(W, x + Math.max(240, w.w)); H = Math.max(H, y + Math.max(160, w.h));
+  });
+  return [W + GUTTER, H + GUTTER];
+}
+
+function hold(auto) {
+  fitting = auto;
+  store.set('fitting', auto);
+}
+
+function setZoom(z) {
+  zoom = Math.min(0.7, Math.max(0.05, z));
+  store.set('zoom', zoom);
+  hold(false);
+  render();
+}
+
+// cut this window out of its workspace photo — percentages, so the photo's own
+// pixel size never comes into it
+function dress(pic, w) {
+  const S = data.screen, c = w.crop, url = shotUrl(w.desktop);
+  const x = c && Math.max(0, c[0]), y = c && Math.max(0, c[1]);
+  const cw = c && Math.min(c[2], S.w - x), ch = c && Math.min(c[3], S.h - y);
+  if (!url || !cw || !ch) {
+    pic.className = 'pic none';
+    pic.style.cssText = `background:${colorOf(w.app)}`;
+    pic.textContent = data.shots_on ? 'not photographed yet' : '';
+    return;
+  }
+  pic.className = 'pic';
+  pic.textContent = '';
+  pic.style.cssText = `background-image:url("${url}");`
+    + `background-size:${S.w / cw * 100}% ${S.h / ch * 100}%;`
+    + `background-position:${S.w > cw ? x / (S.w - cw) * 100 : 0}% `
+    + `${S.h > ch ? y / (S.h - ch) * 100 : 0}%`;
+}
+
+function place(el, w) {
+  const [x, y] = seatOf(w);
+  el.style.left = x * zoom + 'px';
+  el.style.top = y * zoom + 'px';
+  el.style.width = Math.max(90, w.w * zoom) + 'px';
+  el.style.height = Math.max(60, w.h * zoom) + 'px';
+}
+
+function drag(e, w, el) {
+  if (e.button) return;
+  e.preventDefault();
+  const from = seatOf(w), sx = e.clientX, sy = e.clientY;
+  let moved = false;
+  el.setPointerCapture(e.pointerId);
+  const move = ev => {
+    const dx = ev.clientX - sx, dy = ev.clientY - sy;
+    if (!moved && Math.abs(dx) + Math.abs(dy) < 5) return;   // still a click
+    if (!moved) {
+      moved = true;
+      el.classList.add('dragging');
+      $('#tiles').append(el);          // the one you just touched belongs on top
+    }
+    layout[w.id] = [Math.round(from[0] + dx / zoom), Math.round(from[1] + dy / zoom)];
+    place(el, w);
+  };
+  const up = ev => {
+    el.releasePointerCapture(ev.pointerId);
+    el.removeEventListener('pointermove', move);
+    el.removeEventListener('pointerup', up);
+    el.classList.remove('dragging');
+    if (moved) { store.set('layout', layout); hold(false); sel = w.id; render(); }
+    else activate(w.id);
+  };
+  el.addEventListener('pointermove', move);
+  el.addEventListener('pointerup', up);
+}
+
+function renderCanvas(match, q) {
+  const [W, H] = extent();
+  if (fitting || !zoom) {
+    // fit the width and scroll down for the rest: a stack of workspaces is far
+    // taller than it is wide, and fitting its height would shrink it to nothing
+    zoom = Math.max(0.05, ($('#pan').clientWidth - 16) / W);
+    store.set('zoom', zoom);
+  }
+  $('#zoom').value = Math.round(zoom * 100);
+  $('#canvas').style.width = W * zoom + 'px';
+  $('#canvas').style.height = H * zoom + 'px';
+
+  // the workspaces the windows came from, drawn behind as a faint reminder
+  const zones = $('#zones');
+  zones.innerHTML = '';
+  for (let i = 0; i < data.grid.cols * data.grid.rows; i++) {
+    const col = i % data.grid.cols, row = Math.floor(i / data.grid.cols);
+    const z = document.createElement('div');
+    z.className = 'zone' + (i === data.current ? ' current' : '');
+    z.style.cssText = `left:${col * (data.screen.w + GUTTER) * zoom}px;`
+      + `top:${row * (data.screen.h + GUTTER) * zoom}px;`
+      + `width:${data.screen.w * zoom}px;height:${data.screen.h * zoom}px`;
+    z.innerHTML = `<i style="font-size:${Math.max(10, 60 * zoom)}px">${i + 1}</i>`;
+    zones.append(z);
+  }
+
+  const live = new Set();
+  data.windows.slice().sort((a, b) => a.z - b.z).forEach(w => {
+    live.add(w.id);
+    let el = tileEls.get(w.id);
+    if (!el) {
+      el = document.createElement('div');
+      el.innerHTML = `<div class="cap"><span class="dot"></span><span class="t2"></span></div>`;
+      el.append(document.createElement('div'));
+      el.addEventListener('pointerdown', e => drag(e, tileEls.get(w.id).win, el));
+      tileEls.set(w.id, el);
+      $('#tiles').append(el);
+    }
+    el.win = w;                       // the drag handler always wants the fresh one
+    el.className = 'tile' + (w.focused ? ' focused' : '') + (match(w) ? '' : ' off')
+      + (w.id === sel ? ' sel' : '');
+    el.title = `${w.app} — ${w.title} · workspace ${w.desktop + 1}`;
+    el.querySelector('.dot').style.background = colorOf(w.app);
+    el.querySelector('.t2').textContent = w.title;
+    dress(el.lastElementChild, w);
+    place(el, w);
+  });
+  tileEls.forEach((el, id) => { if (!live.has(id)) { el.remove(); tileEls.delete(id); } });
+}
+
+// the wheel zooms about the pointer: whatever is under the cursor stays under
+// the cursor, so you can dive into a corner of the surface without losing it
+$('#pan').addEventListener('wheel', e => {
+  if (view !== 'canvas') return;
+  e.preventDefault();
+  const pan = $('#pan'), box = pan.getBoundingClientRect();
+  const ax = e.clientX - box.left, ay = e.clientY - box.top;        // pointer, in the frame
+  const on = [(pan.scrollLeft + ax) / zoom, (pan.scrollTop + ay) / zoom];   // ...on the surface
+  const next = Math.min(0.7, Math.max(0.05, zoom * Math.exp(-e.deltaY * 0.0015)));
+  if (next === zoom) return;
+  zoom = next;
+  store.set('zoom', zoom);
+  hold(false);
+  render();
+  pan.scrollLeft = on[0] * zoom - ax;
+  pan.scrollTop = on[1] * zoom - ay;
+}, { passive: false });
+
+// dragging the background pans, the way a map does
+$('#canvas').addEventListener('pointerdown', e => {
+  if (e.target.closest('.tile')) return;
+  const pan = $('#pan'), sx = e.clientX, sy = e.clientY;
+  const l = pan.scrollLeft, t = pan.scrollTop;
+  pan.classList.add('grabbing');
+  const move = ev => { pan.scrollLeft = l - (ev.clientX - sx); pan.scrollTop = t - (ev.clientY - sy); };
+  const up = () => {
+    pan.classList.remove('grabbing');
+    removeEventListener('pointermove', move);
+    removeEventListener('pointerup', up);
+  };
+  addEventListener('pointermove', move);
+  addEventListener('pointerup', up);
+});
 
 async function activate(id) {
   sel = id;
@@ -645,17 +963,22 @@ function selected() {
   return data.windows.find(w => w.id === sel) || null;
 }
 
+function reveal() {
+  const el = view === 'canvas' && sel && tileEls.get(sel);
+  if (el) el.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+}
+
 function move(dx, dy) {
   const match = visible();
   const pick = data.windows.filter(match);
   if (!pick.length) return;
   const cur = selected();
-  if (!cur) { sel = pick[0].id; return render(); }
+  if (!cur) { sel = pick[0].id; return (render(), reveal()); }
 
   if (dy && !dx) {                       // within a workspace, then on to the next one
     const here = ordered(cur.desktop).filter(match);
     const at = here.findIndex(w => w.id === cur.id);
-    if (at + dy >= 0 && at + dy < here.length) { sel = here[at + dy].id; return render(); }
+    if (at + dy >= 0 && at + dy < here.length) { sel = here[at + dy].id; return (render(), reveal()); }
   }
   const cols = data.grid.cols, cells = cols * data.grid.rows;
   let i = cur.desktop;
@@ -664,7 +987,7 @@ function move(dx, dy) {
     if (i < 0) i += cells;
     if (i >= cells) i -= cells;
     const there = ordered(i).filter(match);
-    if (there.length) { sel = there[dy > 0 ? 0 : there.length - 1].id; return render(); }
+    if (there.length) { sel = there[dy > 0 ? 0 : there.length - 1].id; return (render(), reveal()); }
   }
 }
 
@@ -675,13 +998,19 @@ document.addEventListener('keydown', e => {
   }
   const k = e.key;
   if (k === '/') { e.preventDefault(); $('#q').focus(); return; }
-  if (k === 'Escape') { $('#q').value = ''; sel = null; return render(); }
+  if (k === 'Escape') {
+    if ($('#q').value || sel) { $('#q').value = ''; sel = null; return render(); }
+    return full ? setFull(false) : undefined;
+  }
+  if (k === 'f') { e.preventDefault(); return setFull(!full); }
   if (k === 'Enter' || k === ' ') { const w = selected(); if (w) { e.preventDefault(); activate(w.id); } return; }
   const moves = { ArrowUp: [0, -1], k: [0, -1], ArrowDown: [0, 1], j: [0, 1],
                   ArrowLeft: [-1, 0], h: [-1, 0], ArrowRight: [1, 0], l: [1, 0] };
   if (moves[k]) { e.preventDefault(); move(...moves[k]); }
 });
 
+setFull(full);
+setView(view);
 poll();
 setInterval(poll, 2000);
 </script>
@@ -751,6 +1080,7 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main():
+    global SHOTS_ON, SHOT_WIDTH
     ap = argparse.ArgumentParser()
     ap.add_argument("--port", type=int, default=DEFAULT_PORT)
     ap.add_argument("--host", default="127.0.0.1")
@@ -758,10 +1088,12 @@ def main():
     ap.add_argument("--no-focus", action="store_true", help="serve read-only, refuse focus requests")
     ap.add_argument("--no-screens", action="store_true",
                     help="never photograph the screen; the map stays a diagram")
+    ap.add_argument("--shot-width", type=int, default=SHOT_WIDTH, metavar="PX",
+                    help="width of each workspace photo (default %d)" % SHOT_WIDTH)
     args = ap.parse_args()
     Handler.allow_focus = not args.no_focus
-    global SHOTS_ON
     SHOTS_ON = not args.no_screens
+    SHOT_WIDTH = max(320, args.shot_width)
     url = f"http://{args.host}:{args.port}/"
     try:
         srv = ThreadingHTTPServer((args.host, args.port), Handler)
