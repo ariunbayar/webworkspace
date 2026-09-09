@@ -63,8 +63,13 @@ manager is never touched, so this is a place to arrange your windows as you
 think about them rather than as the desktop has them. The arrangement is
 remembered in the browser (per window), "Reset layout" puts it back, the wheel
 and the slider zoom, dragging the background pans, and clicking a window still
-focuses it for real. The wheel zooms about the pointer, so whatever is under
-the cursor stays put. Dashed boxes mark the workspaces the windows came from.
+focuses it for real.
+
+It works the same under a finger: drag a window to move it, drag the background
+to pan, and pinch to zoom — two fingers sliding pan as they pinch, and a pinch
+that starts mid-drag leaves the window where it had got to. Zoom always happens
+about a point, the mouse or the middle of the pinch, so whatever you are
+looking at stays put instead of sliding off. Dashed boxes mark the workspaces the windows came from.
 
 The `⤢` button (or `f`) hands the page the whole browser window — the heading,
 the footer and the margins go, and every view gets the full width. It is a

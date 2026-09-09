@@ -510,7 +510,8 @@ PAGE = r"""<!doctype html>
   #zoom { width:96px; accent-color:var(--accent) }
   .pan { display:none; position:relative; overflow:auto; border:1px solid var(--line);
          border-radius:8px; background:var(--empty); height:min(78vh,900px); min-height:380px;
-         overscroll-behavior:contain }
+         overscroll-behavior:contain; touch-action:none; user-select:none;
+         -webkit-user-select:none }
   .pan.grabbing { cursor:grabbing }
   .canvas { position:relative; transform-origin:0 0 }
   .zone { position:absolute; border:1px dashed var(--line); border-radius:8px }
@@ -753,9 +754,9 @@ function status(match, q) {
     return void ($('#foot').innerHTML = `Every window on one surface, seeded from where it `
       + `really sits and then yours to arrange: drag a tile and only the tile moves — the `
       + `desktop is never touched. The arrangement is remembered in this browser; `
-      + `<b>Reset layout</b> puts everything back where the desktop has it. Scroll to `
-      + `zoom, drag the background to pan, and click a window (or press <kbd>Enter</kbd>) to `
-      + `focus it for real. `
+      + `<b>Reset layout</b> puts everything back where the desktop has it. Scroll or `
+      + `pinch to zoom, drag the background or slide two fingers to pan, and click a window `
+      + `(or press <kbd>Enter</kbd>) to focus it for real. `
       + `Dashed boxes are the workspaces the windows came from.`);
   }
   $('#foot').innerHTML = `Grid from ${data.grid.source} `
@@ -853,16 +854,26 @@ function drag(e, w, el) {
     layout[w.id] = [Math.round(from[0] + dx / zoom), Math.round(from[1] + dy / zoom)];
     place(el, w);
   };
-  const up = ev => {
-    el.releasePointerCapture(ev.pointerId);
+  const done = settle => {
     el.removeEventListener('pointermove', move);
     el.removeEventListener('pointerup', up);
+    el.removeEventListener('pointercancel', up);
     el.classList.remove('dragging');
-    if (moved) { store.set('layout', layout); hold(false); sel = w.id; render(); }
-    else activate(w.id);
+    letGo = null;
+    // a tile the pinch interrupted keeps the ground it covered, so what is on
+    // screen and what is remembered never disagree
+    if (moved) { store.set('layout', layout); hold(false); }
+    if (!settle) return;
+    if (moved) { sel = w.id; render(); } else activate(w.id);
   };
+  const up = ev => {
+    try { el.releasePointerCapture(ev.pointerId); } catch (err) {}
+    done(true);
+  };
+  letGo = () => done(false);       // dropped where it stands if a pinch begins
   el.addEventListener('pointermove', move);
   el.addEventListener('pointerup', up);
+  el.addEventListener('pointercancel', up);
 }
 
 function renderCanvas(match, q) {
@@ -915,39 +926,96 @@ function renderCanvas(match, q) {
   tileEls.forEach((el, id) => { if (!live.has(id)) { el.remove(); tileEls.delete(id); } });
 }
 
-// the wheel zooms about the pointer: whatever is under the cursor stays under
-// the cursor, so you can dive into a corner of the surface without losing it
-$('#pan').addEventListener('wheel', e => {
-  if (view !== 'canvas') return;
-  e.preventDefault();
+// ---- getting about: wheel, drag, and two fingers -------------------------
+// Zoom always happens about a point — the mouse, or the middle of a pinch — so
+// whatever you are looking at stays where it is instead of sliding off.
+
+let letGo = null;   // how to call off whatever single-pointer gesture is running
+
+function zoomAbout(next, cx, cy) {
   const pan = $('#pan'), box = pan.getBoundingClientRect();
-  const ax = e.clientX - box.left, ay = e.clientY - box.top;        // pointer, in the frame
-  const on = [(pan.scrollLeft + ax) / zoom, (pan.scrollTop + ay) / zoom];   // ...on the surface
-  const next = Math.min(0.7, Math.max(0.05, zoom * Math.exp(-e.deltaY * 0.0015)));
+  const fx = cx - box.left, fy = cy - box.top;                    // the point, in the frame
+  const on = [(pan.scrollLeft + fx) / zoom, (pan.scrollTop + fy) / zoom];   // ...on the surface
+  next = Math.min(0.7, Math.max(0.05, next));
   if (next === zoom) return;
   zoom = next;
   store.set('zoom', zoom);
   hold(false);
   render();
-  pan.scrollLeft = on[0] * zoom - ax;
-  pan.scrollTop = on[1] * zoom - ay;
+  pan.scrollLeft = on[0] * zoom - fx;
+  pan.scrollTop = on[1] * zoom - fy;
+}
+
+function panBy(dx, dy) {
+  const pan = $('#pan');
+  pan.scrollLeft -= dx;
+  pan.scrollTop -= dy;
+}
+
+$('#pan').addEventListener('wheel', e => {
+  if (view !== 'canvas') return;
+  e.preventDefault();
+  zoomAbout(zoom * Math.exp(-e.deltaY * 0.0015), e.clientX, e.clientY);
 }, { passive: false });
 
-// dragging the background pans, the way a map does
+// one pointer on the background drags the surface along
 $('#canvas').addEventListener('pointerdown', e => {
-  if (e.target.closest('.tile')) return;
-  const pan = $('#pan'), sx = e.clientX, sy = e.clientY;
-  const l = pan.scrollLeft, t = pan.scrollTop;
+  if (e.target.closest('.tile') || pointers.size > 1) return;   // one finger drags, two pinch
+  const pan = $('#pan');
+  let px = e.clientX, py = e.clientY;
   pan.classList.add('grabbing');
-  const move = ev => { pan.scrollLeft = l - (ev.clientX - sx); pan.scrollTop = t - (ev.clientY - sy); };
-  const up = () => {
+  const move = ev => { panBy(ev.clientX - px, ev.clientY - py); px = ev.clientX; py = ev.clientY; };
+  const done = () => {
     pan.classList.remove('grabbing');
     removeEventListener('pointermove', move);
-    removeEventListener('pointerup', up);
+    removeEventListener('pointerup', done);
+    removeEventListener('pointercancel', done);
+    letGo = null;
   };
+  letGo = done;
   addEventListener('pointermove', move);
-  addEventListener('pointerup', up);
+  addEventListener('pointerup', done);
+  addEventListener('pointercancel', done);
 });
+
+// two fingers pinch to zoom and slide to pan, the pair working as one gesture
+const pointers = new Map();
+let pinch = null;
+
+function pair() {
+  const [a, b] = [...pointers.values()];
+  return { gap: Math.hypot(a.x - b.x, a.y - b.y), x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+}
+
+$('#pan').addEventListener('pointerdown', e => {
+  if (e.pointerType === 'mouse') return;
+  pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (pointers.size === 2) {
+    if (letGo) letGo();            // a second finger means pinch, not drag
+    const p = pair();
+    pinch = { gap: p.gap, from: zoom, x: p.x, y: p.y };
+  }
+}, true);
+
+$('#pan').addEventListener('pointermove', e => {
+  if (!pointers.has(e.pointerId)) return;
+  pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (pointers.size !== 2 || !pinch) return;
+  e.preventDefault();
+  const now = pair();
+  panBy(now.x - pinch.x, now.y - pinch.y);
+  pinch.x = now.x;
+  pinch.y = now.y;
+  // measured against where the fingers started, so the zoom cannot drift
+  if (pinch.gap > 24) zoomAbout(pinch.from * (now.gap / pinch.gap), now.x, now.y);
+}, true);
+
+function liftFinger(e) {
+  pointers.delete(e.pointerId);
+  if (pointers.size < 2) pinch = null;
+}
+addEventListener('pointerup', liftFinger, true);
+addEventListener('pointercancel', liftFinger, true);
 
 async function activate(id) {
   sel = id;
