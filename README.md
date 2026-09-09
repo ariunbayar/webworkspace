@@ -41,11 +41,23 @@ inside the window — a terminal running `claude` or `vim` says so instead of
 "XTerm". "Titles" lists window titles per workspace; "Map" draws each workspace
 to scale with the real window rectangles.
 
+The map also photographs your workspaces. X only hands out the pixels actually
+on the glass, so a window on another workspace cannot be captured — only the
+workspace in front of you can. So each cell keeps the last photo taken of that
+workspace and says how long ago that was: cells fill in as you move around, and
+clicking a window to jump somewhere gets that workspace photographed once you
+land. Window outlines stay on top of the photo, and filtering greys out the
+windows that do not match. Needs ImageMagick's `convert` (`apt install
+imagemagick`); without it the map stays a plain diagram and says so. Grabbing
+only runs while a browser actually has the map open — and `--no-screens` turns
+it off entirely.
+
 Click a window — or pick one with the arrow keys / `hjkl` and press Enter — to
 focus it, which also switches to its workspace. `/` filters, `Esc` clears.
-Run with `--no-focus` to serve read-only, `--port N` to change the port.
+Run with `--no-focus` to serve read-only, `--no-screens` to never photograph
+the screen, `--port N` to change the port.
 
-X11 only (uses `xprop`/`xdotool`).
+X11 only (uses `xprop`/`xdotool`, plus `xwd` and `convert` for the photos).
 
 Resource monitor
 ---

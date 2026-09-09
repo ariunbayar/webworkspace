@@ -8,12 +8,15 @@ Run:  python3 winlist_server.py           # then open http://localhost:8766
       python3 winlist_server.py --port N  # custom port
       python3 winlist_server.py --open      # and bring the page up in the browser
       python3 winlist_server.py --no-focus  # read-only, refuse focus requests
+      python3 winlist_server.py --no-screens  # never photograph the screen
 
-X11 only: it reads EWMH properties via xprop/xdotool.
+X11 only: it reads EWMH properties via xprop/xdotool, and photographs the
+workspace you are on with xwd + ImageMagick's convert.
 """
 import argparse
 import json
 import re
+import shutil
 import subprocess
 import sys
 import threading
@@ -143,6 +146,106 @@ def resolve_app(cls, pid, ttl=8):
     return app
 
 
+# ---- photographing a workspace --------------------------------------------
+
+# X hands out what is actually on the glass: a window sitting on another
+# workspace is unmapped, and asking for its pixels returns whatever the root
+# happens to be showing in that rectangle. So there is exactly one thing worth
+# grabbing — the whole workspace in front of you — and the map fills in cell by
+# cell as you move around, each one showing when it was last seen.
+
+SHOTS_ON = True
+SHOT_WIDTH = 480      # a map cell is a few hundred px wide, so this stays sharp
+SHOT_QUALITY = 72
+SHOT_TTL = 2.0        # seconds before the workspace on screen is worth regrabbing
+WATCH_FOR = 15.0      # keep grabbing this long after a page last asked for shots
+AFTER_FOCUS = 30.0    # ...and this long after a click sent us somewhere new
+SWITCH_SETTLE = 0.9   # let a workspace switch land before photographing it
+
+_shots = {}           # desktop -> {"data": jpeg, "at": epoch, "clock": "10:07:12"}
+_shots_lock = threading.Lock()
+_shot_error = ""
+_want_until = 0.0     # a page is watching the map until this moment
+_hold_until = 0.0
+
+
+def watch_shots():
+    """A page just asked for screens; keep the grabber awake for a while."""
+    global _want_until
+    _want_until = time.time() + WATCH_FOR
+
+
+def hold_shots():
+    """A click just sent us to another workspace.
+
+    Let the switch land before photographing, then keep grabbing for a while:
+    the page is in the background now that the focused window is in front of it,
+    so its polls are throttled and cannot ask for the workspace we just landed
+    on — which is the one worth having a picture of."""
+    global _hold_until, _want_until
+    now = time.time()
+    _hold_until = now + SWITCH_SETTLE
+    _want_until = max(_want_until, now + AFTER_FOCUS)
+
+
+def grab():
+    """The visible screen as a JPEG, or b"" with the reason left in _shot_error."""
+    global _shot_error
+    if not shutil.which("convert"):
+        _shot_error = "ImageMagick's convert is not installed"
+        return b""
+    try:
+        raw = subprocess.run(["xwd", "-root", "-silent"], capture_output=True, timeout=5)
+        jpg = subprocess.run(["convert", "xwd:-", "-resize", "%dx" % SHOT_WIDTH,
+                              "-quality", str(SHOT_QUALITY), "jpg:-"],
+                             input=raw.stdout, capture_output=True, timeout=10)
+    except (OSError, subprocess.SubprocessError) as e:
+        _shot_error = "capture failed (%s)" % e.__class__.__name__
+        return b""
+    if not jpg.stdout:
+        _shot_error = jpg.stderr.decode("utf-8", "replace")[:120].strip() or "capture came back empty"
+        return b""
+    _shot_error = ""
+    return jpg.stdout
+
+
+def keep_shots():
+    """Photograph the workspace in front of us while a page is watching."""
+    while True:
+        time.sleep(0.5)
+        now = time.time()
+        if now > _want_until or now < _hold_until:
+            continue
+        try:
+            desktop = int(prop(sh("xprop", "-root", "_NET_CURRENT_DESKTOP"), "_NET_CURRENT_DESKTOP"))
+        except ValueError:
+            continue
+        with _shots_lock:
+            have = _shots.get(desktop)
+        if have and now - have["at"] < SHOT_TTL:
+            continue
+        data = grab()
+        if not data:
+            time.sleep(5)  # a capture that cannot work is not worth retrying twice a second
+            continue
+        with _shots_lock:
+            _shots[desktop] = {"data": data, "at": time.time(), "clock": time.strftime("%H:%M:%S")}
+
+
+def shot_index():
+    """What the page needs to know: which cells have a photo, and how old."""
+    now = time.time()
+    with _shots_lock:
+        return {str(d): {"clock": s["clock"], "age": round(now - s["at"], 1)}
+                for d, s in _shots.items()}
+
+
+def shot_bytes(desktop):
+    with _shots_lock:
+        s = _shots.get(desktop)
+    return s["data"] if s else b""
+
+
 # ---- sampling -------------------------------------------------------------
 
 
@@ -220,6 +323,9 @@ def sample():
         "grid": {"cols": cols, "rows": rows, "source": grid_src},
         "screen": {"w": geom[0], "h": geom[1]},
         "windows": windows,
+        "shots": shot_index(),
+        "shots_on": SHOTS_ON,
+        "shot_error": _shot_error,
     }
 
 
@@ -319,8 +425,11 @@ PAGE = r"""<!doctype html>
   .ws.empty .wshead { border-bottom:0 }
   .wsnum { font-weight:700; color:var(--fg); font-size:12px; font-variant-numeric:tabular-nums }
   .rc { font-size:10px; opacity:.7 }
-  .right { margin-left:auto; font-variant-numeric:tabular-nums }
-  .here { margin-left:auto; font-size:9.5px; text-transform:uppercase; letter-spacing:.05em;
+  .grow { flex:1 }
+  .right { font-variant-numeric:tabular-nums }
+  .age { font-size:10px; opacity:.7; font-variant-numeric:tabular-nums; margin-right:6px }
+  .age.live { color:var(--accent); opacity:1 }
+  .here { font-size:9.5px; text-transform:uppercase; letter-spacing:.05em;
           background:var(--accent); color:#fff; padding:1px 6px; border-radius:99px }
   ul { list-style:none; margin:0; padding:4px; display:flex; flex-direction:column; gap:1px; flex:1 }
   li { display:flex; align-items:center; gap:6px; padding:3px 5px; border-radius:4px;
@@ -340,10 +449,24 @@ PAGE = r"""<!doctype html>
   .app { color:var(--dim); font-size:10.5px; flex:none }
   .map { position:relative; margin:6px; border:1px solid var(--line); border-radius:4px;
          background:var(--empty); overflow:hidden }
+  .map .shot { position:absolute; inset:0; width:100%; height:100%; display:block }
   .rect { position:absolute; border-radius:2px; overflow:hidden; padding:1px 3px; font-size:9px;
           line-height:1.2; color:#fff; text-shadow:0 1px 1px rgba(0,0,0,.5); cursor:pointer;
           border:1px solid rgba(0,0,0,.28) }
   .rect.off { opacity:.25 }
+  /* over a photo the rectangle is just an outline — the picture is the content */
+  .rect.over { background:transparent; border-color:transparent; padding:0;
+               box-shadow:inset 0 0 0 2px var(--c) }
+  .rect.over .lbl { display:inline-block; max-width:100%; padding:1px 4px; border-radius:0 0 3px 0;
+                    background:var(--c); opacity:0; transition:opacity .12s;
+                    overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+  .rect.over:hover .lbl, .rect.over.sel .lbl, .rect.over.hit .lbl { opacity:1 }
+  .rect.over.off { opacity:1; background:rgba(0,0,0,.62); box-shadow:none }
+  .rect.over.off .lbl { display:none }
+  .waiting { position:absolute; left:50%; bottom:5px; transform:translateX(-50%); z-index:20;
+             font-size:9.5px; color:var(--dim); pointer-events:none; white-space:nowrap;
+             background:var(--panel); border:1px solid var(--line); border-radius:99px;
+             padding:1px 7px; opacity:.9 }
   .blank { flex:1; min-height:32px }
   footer { color:var(--dim); font-size:11px; margin-top:18px; border-top:1px solid var(--line); padding-top:9px }
   code { font-size:10.5px; background:var(--chip); padding:1px 4px; border-radius:3px }
@@ -374,6 +497,22 @@ const esc = s => s.replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','
 
 let data = null, view = "list", sel = null, failures = 0;
 
+// One <img> per workspace, kept across renders: re-appending the same node
+// leaves the picture on screen, so nothing blinks and nothing is refetched
+// until the capture time in its url actually moves.
+const shotEls = new Map();
+function shotFor(i) {
+  const s = data.shots && data.shots[i];
+  if (!s) return null;
+  let img = shotEls.get(i);
+  if (!img) { img = new Image(); img.className = 'shot'; img.alt = ''; shotEls.set(i, img); }
+  const src = `/api/screen/${i}?v=${encodeURIComponent(s.clock)}`;
+  if (img.getAttribute('src') !== src) img.setAttribute('src', src);
+  return img;
+}
+const ago = s => s < 3 ? 'live' : s < 60 ? Math.round(s) + 's'
+  : s < 3600 ? Math.round(s / 60) + 'm' : Math.round(s / 3600) + 'h';
+
 $('#view').onclick = e => { const b = e.target.closest('button'); if (!b) return;
   view = b.dataset.v;
   [...$('#view').children].forEach(x => x.setAttribute('aria-pressed', x === b));
@@ -382,7 +521,8 @@ $('#q').addEventListener('input', () => { sel = null; render(); });
 
 async function poll() {
   try {
-    const r = await fetch('/api/windows');
+    // asking for screens is what keeps the grabber awake, so only the map does
+    const r = await fetch('/api/windows' + (view === 'map' ? '?screens=1' : ''));
     data = await r.json();
     failures = 0;
   } catch (e) { failures++; }
@@ -412,7 +552,7 @@ function ordered(i) { return byApp(onWorkspace(i)).flatMap(([, group]) => group)
 
 function render() {
   if (!data) return;
-  const match = visible(), grid = $('#grid');
+  const match = visible(), grid = $('#grid'), q = $('#q').value.trim();
   grid.style.gridTemplateColumns = `repeat(${data.grid.cols}, minmax(0,1fr))`;
   grid.innerHTML = "";
   // one cell per workspace, row-major, empty ones included so positions hold still
@@ -421,23 +561,32 @@ function render() {
     const card = document.createElement('section');
     card.className = 'ws' + (ws.length ? '' : ' empty') + (i === data.current ? ' current' : '');
     const row = Math.floor(i / data.grid.cols) + 1, col = i % data.grid.cols + 1;
+    const shot = data.shots ? data.shots[i] : null;
     card.innerHTML = `<div class="wshead"><span class="wsnum">${i + 1}</span>
-      <span class="rc">r${row}c${col}</span>
+      <span class="rc">r${row}c${col}</span><span class="grow"></span>
+      ${view === 'map' && shot
+        ? `<span class="age${shot.age < 3 ? ' live' : ''}">${ago(shot.age)}</span>` : ''}
       ${i === data.current ? '<span class="here">here</span>'
         : `<span class="right">${ws.length || ''}</span>`}</div>`;
     if (!ws.length) { card.innerHTML += '<div class="blank"></div>'; grid.append(card); continue; }
     if (view === 'map') {
-      card.innerHTML += `<div class="map" style="padding-bottom:${data.screen.h / data.screen.w * 100}%"></div>`;
+      const img = shotFor(i);
+      card.innerHTML += `<div class="map" style="padding-bottom:${data.screen.h / data.screen.w * 100}%">`
+        + (img || !data.shots_on || data.shot_error ? ''
+           : '<span class="waiting">no photo yet — visit this workspace</span>') + '</div>';
       const map = card.querySelector('.map');
+      if (img) map.prepend(img);
       [...ws].reverse().forEach(w => {          // bottom of the stack painted first
         const r = document.createElement('div');
-        r.className = 'rect' + (match(w) ? '' : ' off') + (w.id === sel ? ' sel' : '');
+        r.className = 'rect' + (img ? ' over' : '') + (match(w) ? '' : ' off')
+          + (w.id === sel ? ' sel' : '') + (q && match(w) ? ' hit' : '');
         r.style.cssText = `left:${Math.max(0, w.x) / data.screen.w * 100}%;
           top:${Math.max(0, w.y) / data.screen.h * 100}%;
           width:${Math.min(w.w, data.screen.w) / data.screen.w * 100}%;
           height:${Math.min(w.h, data.screen.h) / data.screen.h * 100}%;
-          background:${colorOf(w.app)};${w.focused ? 'z-index:9' : ''}`;
-        r.textContent = w.title;
+          --c:${colorOf(w.app)};${img ? '' : `background:${colorOf(w.app)};`}`
+          + (w.focused ? 'z-index:9' : '');
+        r.innerHTML = `<span class="lbl">${esc(w.title)}</span>`;
         r.title = `${w.app} — ${w.title}`;
         r.onclick = () => activate(w.id);
         map.append(r);
@@ -465,7 +614,7 @@ function render() {
     }
     grid.append(card);
   }
-  const hits = data.windows.filter(match), q = $('#q').value.trim();
+  const hits = data.windows.filter(match);
   $('#stat').textContent = `${hits.length}${q ? " of " + data.windows.length : ""} windows · `
     + `${data.grid.cols}×${data.grid.rows} workspaces · ${new Set(data.windows.map(w => w.desktop)).size} in use`;
   $('#ts').innerHTML = failures ? `<span class="stale">disconnected — retrying</span>`
@@ -473,7 +622,13 @@ function render() {
   $('#foot').innerHTML = `Grid from ${data.grid.source} `
     + `(<code>${data.grid.cols}</code> × <code>${data.grid.rows}</code>, row-major); `
     + `windows placed by <code>_NET_WM_DESKTOP</code>, app resolved from WM_CLASS plus the `
-    + `process running inside the window. Click a window or press <kbd>Enter</kbd> to focus it.`;
+    + `process running inside the window. Click a window or press <kbd>Enter</kbd> to focus it.`
+    + (view !== 'map' ? '' : !data.shots_on
+        ? ` Screens off (<code>--no-screens</code>), so the map stays a diagram.`
+        : data.shot_error
+        ? ` No screens: ${esc(data.shot_error)}.`
+        : ` X can only photograph the workspace in front of you, so each cell shows the last `
+          + `look at it and how long ago that was; visit a workspace to fill its cell in.`);
 }
 
 async function activate(id) {
@@ -548,18 +703,31 @@ class Handler(BaseHTTPRequestHandler):
         except (BrokenPipeError, ConnectionResetError):
             pass  # a reloaded page walking away mid-poll is not an error
 
-    def _send(self, body, ctype="application/json", code=200):
+    def _send(self, body, ctype="application/json", code=200, cache=None):
         if isinstance(body, str):
             body = body.encode()
         self.send_response(code)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(body)))
+        if cache:
+            self.send_header("Cache-Control", cache)
         self.end_headers()
         self.wfile.write(body)
 
     def do_GET(self):
         if self.path.startswith("/api/windows"):
+            if SHOTS_ON and "screens=1" in self.path:
+                watch_shots()
             self._send(json.dumps(sample()))
+        elif self.path.startswith("/api/screen/"):
+            try:
+                data = shot_bytes(int(self.path.split("/")[3].split("?")[0]))
+            except (IndexError, ValueError):
+                data = b""
+            if not data:
+                return self._send(json.dumps({"error": "no photo of that workspace yet"}), code=404)
+            # the url carries the capture time, so a given one never changes
+            self._send(data, "image/jpeg", cache="private, max-age=300")
         elif self.path in ("/", "/index.html"):
             page = PAGE.replace("__TITLE__", page_title(self.server.server_address[1]))
             self._send(page, "text/html; charset=utf-8")
@@ -577,6 +745,8 @@ class Handler(BaseHTTPRequestHandler):
         except (ValueError, json.JSONDecodeError):
             return self._send(json.dumps({"error": "bad request"}), code=400)
         ok, msg = focus(str(wid))
+        if ok:
+            hold_shots()  # the new workspace is worth a photo, but only once it is there
         self._send(json.dumps({"ok": ok, "msg": msg}), code=200 if ok else 400)
 
 
@@ -586,8 +756,12 @@ def main():
     ap.add_argument("--host", default="127.0.0.1")
     ap.add_argument("--open", action="store_true", help="show the page in the browser once serving")
     ap.add_argument("--no-focus", action="store_true", help="serve read-only, refuse focus requests")
+    ap.add_argument("--no-screens", action="store_true",
+                    help="never photograph the screen; the map stays a diagram")
     args = ap.parse_args()
     Handler.allow_focus = not args.no_focus
+    global SHOTS_ON
+    SHOTS_ON = not args.no_screens
     url = f"http://{args.host}:{args.port}/"
     try:
         srv = ThreadingHTTPServer((args.host, args.port), Handler)
@@ -598,6 +772,8 @@ def main():
             return
         sys.exit(f"cannot listen on {args.host}:{args.port} ({e}) — "
                  f"another winlist is probably already running")
+    if SHOTS_ON:
+        threading.Thread(target=keep_shots, daemon=True).start()
     if args.open:
         threading.Thread(target=show_page, args=(url, args.port), daemon=True).start()
     print(f"winlist → {url}  (Ctrl-C to stop)")
