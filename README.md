@@ -68,6 +68,13 @@ and clicking a window still focuses it for real. The surface is placed rather
 than scrolled, so it has no edges: you can drag it as far as you like, and zoom
 runs free from 2% to 400%. "Fit" brings everything back into view.
 
+A photo is of a whole workspace, so cutting one window's rectangle out of it
+also cuts out anything that was lying on top. The stacking order at the moment
+of the shutter says exactly which parts those are, so they are struck out with
+a hatch rather than passed off as that window's own content, and a window that
+was completely buried says so instead of showing a picture of whatever was in
+front of it. The window on top of a workspace always comes out whole.
+
 It works the same under a finger: drag a window to move it, drag the background
 to pan, and pinch to zoom — two fingers sliding pan as they pinch, and a pinch
 that starts mid-drag leaves the window where it had got to. Zoom always happens

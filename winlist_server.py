@@ -234,9 +234,11 @@ def keep_shots():
                                               "_NET_CLIENT_LIST"))
         rects = {wid: [g.get("x", 0), g.get("y", 0), g.get("width", 0), g.get("height", 0)]
                  for wid, g in geometries(ids).items()}
+        order = re.findall(r"0x[0-9a-f]+", prop(sh("xprop", "-root", "_NET_CLIENT_LIST_STACKING"),
+                                                "_NET_CLIENT_LIST_STACKING"))
         with _shots_lock:
-            _shots[desktop] = {"data": data, "at": time.time(),
-                               "clock": time.strftime("%H:%M:%S"), "rects": rects}
+            _shots[desktop] = {"data": data, "at": time.time(), "clock": time.strftime("%H:%M:%S"),
+                               "rects": rects, "order": order}
 
 
 def shot_index():
@@ -271,6 +273,56 @@ def geometries(ids):
     return geoms
 
 
+def union_area(rects):
+    """Area covered by a pile of rectangles, counting overlaps once."""
+    xs = sorted({v for r in rects for v in (r[0], r[0] + r[2])})
+    ys = sorted({v for r in rects for v in (r[1], r[1] + r[3])})
+    total = 0
+    for i in range(len(xs) - 1):
+        for j in range(len(ys) - 1):
+            x, y, w, h = xs[i], ys[j], xs[i + 1] - xs[i], ys[j + 1] - ys[j]
+            if any(r[0] <= x and x + w <= r[0] + r[2]
+                   and r[1] <= y and y + h <= r[1] + r[3] for r in rects):
+                total += w * h
+    return total
+
+
+def mark_covered(windows, stacks):
+    """Which parts of each window's crop are not that window at all.
+
+    The photo is of a whole workspace, so cutting a window's rectangle out of it
+    also cuts out whatever was lying on top. The stacking order at the shutter
+    says exactly which parts those are: hand them to the page as percentages of
+    the crop, along with how much of the window was left showing, and it can
+    grey out everything that is somebody else.
+    """
+    per_desktop = {}
+    for w in windows:
+        if w["crop"]:
+            per_desktop.setdefault(w["desktop"], []).append(w)
+
+    for desktop, group in per_desktop.items():
+        rank = {wid: i for i, wid in enumerate(stacks.get(desktop, []))}
+        for w in group:
+            x, y, ww, hh = w["crop"]
+            if ww <= 0 or hh <= 0:
+                continue
+            mine = rank.get(w["id"], -1)
+            hidden = []
+            for v in group:
+                if v is w or rank.get(v["id"], -1) <= mine:
+                    continue          # below us, or the same window: not in the way
+                vx, vy, vw, vh = v["crop"]
+                ax, ay = max(x, vx), max(y, vy)
+                bx, by = min(x + ww, vx + vw), min(y + hh, vy + vh)
+                if bx > ax and by > ay:
+                    hidden.append([ax - x, ay - y, bx - ax, by - ay])
+            w["over"] = [[round(r[0] * 100.0 / ww, 2), round(r[1] * 100.0 / hh, 2),
+                          round(r[2] * 100.0 / ww, 2), round(r[3] * 100.0 / hh, 2)]
+                         for r in hidden]
+            w["seen"] = round(1 - union_area(hidden) / float(ww * hh), 3) if hidden else 1.0
+
+
 def sample():
     roots = sh("xprop", "-root", "_NET_CLIENT_LIST", "_NET_CLIENT_LIST_STACKING",
                "_NET_NUMBER_OF_DESKTOPS", "_NET_CURRENT_DESKTOP", "_NET_DESKTOP_GEOMETRY")
@@ -288,8 +340,9 @@ def sample():
     cols, rows, grid_src = grid_layout(n_desktops)
 
     geoms = geometries(ids)
-    with _shots_lock:                       # where each window sat when its
-        crops = {d: s["rects"] for d, s in _shots.items()}   # workspace was photographed
+    with _shots_lock:                       # where each window sat, and who was on
+        crops = {d: s["rects"] for d, s in _shots.items()}          # top of whom, when
+        stacks = {d: s.get("order", []) for d, s in _shots.items()}  # it was photographed
 
     windows = []
     for wid in ids:
@@ -329,8 +382,11 @@ def sample():
             # where to cut this window out of its workspace photo, which is not
             # quite where it is now if it has been moved since
             "crop": crops.get(desktop, {}).get(wid),
+            "over": [],        # the parts of that crop that are somebody else
+            "seen": 1.0,       # ...and how much of it is really this window
         })
 
+    mark_covered(windows, stacks)
     windows.sort(key=lambda w: (w["desktop"], -w["z"]))  # topmost first within a workspace
     return {
         "captured": time.strftime("%H:%M:%S"),
@@ -526,9 +582,17 @@ PAGE = r"""<!doctype html>
   .cap { display:flex; align-items:center; gap:5px; padding:3px 6px; flex:none;
          border-bottom:1px solid var(--line); background:var(--panel) }
   .cap .t2 { font-size:11px }
-  .pic { flex:1; min-height:0; background-repeat:no-repeat; background-origin:border-box }
+  .pic { position:relative; flex:1; min-height:0; background-repeat:no-repeat;
+         background-origin:border-box }
   .pic.none { display:flex; align-items:center; justify-content:center; color:#fff;
-              font-size:10px; text-shadow:0 1px 2px rgba(0,0,0,.4) }
+              font-size:10px; text-shadow:0 1px 2px rgba(0,0,0,.4); text-align:center;
+              padding:0 6px }
+  /* a photo of a workspace shows whatever was on top, so the parts of this
+     window that something else was covering get struck out rather than passed
+     off as its own content */
+  .hid { position:absolute; background:var(--empty);
+         background-image:repeating-linear-gradient(45deg,
+           rgba(128,128,128,.22) 0 4px, transparent 4px 9px) }
   footer { color:var(--dim); font-size:11px; margin-top:18px; border-top:1px solid var(--line); padding-top:9px }
   code { font-size:10.5px; background:var(--chip); padding:1px 4px; border-radius:3px }
 </style>
@@ -868,10 +932,13 @@ function dress(pic, w) {
   const S = data.screen, c = w.crop, url = shotUrl(w.desktop);
   const x = c && Math.max(0, c[0]), y = c && Math.max(0, c[1]);
   const cw = c && Math.min(c[2], S.w - x), ch = c && Math.min(c[3], S.h - y);
-  if (!url || !cw || !ch) {
+  // nothing of this window was showing, so there is nothing honest to display
+  const buried = w.seen !== undefined && w.seen < 0.08;
+  if (!url || !cw || !ch || buried) {
     pic.className = 'pic none';
     pic.style.cssText = `background:${colorOf(w.app)}`;
-    pic.textContent = data.shots_on ? 'not photographed yet' : '';
+    pic.textContent = buried ? 'was behind another window'
+      : data.shots_on ? 'not photographed yet' : '';
     return;
   }
   pic.className = 'pic';
@@ -880,6 +947,12 @@ function dress(pic, w) {
     + `background-size:${S.w / cw * 100}% ${S.h / ch * 100}%;`
     + `background-position:${S.w > cw ? x / (S.w - cw) * 100 : 0}% `
     + `${S.h > ch ? y / (S.h - ch) * 100 : 0}%`;
+  (w.over || []).forEach(o => {
+    const m = document.createElement('div');
+    m.className = 'hid';
+    m.style.cssText = `left:${o[0]}%;top:${o[1]}%;width:${o[2]}%;height:${o[3]}%`;
+    pic.append(m);
+  });
 }
 
 function place(el, w) {
