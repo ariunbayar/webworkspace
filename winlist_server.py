@@ -479,11 +479,6 @@ PAGE = r"""<!doctype html>
   .bar { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:14px }
   input[type=search] { flex:1 1 200px; max-width:300px; padding:6px 9px; font:inherit;
     border:1px solid var(--line); border-radius:6px; background:var(--panel); color:var(--fg) }
-  .seg { display:flex; border:1px solid var(--line); border-radius:6px; overflow:hidden }
-  .seg button { border:0; background:var(--panel); color:var(--dim); font:inherit; font-size:12px;
-                padding:6px 12px; cursor:pointer; border-left:1px solid var(--line) }
-  .seg button:first-child { border-left:0 }
-  .seg button[aria-pressed=true] { background:var(--accent); color:#fff }
   .keys { margin-left:auto; color:var(--dim); font-size:11px }
 
   /* the whole browser window, without going properly fullscreen: the page just
@@ -492,72 +487,18 @@ PAGE = r"""<!doctype html>
   body.full h1, body.full footer, body.full .keys { display:none }
   body.full .sub { margin-bottom:8px }
   body.full .bar { margin-bottom:10px }
-  /* the virtual screen is the one view that wants the viewport itself: the
-     grids keep scrolling the page, which is what makes their rows size right */
+  /* the surface wants the viewport itself rather than a column of page */
   body.app { overflow:hidden }
   body.app .wrap { height:100vh; padding-bottom:10px; display:flex; flex-direction:column }
   body.app .pan { flex:1; min-height:0; height:auto }
   kbd { font:11px ui-monospace,monospace; border:1px solid var(--line); border-bottom-width:2px;
         border-radius:3px; padding:0 4px; background:var(--panel) }
 
-  .grid { display:grid; gap:10px }
-  .ws { border:1px solid var(--line); border-radius:8px; background:var(--panel);
-        display:flex; flex-direction:column; overflow:hidden }
-  .ws.empty { background:var(--empty); border-style:dashed }
-  .ws.current { border-color:var(--accent); box-shadow:0 0 0 1px var(--accent) }
-  .wshead { display:flex; align-items:center; gap:6px; padding:5px 9px; font-size:11px;
-            color:var(--dim); border-bottom:1px solid var(--line) }
-  .ws.empty .wshead { border-bottom:0 }
-  .wsnum { font-weight:700; color:var(--fg); font-size:12px; font-variant-numeric:tabular-nums }
-  .rc { font-size:10px; opacity:.7 }
-  .grow { flex:1 }
-  .right { font-variant-numeric:tabular-nums }
-  .age { font-size:10px; opacity:.7; font-variant-numeric:tabular-nums; margin-right:6px }
-  .age.live { color:var(--accent); opacity:1 }
-  .here { font-size:9.5px; text-transform:uppercase; letter-spacing:.05em;
-          background:var(--accent); color:#fff; padding:1px 6px; border-radius:99px }
-  ul { list-style:none; margin:0; padding:4px; display:flex; flex-direction:column; gap:1px; flex:1 }
-  li { display:flex; align-items:center; gap:6px; padding:3px 5px; border-radius:4px;
-       min-width:0; cursor:pointer }
-  li.win { padding-left:16px }
-  li.head { cursor:default; color:var(--dim); font-size:10.5px; letter-spacing:.03em;
-            padding:4px 5px 1px; text-transform:uppercase }
-  li.head:hover { background:none }
-  li.head + li.win, li.win + li.win { border-left:1px solid var(--line); margin-left:8px;
-                                      padding-left:8px; border-radius:0 4px 4px 0 }
-  li:hover:not(.head) { background:var(--chip) }
-  li.focused { background:color-mix(in srgb, var(--accent) 15%, transparent) }
-  li.sel, .rect.sel { outline:2px solid var(--accent); outline-offset:-1px }
-  li.off { opacity:.28 }
   .dot { width:7px; height:7px; border-radius:2px; flex:none }
   .t2 { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:12px }
-  .app { color:var(--dim); font-size:10.5px; flex:none }
-  /* aspect-ratio, not percentage padding: a percentage would resolve against an
-     indefinite width while the grid sizes its rows, and the cell would collapse */
-  .map { position:relative; flex:none; margin:6px; border:1px solid var(--line);
-         border-radius:4px; background:var(--empty); overflow:hidden }
-  .map .shot { position:absolute; inset:0; width:100%; height:100%; display:block }
-  .rect { position:absolute; border-radius:2px; overflow:hidden; padding:1px 3px; font-size:9px;
-          line-height:1.2; color:#fff; text-shadow:0 1px 1px rgba(0,0,0,.5); cursor:pointer;
-          border:1px solid rgba(0,0,0,.28) }
-  .rect.off { opacity:.25 }
-  /* over a photo the rectangle is just an outline — the picture is the content */
-  .rect.over { background:transparent; border-color:transparent; padding:0;
-               box-shadow:inset 0 0 0 2px var(--c) }
-  .rect.over .lbl { display:inline-block; max-width:100%; padding:1px 4px; border-radius:0 0 3px 0;
-                    background:var(--c); opacity:0; transition:opacity .12s;
-                    overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
-  .rect.over:hover .lbl, .rect.over.sel .lbl, .rect.over.hit .lbl { opacity:1 }
-  .rect.over.off { opacity:1; background:rgba(0,0,0,.62); box-shadow:none }
-  .rect.over.off .lbl { display:none }
-  .waiting { position:absolute; left:50%; bottom:5px; transform:translateX(-50%); z-index:20;
-             font-size:9.5px; color:var(--dim); pointer-events:none; white-space:nowrap;
-             background:var(--panel); border:1px solid var(--line); border-radius:99px;
-             padding:1px 7px; opacity:.9 }
-  .blank { flex:1; min-height:32px }
 
   /* the virtual screen: every window on one surface, arranged however you like */
-  .ctl { display:none; gap:8px; align-items:center }
+  .ctl { display:flex; gap:8px; align-items:center }
   .btn { border:1px solid var(--line); background:var(--panel); color:var(--dim); font:inherit;
          font-size:12px; padding:5px 10px; border-radius:6px; cursor:pointer }
   .btn:hover { color:var(--fg); border-color:var(--dim) }
@@ -566,7 +507,7 @@ PAGE = r"""<!doctype html>
   #zoom { width:96px; accent-color:var(--accent) }
   /* the surface is placed, not scrolled: overflow is hidden and the canvas is
      translated, so a drag can carry everything as far as you like */
-  .pan { display:none; position:relative; overflow:hidden; border:1px solid var(--line);
+  .pan { position:relative; overflow:hidden; border:1px solid var(--line);
          border-radius:8px; background:var(--empty); height:min(78vh,900px); min-height:380px;
          touch-action:none; user-select:none; -webkit-user-select:none; cursor:grab }
   .pan.grabbing { cursor:grabbing }
@@ -593,6 +534,22 @@ PAGE = r"""<!doctype html>
   .hid { position:absolute; background:var(--empty);
          background-image:repeating-linear-gradient(45deg,
            rgba(128,128,128,.22) 0 4px, transparent 4px 9px) }
+  /* what the whole thing is, on demand: a picture of the pieces and who
+     talks to whom, since none of it is visible from the page itself */
+  dialog { border:1px solid var(--line); border-radius:10px; background:var(--panel);
+           color:var(--fg); padding:0; max-width:min(96vw,940px) }
+  dialog::backdrop { background:rgba(0,0,0,.45) }
+  .archhead { display:flex; align-items:center; gap:10px; padding:9px 13px;
+              border-bottom:1px solid var(--line) }
+  .archhead h2 { font-size:13px; margin:0; font-weight:600 }
+  .grow { flex:1 }
+  .archbody { padding:12px 13px 15px; overflow:auto; max-height:min(74vh,780px) }
+  /* box drawing only joins up in a font whose glyphs span the whole cell, and
+     only at a line height of exactly one line — anything looser leaves gaps */
+  .archbody pre { margin:0; white-space:pre; font-size:11.5px; line-height:1;
+                  font-family:"DejaVu Sans Mono","Liberation Mono","Noto Sans Mono",monospace }
+  .archbody p { color:var(--dim); font-size:11px; margin:11px 0 0; max-width:64ch }
+  .archbody b { color:var(--fg); font-weight:600 }
   footer { color:var(--dim); font-size:11px; margin-top:18px; border-top:1px solid var(--line); padding-top:9px }
   code { font-size:10.5px; background:var(--chip); padding:1px 4px; border-radius:3px }
 </style>
@@ -601,25 +558,64 @@ PAGE = r"""<!doctype html>
   <div class="sub"><b id="stat">loading…</b> · <span id="ts"></span></div>
   <div class="bar">
     <input type="search" id="q" placeholder="Filter title or app…">
-    <div class="seg" id="view">
-      <button data-v="list" aria-pressed="true">Titles</button>
-      <button data-v="map" aria-pressed="false">Map</button>
-      <button data-v="canvas" aria-pressed="false">Screen</button>
-    </div>
     <button id="full" class="btn" aria-pressed="false"
             title="Give it the whole browser window (f)">⤢</button>
     <span class="ctl" id="ctl">
       <input type="range" id="zoom" min="2" max="100" step="1" title="Zoom">
       <button id="fit" class="btn">Fit</button>
       <button id="reset" class="btn">Reset layout</button>
+      <button id="arch" class="btn" title="How this fits together (a)">Architecture</button>
     </span>
     <span class="keys"><kbd>↑↓←→</kbd>/<kbd>hjkl</kbd> pick · <kbd>Enter</kbd> focus ·
-      <kbd>/</kbd> filter · <kbd>f</kbd> full window · <kbd>Esc</kbd> clear</span>
+      <kbd>/</kbd> filter · <kbd>f</kbd> full window · <kbd>a</kbd> architecture ·
+      <kbd>Esc</kbd> clear</span>
   </div>
-  <div class="grid" id="grid"></div>
   <div class="pan" id="pan"><div class="canvas" id="canvas"><div id="tiles"></div></div></div>
   <footer id="foot"></footer>
 </div>
+<dialog id="archbox">
+  <div class="archhead">
+    <h2>How this fits together</h2><span class="grow"></span>
+    <button id="archclose" class="btn">Close</button>
+  </div>
+  <div class="archbody">
+<pre>  ┌──────────────────────── Chrome ────────────────────────┐
+  │  the virtual screen — this page                        │
+  │                                                        │
+  │   ┌─────────┐ ┌─────────┐    ┌──────────────────────┐  │
+  │   │ window  │ │ window  │    │ tile: xterm.js       │  │
+  │   │  photo  │ │  photo  │    │ $ npx tsc --noEmit▌  │  │
+  │   └─────────┘ └─────────┘    └────▲────────────┬────┘  │
+  │      tiles you arrange by hand    │            │       │
+  └───────────────────────────────────┼────────────┼───────┘
+        ▲                             │ bytes out  │ keys in
+        │ GET /api/windows            │ WebSocket  │
+        │                             │            │
+  ┌─────┴──────────────┐         ┌────┴────────────▼─────┐
+  │ winlist_server.py  │   GET   │ pty_server.py         │
+  │      :_PORT_       │────────►│      :8767  (planned) │
+  │ xprop · xdotool    │/sessions│ pty.fork + select     │
+  │ xwd · convert      │  200ms  │ scrollback per shell  │
+  └─────┬──────────────┘ timeout └───┬────────────┬──────┘
+        │ asks X                     │ PTY        │ PTY
+        ▼                            ▼            ▼
+  ┌────────────────────┐         ┌──────┐    ┌────────┐
+  │ X11 / window mgr   │         │ bash │    │ claude │
+  │ Chrome, editors,   │         └──────┘    └────────┘
+  │ gnome-terminal     │         shells this page started:
+  └────────────────────┘         it owns these, and only these
+    watched, never owned</pre>
+    <p><b>Left, and running now:</b> real X windows, watched but never owned. The page asks
+    <code>xprop</code> and <code>xdotool</code> what exists, and photographs a workspace
+    whenever you visit it — X only hands out the pixels on the glass, so a workspace you
+    are not looking at cannot be captured.</p>
+    <p><b>Right, and still to build:</b> shells this page starts itself. It knows their pid,
+    working directory and text outright rather than guessing from <code>WM_CLASS</code>,
+    and it can hold them open across a reload. They join the same
+    <code>windows[]</code> list as synthetic entries, which is what lets them share
+    the surface with real windows.</p>
+  </div>
+</dialog>
 <script>
 const COLORS = { "Google Chrome":"#4285f4", "Claude Code":"#c96442", "Vim":"#019833",
   "Neovim":"#019833", "Viber":"#7360f2", "Firefox":"#ff7139", "memmon":"#7a5cd6",
@@ -639,7 +635,6 @@ const store = {
 };
 
 let data = null, failures = 0, sel = null;
-let view = store.get('view', 'list');
 let full = store.get('full', false);       // fill the browser window, F11 not involved
 let layout = store.get('layout', {});      // window id -> [x, y] on the virtual screen
 let zoom = store.get('zoom', 0);           // 0 until we have measured a fit
@@ -647,41 +642,27 @@ let origin = store.get('origin', [0, 0]);  // where the surface sits in the fram
 let fitting = store.get('fitting', true);  // keep fitting until you take the wheel
 const GUTTER = 140;                        // virtual px between one workspace and the next
 
-// One <img> per workspace, kept across renders: re-appending the same node
-// leaves the picture on screen, so nothing blinks and nothing is refetched
-// until the capture time in its url actually moves.
-const shotEls = new Map();
 function shotUrl(i) {
   const s = data.shots && data.shots[i];
   return s ? `/api/screen/${i}?v=${encodeURIComponent(s.clock)}` : null;
 }
-function shotFor(i) {
-  const src = shotUrl(i);
-  if (!src) return null;
-  let img = shotEls.get(i);
-  if (!img) { img = new Image(); img.className = 'shot'; img.alt = ''; shotEls.set(i, img); }
-  if (img.getAttribute('src') !== src) img.setAttribute('src', src);
-  return img;
-}
-const ago = s => s < 3 ? 'live' : s < 60 ? Math.round(s) + 's'
-  : s < 3600 ? Math.round(s / 60) + 'm' : Math.round(s / 3600) + 'h';
 
-function setView(v) {
-  view = v;
-  store.set('view', v);
-  [...$('#view').children].forEach(x => x.setAttribute('aria-pressed', x.dataset.v === v));
-  render();
-}
-$('#view').onclick = e => { const b = e.target.closest('button'); if (b) setView(b.dataset.v); };
 
 function setFull(v) {
   full = v;
   store.set('full', v);
   document.body.classList.toggle('full', v);
+  document.body.classList.toggle('app', v);
   $('#full').setAttribute('aria-pressed', v);
   render();
 }
 $('#full').onclick = () => setFull(!full);
+
+// none of the plumbing shows on the page, so it gets a picture of its own
+const archbox = $('#archbox');
+const showArch = () => { if (!archbox.open) archbox.showModal(); };
+$('#arch').onclick = showArch;
+$('#archclose').onclick = () => archbox.close();
 // squared, so the slider gives fine control down at the small end where the
 // whole surface lives and still reaches far enough in to read a window
 $('#zoom').addEventListener('input', () => {
@@ -696,15 +677,13 @@ $('#reset').onclick = () => {
 };
 // the canvas keeps fitting the window — through a resize, through going
 // full-window — until you either work the slider or start arranging tiles
-addEventListener('resize', () => { if (view === 'canvas') render(); });
+addEventListener('resize', render);
 $('#q').addEventListener('input', () => { sel = null; render(); });
 
 async function poll() {
   try {
-    // asking for screens is what keeps the grabber awake, so only the views that
-    // show photographs do it
-    const wants = view === 'map' || view === 'canvas';
-    const r = await fetch('/api/windows' + (wants ? '?screens=1' : ''));
+    // asking for screens is what keeps the grabber awake
+    const r = await fetch('/api/windows?screens=1');
     data = await r.json();
     failures = 0;
   } catch (e) { failures++; }
@@ -734,78 +713,9 @@ function ordered(i) { return byApp(onWorkspace(i)).flatMap(([, group]) => group)
 
 function render() {
   if (!data) return;
-  const match = visible(), q = $('#q').value.trim(), canvas = view === 'canvas';
-  document.body.classList.toggle('app', full && canvas);
-  $('#grid').style.display = canvas ? 'none' : 'grid';
-  $('#pan').style.display = canvas ? 'block' : 'none';
-  $('#ctl').style.display = canvas ? 'flex' : 'none';
-  if (canvas) renderCanvas(match, q); else renderGrid(match, q);
+  const match = visible(), q = $('#q').value.trim();
+  renderCanvas(match, q);
   status(match, q);
-}
-
-function renderGrid(match, q) {
-  const grid = $('#grid');
-  grid.style.gridTemplateColumns = `repeat(${data.grid.cols}, minmax(0,1fr))`;
-  grid.innerHTML = "";
-  // one cell per workspace, row-major, empty ones included so positions hold still
-  for (let i = 0; i < data.grid.cols * data.grid.rows; i++) {
-    const ws = onWorkspace(i);
-    const card = document.createElement('section');
-    card.className = 'ws' + (ws.length ? '' : ' empty') + (i === data.current ? ' current' : '');
-    const row = Math.floor(i / data.grid.cols) + 1, col = i % data.grid.cols + 1;
-    const shot = data.shots ? data.shots[i] : null;
-    card.innerHTML = `<div class="wshead"><span class="wsnum">${i + 1}</span>
-      <span class="rc">r${row}c${col}</span><span class="grow"></span>
-      ${view === 'map' && shot
-        ? `<span class="age${shot.age < 3 ? ' live' : ''}">${ago(shot.age)}</span>` : ''}
-      ${i === data.current ? '<span class="here">here</span>'
-        : `<span class="right">${ws.length || ''}</span>`}</div>`;
-    if (!ws.length) { card.innerHTML += '<div class="blank"></div>'; grid.append(card); continue; }
-    if (view === 'map') {
-      const img = shotFor(i);
-      card.innerHTML += `<div class="map" style="aspect-ratio:${data.screen.w}/${data.screen.h}">`
-        + (img || !data.shots_on || data.shot_error ? ''
-           : '<span class="waiting">no photo yet — visit this workspace</span>') + '</div>';
-      const map = card.querySelector('.map');
-      if (img) map.prepend(img);
-      [...ws].reverse().forEach(w => {          // bottom of the stack painted first
-        const r = document.createElement('div');
-        r.className = 'rect' + (img ? ' over' : '') + (match(w) ? '' : ' off')
-          + (w.id === sel ? ' sel' : '') + (q && match(w) ? ' hit' : '');
-        r.style.cssText = `left:${Math.max(0, w.x) / data.screen.w * 100}%;
-          top:${Math.max(0, w.y) / data.screen.h * 100}%;
-          width:${Math.min(w.w, data.screen.w) / data.screen.w * 100}%;
-          height:${Math.min(w.h, data.screen.h) / data.screen.h * 100}%;
-          --c:${colorOf(w.app)};${img ? '' : `background:${colorOf(w.app)};`}`
-          + (w.focused ? 'z-index:9' : '');
-        r.innerHTML = `<span class="lbl">${esc(w.title)}</span>`;
-        r.title = `${w.app} — ${w.title}`;
-        r.onclick = () => activate(w.id);
-        map.append(r);
-      });
-    } else {
-      const ul = document.createElement('ul');
-      byApp(ws).forEach(([app, group]) => {
-        const head = document.createElement('li');
-        head.className = 'head';
-        head.innerHTML = `<span class="dot" style="background:${colorOf(app)}"></span>
-          <span class="t2">${esc(app)}</span>
-          <span class="app">${group.length > 1 ? group.length : ''}</span>`;
-        ul.append(head);
-        group.forEach(w => {
-          const li = document.createElement('li');
-          li.className = 'win' + (w.focused ? ' focused' : '') + (match(w) ? '' : ' off')
-            + (w.id === sel ? ' sel' : '');
-          li.title = `${w.app} · pid ${w.pid} · ${w.id}`;
-          li.innerHTML = `<span class="t2">${esc(w.title)}</span>`;
-          li.onclick = () => activate(w.id);
-          ul.append(li);
-        });
-      });
-      card.append(ul);
-    }
-    grid.append(card);
-  }
 }
 
 function status(match, q) {
@@ -814,26 +724,20 @@ function status(match, q) {
     + `${data.grid.cols}×${data.grid.rows} workspaces · ${new Set(data.windows.map(w => w.desktop)).size} in use`;
   $('#ts').innerHTML = failures ? `<span class="stale">disconnected — retrying</span>`
     : `updated ${data.captured}`;
-  if (view === 'canvas') {
-    return void ($('#foot').innerHTML = `Every window on one surface, seeded from where it `
+  $('#foot').innerHTML = `Every window on one surface, seeded from where it `
       + `really sits and then yours to arrange: drag a tile and only the tile moves — the `
       + `desktop is never touched. The arrangement is remembered in this browser; `
       + `<b>Reset layout</b> puts everything back where the desktop has it. Scroll or `
       + `pinch to zoom, drag the background or slide two fingers to pan, and click a window `
       + `(or press <kbd>Enter</kbd>) to focus it for real. Windows start out grouped by `
       + `the workspace they live on, packed together rather than spread over the desktop's `
-      + `own grid.`);
-  }
-  $('#foot').innerHTML = `Grid from ${data.grid.source} `
-    + `(<code>${data.grid.cols}</code> × <code>${data.grid.rows}</code>, row-major); `
-    + `windows placed by <code>_NET_WM_DESKTOP</code>, app resolved from WM_CLASS plus the `
-    + `process running inside the window. Click a window or press <kbd>Enter</kbd> to focus it.`
-    + (view !== 'map' ? '' : !data.shots_on
-        ? ` Screens off (<code>--no-screens</code>), so the map stays a diagram.`
+      + `own grid.`
+    + (!data.shots_on
+        ? ` Screens are off (<code>--no-screens</code>), so tiles stay plain colours.`
         : data.shot_error
-        ? ` No screens: ${esc(data.shot_error)}.`
-        : ` X can only photograph the workspace in front of you, so each cell shows the last `
-          + `look at it and how long ago that was; visit a workspace to fill its cell in.`);
+        ? ` No photographs: ${esc(data.shot_error)}.`
+        : ` X can only photograph the workspace in front of you, so a tile shows the last `
+          + `look at its workspace; visit one to fill its windows in.`);
 }
 
 
@@ -1036,7 +940,6 @@ function renderCanvas(match, q) {
 let letGo = null;   // how to call off whatever single-pointer gesture is running
 
 $('#pan').addEventListener('wheel', e => {
-  if (view !== 'canvas') return;
   e.preventDefault();
   zoomAbout(zoom * Math.exp(-e.deltaY * 0.0015), e.clientX, e.clientY);
 }, { passive: false });
@@ -1116,7 +1019,7 @@ function selected() {
 }
 
 function reveal() {
-  if (view !== 'canvas' || !sel) return;
+  if (!sel) return;
   const w = data.windows.find(x => x.id === sel);
   const pan = $('#pan');
   if (!w || !pan.clientWidth) return;
@@ -1157,6 +1060,8 @@ document.addEventListener('keydown', e => {
     return;
   }
   const k = e.key;
+  if (archbox.open) return;              // the dialog handles its own Esc
+  if (k === 'a') { e.preventDefault(); return showArch(); }
   if (k === '/') { e.preventDefault(); $('#q').focus(); return; }
   if (k === 'Escape') {
     if ($('#q').value || sel) { $('#q').value = ''; sel = null; return render(); }
@@ -1170,7 +1075,7 @@ document.addEventListener('keydown', e => {
 });
 
 setFull(full);
-setView(view);
+render();
 poll();
 setInterval(poll, 2000);
 </script>
@@ -1218,7 +1123,9 @@ class Handler(BaseHTTPRequestHandler):
             # the url carries the capture time, so a given one never changes
             self._send(data, "image/jpeg", cache="private, max-age=300")
         elif self.path in ("/", "/index.html"):
-            page = PAGE.replace("__TITLE__", page_title(self.server.server_address[1]))
+            port = self.server.server_address[1]
+            page = (PAGE.replace("__TITLE__", page_title(port))
+                        .replace("_PORT_", ("%d" % port).ljust(6)[:6]))
             self._send(page, "text/html; charset=utf-8")
         else:
             self._send(json.dumps({"error": "not found"}), code=404)
