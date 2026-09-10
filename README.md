@@ -90,6 +90,49 @@ the screen, `--port N` to change the port.
 
 X11 only (uses `xprop`/`xdotool`, plus `xwd` and `convert` for the photos).
 
+Terminals
+---
+
+Shells the browser can hold on to, one pseudo-terminal each, stdlib only:
+
+    python3 pty_server.py
+
+Serves http://127.0.0.1:8767/sessions. A page cannot start a shell — it has no
+way in — so this holds the terminals instead: it starts one on a PTY, streams
+what it prints to whoever is attached, and writes back what they type. The
+terminal lives here rather than in the tab, so a reload reattaches to the
+session it left instead of killing it, and two tabs can watch the same one.
+
+Because it owns them, it can say what X never could: the pid, the directory the
+foreground program is sitting in, the name of that program, and the title the
+program set for itself. No guessing from `WM_CLASS`.
+
+    GET    /sessions              every session, and what is running in it
+    POST   /sessions              start one: {"cwd", "argv", "cols", "rows"}
+    POST   /sessions/<id>/resize  {"cols", "rows"}
+    DELETE /sessions/<id>         hang it up — SIGHUP, then SIGKILL if it dawdles
+    GET    /attach/<id>           websocket: binary frames carry terminal bytes
+                                  both ways, text frames are JSON control messages
+
+Each session keeps its last 256 KB of output, handed over the moment you
+attach, so a terminal redraws itself instead of coming up blank. A session that
+has ended stays listed for ten minutes so its last words are still readable.
+
+Handing out shells deserves some care, so: it listens on loopback and refuses
+anything else unless you say `--allow-remote`, and it turns away handshakes
+from any page that is not itself local — a WebSocket is not stopped by the
+same-origin policy, so a site you happen to be reading could otherwise dial
+this port. `--shell` picks what a session runs (default `$SHELL`),
+`--max-sessions` caps how many at once.
+
+    python3 pty_server_test.py
+
+runs the whole thing against a server of its own on a free port: typing,
+resizing, Ctrl-C, reattaching, two watchers on one terminal, and the refusals.
+
+Nothing draws these in the browser yet — that is the xterm.js half, still to
+come. `winlist_server.py`'s **Architecture** dialog shows where it goes.
+
 Resource monitor
 ---
 
