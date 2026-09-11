@@ -74,7 +74,8 @@ and from there you drag each window wherever you want it. **Dragging moves the t
 manager is never touched, so this is a place to arrange your windows as you
 think about them rather than as the desktop has them. The arrangement is
 remembered in the browser (per window), "Reset layout" puts it back, the wheel
-and the slider zoom, dragging the background carries the whole surface with it,
+and the slider zoom, dragging the background with the mouse carries the whole
+surface with it,
 and clicking a window still focuses it for real. The surface is placed rather
 than scrolled, so it has no edges: you can drag it as far as you like, and zoom
 runs free from 2% to 400%. "Fit" brings everything back into view.

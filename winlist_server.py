@@ -1337,8 +1337,11 @@ $('#pan').addEventListener('wheel', e => {
   zoomAbout(zoom * Math.exp(-e.deltaY * 0.0015), e.clientX, e.clientY);
 }, { passive: false });
 
-// one pointer anywhere on the background carries the whole surface with it
-$('#canvas').addEventListener('pointerdown', e => {
+// One pointer anywhere on the background carries the whole surface with it.
+// This listens on the frame rather than on the canvas: the canvas is a 0x0
+// element that its tiles simply overflow, so it has no background of its own
+// to press — the empty space you are reaching for belongs to the frame.
+$('#pan').addEventListener('pointerdown', e => {
   if (e.target.closest('.tile') || pointers.size > 1) return;   // one finger drags, two pinch
   const pan = $('#pan');
   let px = e.clientX, py = e.clientY;
