@@ -36,6 +36,13 @@ Each window is a tile, labelled with the app it belongs to — resolved from
 `WM_CLASS` plus the process running inside the window, so a terminal running
 `claude` or `vim` says so instead of "XTerm".
 
+Terminals look like the ones you already configured: the server reads the plain
+`XTerm` class out of your X resources at startup — palette, font and face size,
+cursor blink, scrollback, and the geometry a new one opens at — and the page
+uses them. A named class like `font-cozette*` is a profile you ask for by name,
+not the default you get by typing `xterm`, so it is left alone. Nothing there,
+or no X at all, and it falls back to its own colours.
+
 **New terminal** (or `t`) puts a shell of the page's own on the same surface,
 in a cell of its own past the last workspace. It is a real terminal, drawn by
 xterm.js and wired to `pty_server.py`: click into it and type. Drag it by its
@@ -140,6 +147,13 @@ session it left instead of killing it, and two tabs can watch the same one.
 Because it owns them, it can say what X never could: the pid, the directory the
 foreground program is sitting in, the name of that program, and the title the
 program set for itself. No guessing from `WM_CLASS`.
+
+A shell opened here is a new session, not a continuation of whatever started
+the server, so the session markers some programs leave in the environment are
+dropped on the way in. Without that, a Claude Code run inside one of these
+terminals finds the marker its parent left, decides it is a subprocess rather
+than a session of its own, and turns transcript saving off. Settings are kept —
+only per-session plumbing goes.
 
     GET    /sessions              every session, and what is running in it
     POST   /sessions              start one: {"cwd", "argv", "cols", "rows"}

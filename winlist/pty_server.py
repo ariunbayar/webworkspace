@@ -42,6 +42,21 @@ MAX_SESSIONS = 32
 KEEP_DEAD = 600           # seconds a finished session stays readable
 READ_CHUNK = 65536
 
+# A shell opened here is a new session, not a continuation of whatever started
+# this server. Some programs mark their own session in the environment so that
+# a copy of themselves started underneath can tell it is a child and behave
+# differently — a Claude Code run inside one of these terminals reads the
+# marker below and turns its transcript off, because as far as it can see it is
+# a subprocess of the session that opened the window rather than a session of
+# your own. Those markers belong to the program that set them; a terminal hands
+# them on to nobody. Settings do stay: nothing here is configuration.
+SHED = (
+    "CLAUDECODE", "CLAUDE_CODE_CHILD_SESSION", "CLAUDE_CODE_SESSION_ID",
+    "CLAUDE_CODE_BRIDGE_SESSION_ID", "CLAUDE_CODE_MESSAGING_SOCKET",
+    "CLAUDE_CODE_MESSAGING_TOKEN", "CLAUDE_CODE_ENTRYPOINT", "CLAUDE_CODE_EXECPATH",
+    "CLAUDE_PID", "CLAUDE_EFFORT",
+)
+
 
 # ---- sessions -------------------------------------------------------------
 
@@ -86,6 +101,8 @@ class Session:
         # would only contradict it
         env.pop("COLUMNS", None)
         env.pop("LINES", None)
+        for name in SHED:
+            env.pop(name, None)
 
         pid, fd = pty.fork()
         if pid == 0:                    # the child is the shell, and never returns

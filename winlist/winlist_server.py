@@ -270,6 +270,60 @@ def shot_bytes(desktop):
 # ---- sampling -------------------------------------------------------------
 
 
+# What a terminal should look like is a thing you have already decided once,
+# in ~/.Xresources, and the xterm you are used to reads it from there. So does
+# this: the palette, the font, the size a new one opens at. Only the plain
+# XTerm class — a `font-cozette*` or any other named class is a profile you
+# asked for by name, not the default you get by typing `xterm`.
+XTERM_CLASS = "XTerm*"
+ANSI = ["black", "red", "green", "yellow", "blue", "magenta", "cyan", "white",
+        "brightBlack", "brightRed", "brightGreen", "brightYellow",
+        "brightBlue", "brightMagenta", "brightCyan", "brightWhite"]
+LOOK = {}          # read once at startup; nothing here changes while we run
+
+
+def xterm_look():
+    """Read the default XTerm resources, as far as a browser can honour them."""
+    lines = sh("xrdb", "-query").splitlines()
+    res = {}
+    for line in lines:
+        key, sep, val = line.partition(":")
+        if sep and key.startswith(XTERM_CLASS):
+            res[key[len(XTERM_CLASS):].strip().lower()] = val.strip()
+    if not res:
+        return {}
+
+    look, theme = {}, {}
+    for name, colour in (("background", res.get("background")),
+                         ("foreground", res.get("foreground")),
+                         ("cursor", res.get("cursorcolor"))):
+        if colour:
+            theme[name] = colour
+    for i, name in enumerate(ANSI):
+        colour = res.get("color%d" % i)
+        if colour:
+            theme[name] = colour
+    if theme:
+        look["theme"] = theme
+    if res.get("facename"):
+        look["font"] = res["facename"]
+    for key, name, cast in (("facesize", "size", float), ("savelines", "scrollback", int)):
+        try:
+            look[name] = cast(res[key])
+        except (KeyError, ValueError):
+            pass
+    if "cursorblink" in res:
+        look["blink"] = res["cursorblink"].lower() == "true"
+    # bold text in a brighter colour is xterm's boldColors, off by default here
+    # only because that is what the resource says
+    if "boldcolors" in res:
+        look["bold_bright"] = res["boldcolors"].lower() == "true"
+    size = re.match(r"(\d+)x(\d+)", res.get("geometry", ""))
+    if size:
+        look["cols"], look["rows"] = int(size.group(1)), int(size.group(2))
+    return look
+
+
 def pty(path, method="GET", body=None, timeout=0.3):
     """Ask the terminal server something, and take no for an answer.
 
@@ -527,6 +581,7 @@ def sample():
         "shot_error": _shot_error,
         # where the page dials for a terminal, and which cell they live in
         "pty": {"on": PTY_ON, "port": PTY_PORT, "cell": n_desktops, "error": _pty_error},
+        "look": LOOK,          # what your xterm looks like, for ours to match
     }
 
 
@@ -1105,17 +1160,28 @@ function drag(e, w, el) {
 // across renders, so a poll never disturbs what you are typing into.
 
 const terms = new Map();          // session id -> { term, ws, wrap, natural }
-const TERM_COLS = 100, TERM_ROWS = 30;
+// What a terminal looks like is yours to say, and you have already said it in
+// ~/.Xresources: the server reads the plain XTerm class at startup and these
+// are only what is used when it has nothing to go on.
+const FALLBACK_COLS = 100, FALLBACK_ROWS = 30;
+const look = () => (data && data.look) || {};
+const termCols = () => look().cols || FALLBACK_COLS;
+const termRows = () => look().rows || FALLBACK_ROWS;
 // A prompt is whatever the shell says it is, and plenty of them are drawn out
 // of a Nerd Font's private use area — a Powerline arrow in a font that has
 // never heard of one is a blank. The browser falls back per glyph, so naming a
 // symbol font after the workhorse fills those in without disturbing the
 // metrics, which come from the first font only.
-const TERM_FONT = '"DejaVu Sans Mono","Liberation Mono","PowerlineSymbols",' +
-                  '"Symbols Nerd Font","CozetteVector",ui-monospace,monospace';
-const TERM_THEME = { background: '#12110d', foreground: '#e9e7df', cursor: '#e0875c',
+const FALLBACK_FONT = '"DejaVu Sans Mono","Liberation Mono"';
+// whatever the font is, the symbol fonts come after it, never instead of it
+const SYMBOLS = ',"PowerlineSymbols","Symbols Nerd Font",ui-monospace,monospace';
+const termFont = () => (look().font ? `"${look().font}",` : '') + FALLBACK_FONT + SYMBOLS;
+const FALLBACK_THEME = { background: '#12110d', foreground: '#e9e7df', cursor: '#e0875c',
   black: '#2a2820', red: '#d76b5a', green: '#7fa84f', yellow: '#d0a33c',
   blue: '#6f9bc4', magenta: '#b07ec0', cyan: '#5fa8a0', white: '#d9d5c8' };
+// a palette read from X is taken whole, not mixed with this one: half of one
+// scheme and half of another is nobody's idea of a colour scheme
+const termTheme = () => look().theme || FALLBACK_THEME;
 
 function connect(t, id) {
   if (t.ws || !data.pty || !data.pty.on) return;
@@ -1135,10 +1201,15 @@ function mount(w) {
   const id = w.term.session;
   let t = terms.get(id);
   if (t) return t;
+  const l = look();
   const term = new Terminal({
-    cols: w.term.cols, rows: w.term.rows, theme: TERM_THEME,
-    fontFamily: TERM_FONT,
-    fontSize: 13, lineHeight: 1.1, cursorBlink: true, scrollback: 4000,
+    cols: w.term.cols, rows: w.term.rows, theme: termTheme(),
+    fontFamily: termFont(),
+    fontSize: l.size || 13,
+    lineHeight: 1.1,
+    cursorBlink: l.blink === undefined ? true : l.blink,
+    scrollback: l.scrollback || 4000,
+    drawBoldTextInBrightColors: l.bold_bright === undefined ? true : l.bold_bright,
     convertEol: false, macOptionIsMeta: true,
   });
   t = { term, ws: null, wrap: null, natural: null, cell: null, pad: [0, 0], read: false };
@@ -1262,7 +1333,7 @@ function grab(e, w, el) {
 async function newTerm() {
   const made = await fetch('/api/terminals', {
     method: 'POST',
-    body: JSON.stringify({ cols: TERM_COLS, rows: TERM_ROWS }),
+    body: JSON.stringify({ cols: termCols(), rows: termRows() }),
   }).then(r => r.json()).catch(() => null);
   if (made && made.id) { hold(true); poll(); }
 }
@@ -1651,6 +1722,7 @@ def main():
     SHOT_WIDTH = max(320, args.shot_width)
     PTY_ON = not args.no_terminals
     PTY_PORT = args.pty_port
+    LOOK.update(xterm_look())
     url = f"http://{args.host}:{args.port}/"
     try:
         srv = ThreadingHTTPServer((args.host, args.port), Handler)
