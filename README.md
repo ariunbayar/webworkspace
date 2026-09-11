@@ -44,6 +44,18 @@ title bar rather than anywhere on it — the rest of it is for typing into — a
 surface, so zoom out and the terminal goes small with the photographs, zoom in
 and you can read it.
 
+Pull the bottom-right corner to resize it. The count of characters is what
+changes, not the picture: the terminal is told, the kernel is told, and the
+program running in it gets a SIGWINCH and redraws while you are still pulling,
+exactly as it would in a window you were dragging. The corner reads out the
+size as you go, and the handle stays the same size however far you zoom out, so
+there is always something to grab.
+
+Once a terminal is big enough to read, the wheel over it scrolls its scrollback
+rather than zooming the surface — it is a terminal at that point, not a tile.
+Zoomed further out than anyone could read, it goes back to being a tile and the
+wheel means zoom again.
+
 The tiles show real pixels. X only hands out what is actually on the glass, so
 a window on another workspace cannot be photographed — only the workspace in
 front of you can. So the last photo taken of each workspace is kept and its
