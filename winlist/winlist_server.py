@@ -908,7 +908,7 @@ function status(match, q) {
           + `look at its workspace; visit one to fill its windows in.`)
     + (!data.pty || !data.pty.on ? ''
        : data.pty.error
-       ? ` No terminals: ${esc(data.pty.error)}. Start it with <code>python3 pty_server.py</code>.`
+       ? ` No terminals: ${esc(data.pty.error)}. Start it with <code>python3 winlist/pty_server.py</code>.`
        : ` <b>New terminal</b> starts a shell of this page's own, off to the right of the `
          + `workspaces — drag it by its title bar, click into it and type. It lives in `
          + `<code>pty_server.py</code>, not in this tab, so a reload picks it back up.`);
