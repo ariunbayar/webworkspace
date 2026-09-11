@@ -679,7 +679,8 @@ PAGE = r"""<!doctype html>
                font-size:12px; line-height:1; border-radius:3px }
   .cap .shut:hover, .cap .again:hover { opacity:1; background:var(--accent); color:#fff }
   /* there is nothing to start again while it is still running */
-  .cap .again { display:none }
+  .cap .again { display:none; font-size:10.5px; padding:1px 6px; opacity:.9;
+                border:1px solid currentColor }
   .tile.gone .cap .again { display:inline }
   .tile.gone .cap .note { color:var(--accent); opacity:1 }
   .cap .note { flex:none; font-size:10px; opacity:.75 }
@@ -1158,7 +1159,7 @@ function dressTerm(el, w) {
     wrap.className = 'termwrap';
     wrap.innerHTML = `<div class="cap"><span class="dot"></span><span class="t2"></span>` +
                      `<span class="note"></span>` +
-                     `<span class="again" title="Start another one here">↻</span>` +
+                     `<span class="again" title="Start a new shell in this tile">new shell</span>` +
                      `<span class="shut" title="Close">✕</span></div>`;
     const host = document.createElement('div');
     host.className = 'termhost';
@@ -1181,7 +1182,7 @@ function dressTerm(el, w) {
   cap.querySelector('.t2').textContent = w.term.running || w.title;
   cap.querySelector('.note').textContent = w.term.alive
     ? (w.term.cwd || '')
-    : 'exited ' + (w.term.exit === null ? '?' : w.term.exit) + ' — ↻ starts another';
+    : 'exited ' + (w.term.exit === null ? '?' : w.term.exit);
   el.classList.toggle('gone', !w.term.alive);
   // a running session is reconnected whenever its socket has dropped; one that
   // has ended is asked once for what it said, and then it is finished

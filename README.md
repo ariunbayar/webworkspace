@@ -45,9 +45,10 @@ surface, so zoom out and the terminal goes small with the photographs, zoom in
 and you can read it.
 
 A shell that exits leaves its tile behind, greyed, with its last words still
-in it and the reason it went in the title bar. `↻` starts another one in its
-place — the same size, the same directory, the same spot on the surface, since
-that is what pointing at that tile meant — and `✕` clears it away. Left alone,
+in it and the reason it went in the title bar. **new shell** there starts
+another one in its place — the same size, the same directory, the same spot on
+the surface, since that is what pointing at that tile meant — and `✕` clears it
+away. Nothing else needs restarting: not the page, not the server. Left alone,
 it goes by itself after ten minutes.
 
 Pull the bottom-right corner to resize it. The count of characters is what
