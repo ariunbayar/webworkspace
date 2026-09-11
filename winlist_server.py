@@ -646,6 +646,17 @@ PAGE = r"""<!doctype html>
                line-height:1; border-radius:3px }
   .cap .shut:hover { opacity:1; background:var(--accent); color:#fff }
   .cap .note { flex:none; font-size:10px; opacity:.75 }
+  /* a corner to pull: the terminal is the only tile with a size of its own to
+     change, since the rest are pictures of windows somebody else is sizing */
+  .grip { position:absolute; right:0; bottom:0; width:14px; height:14px;
+          cursor:nwse-resize; opacity:.45;
+          background:linear-gradient(135deg, transparent 45%, #b9b5a8 45% 55%,
+                     transparent 55% 70%, #b9b5a8 70% 80%, transparent 80%) }
+  .grip:hover { opacity:.95 }
+  .tile.gone .grip { display:none }
+  .termsize { position:absolute; right:6px; bottom:6px; padding:1px 5px; border-radius:3px;
+              background:rgba(0,0,0,.72); color:#e9e7df; font:11px ui-monospace,monospace;
+              pointer-events:none }
 
   /* a photo of a workspace shows whatever was on top, so the parts of this
      window that something else was covering get struck out rather than passed
@@ -1092,7 +1103,7 @@ function mount(w) {
     fontSize: 13, lineHeight: 1.1, cursorBlink: true, scrollback: 4000,
     convertEol: false, macOptionIsMeta: true,
   });
-  t = { term, ws: null, wrap: null, natural: null };
+  t = { term, ws: null, wrap: null, natural: null, cell: null, pad: [0, 0] };
   terms.set(id, t);
   // what you type goes straight down the socket; nothing is echoed locally,
   // because the far end is what decides what a keystroke looks like
@@ -1118,11 +1129,13 @@ function dressTerm(el, w) {
     // its own size: the surface scale goes on afterwards, never before
     wrap.style.transform = 'none';
     t.term.open(host);
-    const screen = host.querySelector('.xterm-screen') || host;
-    t.natural = [Math.ceil(host.offsetWidth || screen.offsetWidth),
-                 Math.ceil(wrap.offsetHeight)];
     t.wrap = wrap;
-  }
+    measure(t);
+    const grip = document.createElement('div');
+    grip.className = 'grip';
+    grip.title = 'Drag to resize this terminal';
+    el.append(grip);                  // outside the scaled wrap: a handle you
+  }                                   // can still grab when zoomed out
   if (t.natural) { w.w = t.natural[0]; w.h = t.natural[1]; }
   const cap = t.wrap.querySelector('.cap');
   cap.querySelector('.dot').style.background = colorOf(w.app);
@@ -1131,6 +1144,75 @@ function dressTerm(el, w) {
     ? (w.term.cwd || '') : 'exited ' + (w.term.exit === null ? '?' : w.term.exit);
   el.classList.toggle('gone', !w.term.alive);
   if (w.term.alive) connect(t, id);
+}
+
+// What one character costs, worked out from what xterm.js actually laid out
+// rather than from anything we told it: the font decides, and it is the only
+// one that knows. Everything about a terminal's size follows from this.
+function measure(t) {
+  const host = t.wrap.querySelector('.termhost');
+  const screen = host.querySelector('.xterm-screen') || host;
+  const wide = host.offsetWidth || screen.offsetWidth;
+  const high = t.wrap.offsetHeight;
+  // the title bar and xterm's own padding are there whatever the size, so they
+  // are held apart from the grid of characters rather than averaged into it
+  t.pad = [Math.max(0, wide - screen.offsetWidth),
+           Math.max(0, high - screen.offsetHeight)];
+  t.cell = [screen.offsetWidth / t.term.cols, screen.offsetHeight / t.term.rows];
+  t.natural = [Math.ceil(wide), Math.ceil(high)];
+}
+
+// how big a tile has to be to hold this many characters
+function span(t, cols, rows) {
+  return [Math.round(cols * t.cell[0] + t.pad[0]),
+          Math.round(rows * t.cell[1] + t.pad[1])];
+}
+
+// Pulling the corner is the same gesture as dragging the tile, so it is the
+// same shape of code: the terminal is resized as you go, and the far end is
+// told each time the count actually changes — which is what a real terminal
+// does, and why a full-screen program redraws while you are still pulling.
+function grab(e, w, el) {
+  if (e.button) return;
+  e.preventDefault();
+  e.stopPropagation();
+  const t = terms.get(w.term.session);
+  if (!t || !t.cell) return;
+  const sx = e.clientX, sy = e.clientY;
+  const cols0 = t.term.cols, rows0 = t.term.rows;
+  const tag = document.createElement('div');
+  tag.className = 'termsize';
+  el.append(tag);
+  const show = () => { tag.textContent = `${t.term.cols}×${t.term.rows}`; };
+  show();
+  el.setPointerCapture(e.pointerId);
+  const move = ev => {
+    const cols = Math.max(20, Math.round(cols0 + (ev.clientX - sx) / zoom / t.cell[0]));
+    const rows = Math.max(5, Math.round(rows0 + (ev.clientY - sy) / zoom / t.cell[1]));
+    if (cols === t.term.cols && rows === t.term.rows) return;
+    t.term.resize(cols, rows);
+    t.natural = span(t, cols, rows);
+    w.w = t.natural[0];
+    w.h = t.natural[1];
+    place(el, w);
+    show();
+    if (t.ws && t.ws.readyState === 1) {
+      t.ws.send(JSON.stringify({ resize: { cols, rows } }));
+    }
+  };
+  const done = ev => {
+    try { el.releasePointerCapture(ev.pointerId); } catch (err) {}
+    el.removeEventListener('pointermove', move);
+    el.removeEventListener('pointerup', done);
+    el.removeEventListener('pointercancel', done);
+    tag.remove();
+    measure(t);                      // what it settled at, measured not assumed
+    hold(false);
+    poll();
+  };
+  el.addEventListener('pointermove', move);
+  el.addEventListener('pointerup', done);
+  el.addEventListener('pointercancel', done);
 }
 
 async function newTerm() {
@@ -1171,6 +1253,7 @@ function renderCanvas(match, q) {
           // is delivered to the tile rather than to what was under it — so the
           // close button has to be answered here, before any of that
           if (e.target.closest('.shut')) { e.preventDefault(); return closeTerm(win.term.session); }
+          if (e.target.closest('.grip')) return grab(e, win, el);
           // a terminal is for typing into, so only its caption is a handle;
           // a photograph has nothing to click, so all of it is
           if (!e.target.closest('.cap')) return;
@@ -1212,6 +1295,11 @@ function renderCanvas(match, q) {
 let letGo = null;   // how to call off whatever single-pointer gesture is running
 
 $('#pan').addEventListener('wheel', e => {
+  // A terminal has a scrollback of its own, and once it is big enough to read
+  // it is a terminal rather than a tile: the wheel belongs to it. Zoomed out
+  // far enough that nobody could read it, it is a tile again and the wheel
+  // goes back to meaning zoom.
+  if (zoom > 0.5 && e.target.closest('.termhost')) return;
   e.preventDefault();
   zoomAbout(zoom * Math.exp(-e.deltaY * 0.0015), e.clientX, e.clientY);
 }, { passive: false });
