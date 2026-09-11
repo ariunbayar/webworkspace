@@ -10,17 +10,23 @@ Run:  python3 winlist_server.py           # then open http://localhost:8766
       python3 winlist_server.py --no-focus  # read-only, refuse focus requests
       python3 winlist_server.py --no-screens  # never photograph the screen
 
+Terminals the page started itself come from pty_server.py and sit on the same
+surface as the real windows, drawn by xterm.js rather than photographed.
+
 X11 only: it reads EWMH properties via xprop/xdotool, and photographs the
 workspace you are on with xwd + ImageMagick's convert.
 """
 import argparse
 import json
+import os
 import re
 import shutil
 import subprocess
 import sys
 import threading
 import time
+import urllib.error
+import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 WIN_ID = re.compile(r"^0x[0-9a-fA-F]+$")
@@ -155,6 +161,9 @@ def resolve_app(cls, pid, ttl=8):
 # cell as you move around, each one showing when it was last seen.
 
 SHOTS_ON = True
+PTY_PORT = 8767       # pty_server.py, if it is running: terminals of our own
+PTY_ON = True
+_pty_error = ""
 SHOT_WIDTH = 1280     # the virtual screen cuts single windows out of this
 SHOT_QUALITY = 72
 SHOT_TTL = 2.0        # seconds before the workspace on screen is worth regrabbing
@@ -256,6 +265,89 @@ def shot_bytes(desktop):
 
 
 # ---- sampling -------------------------------------------------------------
+
+
+def pty(path, method="GET", body=None, timeout=0.3):
+    """Ask the terminal server something, and take no for an answer.
+
+    It is a separate program on a separate port and may simply not be running,
+    which is not an error — the surface is still a surface without it. So a
+    short timeout, and None means "no terminals today".
+    """
+    global _pty_error
+    url = "http://127.0.0.1:%d%s" % (PTY_PORT, path)
+    data = json.dumps(body).encode() if body is not None else None
+    req = urllib.request.Request(url, data=data, method=method)
+    if data:
+        req.add_header("Content-Type", "application/json")
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            _pty_error = ""
+            return json.loads(r.read() or b"{}")
+    except urllib.error.HTTPError as e:
+        try:
+            return json.loads(e.read() or b"{}")
+        except ValueError:
+            _pty_error = "pty_server said %d" % e.code
+            return None
+    except (OSError, ValueError):
+        _pty_error = "pty_server is not answering on :%d" % PTY_PORT
+        return None
+
+
+# A terminal has no rectangle on any screen, so it needs a size to start with.
+# The page measures the real one as soon as xterm.js has laid a session out and
+# says so; until then this is only enough to put a tile somewhere sensible.
+CELL_W, CELL_H, CAPTION, GAP = 9, 17, 22, 60
+
+
+def terminals(desktop, across):
+    """Sessions from pty_server.py, shaped like windows so they can share the
+    surface. They belong to no workspace — the desktop has never heard of them
+    — so they are given a cell of their own, past the last real one.
+
+    A window arrives with somewhere to be; a terminal does not, and two of them
+    at the same nowhere would sit exactly on top of each other. So they are
+    laid out left to right and wrapped at about the width of a screen, which is
+    only where they start: drag one and it stays where you put it.
+    """
+    answer = pty("/sessions") if PTY_ON else None
+    if not answer:
+        return []
+    out, x, y, tall = [], 0, 0, 0
+    for i, t in enumerate(answer.get("sessions", [])):
+        name = t.get("title") or t.get("running") or "shell"
+        where = t.get("cwd") or ""
+        wide = t.get("cols", 80) * CELL_W
+        high = t.get("rows", 24) * CELL_H + CAPTION
+        if x and x + wide > across:
+            x, y, tall = 0, y + tall + GAP, 0
+        tall = max(tall, high)
+        out.append({
+            "id": "web:" + t["id"],
+            "title": name if not where else "%s — %s" % (name, where),
+            "app": "Terminal",
+            "cls": "pty",
+            "pid": t.get("pid", 0),
+            "desktop": desktop,
+            "focused": False,
+            "max": False,
+            "min": False,
+            "x": x, "y": y,
+            "w": wide, "h": high,
+            "z": 10000 + i,          # ours, so always above the photographs
+            "crop": None, "over": [], "seen": 1.0,
+            # everything the page needs to draw one and talk to it
+            "term": {
+                "session": t["id"],
+                "cols": t.get("cols", 80), "rows": t.get("rows", 24),
+                "alive": t.get("alive", False), "exit": t.get("exit"),
+                "running": t.get("running", ""), "cwd": where,
+                "age": t.get("age", 0),
+            },
+        })
+        x += wide + GAP
+    return out
 
 
 def geometries(ids):
@@ -387,6 +479,7 @@ def sample():
         })
 
     mark_covered(windows, stacks)
+    windows += terminals(n_desktops, geom[0])
     windows.sort(key=lambda w: (w["desktop"], -w["z"]))  # topmost first within a workspace
     return {
         "captured": time.strftime("%H:%M:%S"),
@@ -399,11 +492,15 @@ def sample():
         "shots": shot_index(),
         "shots_on": SHOTS_ON,
         "shot_error": _shot_error,
+        # where the page dials for a terminal, and which cell they live in
+        "pty": {"on": PTY_ON, "port": PTY_PORT, "cell": n_desktops, "error": _pty_error},
     }
 
 
 def focus(wid):
     """Raise a window and switch to its workspace."""
+    if wid.startswith("web:"):
+        return False, "that terminal lives in the page, not on the desktop"
     if not WIN_ID.match(wid):
         return False, "bad window id"
     if wid.lower() not in [w.lower() for w in
@@ -461,6 +558,8 @@ def show_page(url, port):
 PAGE = r"""<!doctype html>
 <meta charset="utf-8">
 <title>__TITLE__</title>
+<link rel="stylesheet" href="/vendor/xterm.css">
+<script src="/vendor/xterm.js"></script>
 <style>
   :root { --bg:#f7f7f5; --panel:#fff; --line:#e3e2dd; --fg:#1c1b19; --dim:#6f6d67;
           --accent:#b8562f; --chip:#efeee9; --empty:#f2f1ed }
@@ -528,6 +627,26 @@ PAGE = r"""<!doctype html>
   .pic.none { display:flex; align-items:center; justify-content:center; color:#fff;
               font-size:10px; text-shadow:0 1px 2px rgba(0,0,0,.4); text-align:center;
               padding:0 6px }
+  /* A terminal is not a photograph of anything — it is the session itself,
+     live. So the whole tile is drawn at the size the terminal really wants and
+     then scaled with the rest of the surface: zoom out and it goes small like
+     everything else, zoom in and you can read it and type into it. */
+  .tile.term { background:#12110d; border-color:#3a372c }
+  .tile.term.focused { border-color:var(--accent) }
+  .termwrap { position:absolute; top:0; left:0; transform-origin:0 0;
+              display:flex; flex-direction:column }
+  .termwrap .cap { background:#1d1c17; border-bottom-color:#34322a; color:#b9b5a8;
+                   cursor:grab; flex:none }
+  .tile.term.dragging .termwrap .cap { cursor:grabbing }
+  .termhost { flex:none }
+  .termhost .xterm { padding:2px 3px }
+  /* a session that has ended keeps its last words, and says so */
+  .tile.gone { opacity:.62 }
+  .cap .shut { flex:none; cursor:pointer; opacity:.55; padding:0 3px; font-size:12px;
+               line-height:1; border-radius:3px }
+  .cap .shut:hover { opacity:1; background:var(--accent); color:#fff }
+  .cap .note { flex:none; font-size:10px; opacity:.75 }
+
   /* a photo of a workspace shows whatever was on top, so the parts of this
      window that something else was covering get struck out rather than passed
      off as its own content */
@@ -564,11 +683,12 @@ PAGE = r"""<!doctype html>
       <input type="range" id="zoom" min="2" max="100" step="1" title="Zoom">
       <button id="fit" class="btn">Fit</button>
       <button id="reset" class="btn">Reset layout</button>
+      <button id="newterm" class="btn" title="Start a terminal on this surface (t)">New terminal</button>
       <button id="arch" class="btn" title="How this fits together (a)">Architecture</button>
     </span>
     <span class="keys"><kbd>↑↓←→</kbd>/<kbd>hjkl</kbd> pick · <kbd>Enter</kbd> focus ·
-      <kbd>/</kbd> filter · <kbd>f</kbd> full window · <kbd>a</kbd> architecture ·
-      <kbd>Esc</kbd> clear</span>
+      <kbd>/</kbd> filter · <kbd>f</kbd> full window · <kbd>t</kbd> terminal ·
+      <kbd>a</kbd> architecture · <kbd>Esc</kbd> clear</span>
   </div>
   <div class="pan" id="pan"><div class="canvas" id="canvas"><div id="tiles"></div></div></div>
   <footer id="foot"></footer>
@@ -583,7 +703,7 @@ PAGE = r"""<!doctype html>
   │  the virtual screen — this page                        │
   │                                                        │
   │   ┌─────────┐ ┌─────────┐    ┌──────────────────────┐  │
-  │   │ window  │ │ window  │    │ tile: xterm.js (soon)│  │
+  │   │ window  │ │ window  │    │ tile: xterm.js       │  │
   │   │  photo  │ │  photo  │    │ $ npx tsc --noEmit▌  │  │
   │   └─────────┘ └─────────┘    └────▲────────────┬────┘  │
   │      tiles you arrange by hand    │            │       │
@@ -611,10 +731,10 @@ PAGE = r"""<!doctype html>
     are not looking at cannot be captured.</p>
     <p><b>Right:</b> shells this page starts itself. <code>pty_server.py</code> holds
     them, so it knows their pid, working directory and what is running in them outright
-    rather than guessing from <code>WM_CLASS</code>, and they survive a reload. The tiles
-    that draw them are the part still to build; when they arrive the sessions join the
-    same <code>windows[]</code> list as synthetic entries, which is what lets them share
-    the surface with real windows.</p>
+    rather than guessing from <code>WM_CLASS</code>, and they survive a reload — the tab
+    only holds the emulator drawing one. Sessions arrive in the same
+    <code>windows[]</code> list as synthetic entries, in a cell of their own past the
+    last workspace, which is what lets them share the surface with real windows.</p>
   </div>
 </dialog>
 <script>
@@ -721,8 +841,11 @@ function render() {
 
 function status(match, q) {
   const hits = data.windows.filter(match);
-  $('#stat').textContent = `${hits.length}${q ? " of " + data.windows.length : ""} windows · `
-    + `${data.grid.cols}×${data.grid.rows} workspaces · ${new Set(data.windows.map(w => w.desktop)).size} in use`;
+  const ours = data.windows.filter(w => w.term).length;
+  const desks = new Set(data.windows.filter(w => !w.term).map(w => w.desktop)).size;
+  $('#stat').textContent = `${hits.length - ours}${q ? " of " + (data.windows.length - ours) : ""} windows · `
+    + (ours ? `${ours} terminal${ours > 1 ? 's' : ''} of our own · ` : '')
+    + `${data.grid.cols}×${data.grid.rows} workspaces · ${desks} in use`;
   $('#ts').innerHTML = failures ? `<span class="stale">disconnected — retrying</span>`
     : `updated ${data.captured}`;
   $('#foot').innerHTML = `Every window on one surface, seeded from where it `
@@ -738,7 +861,13 @@ function status(match, q) {
         : data.shot_error
         ? ` No photographs: ${esc(data.shot_error)}.`
         : ` X can only photograph the workspace in front of you, so a tile shows the last `
-          + `look at its workspace; visit one to fill its windows in.`);
+          + `look at its workspace; visit one to fill its windows in.`)
+    + (!data.pty || !data.pty.on ? ''
+       : data.pty.error
+       ? ` No terminals: ${esc(data.pty.error)}. Start it with <code>python3 pty_server.py</code>.`
+       : ` <b>New terminal</b> starts a shell of this page's own, off to the right of the `
+         + `workspaces — drag it by its title bar, click into it and type. It lives in `
+         + `<code>pty_server.py</code>, not in this tab, so a reload picks it back up.`);
 }
 
 
@@ -864,6 +993,16 @@ function place(el, w) {
   const [x, y] = seatOf(w);
   el.style.left = x * zoom + 'px';
   el.style.top = y * zoom + 'px';
+  if (w.term) {
+    // a terminal is drawn at its own size and scaled to match the surface, so
+    // it cannot be given a floor the way a photograph can: the tile is exactly
+    // as big as what is inside it
+    const t = terms.get(w.term.session);
+    el.style.width = w.w * zoom + 'px';
+    el.style.height = w.h * zoom + 'px';
+    if (t && t.wrap) t.wrap.style.transform = `scale(${zoom})`;
+    return;
+  }
   el.style.width = Math.max(90, w.w * zoom) + 'px';
   el.style.height = Math.max(60, w.h * zoom) + 'px';
 }
@@ -881,6 +1020,10 @@ function drag(e, w, el) {
       moved = true;
       el.classList.add('dragging');
       $('#tiles').append(el);          // the one you just touched belongs on top
+      // moving an element in the document drops its pointer capture, and the
+      // drag then only lasts while the pointer happens to stay over the tile —
+      // which for a terminal, grabbed by a thin title bar, is no time at all
+      try { el.setPointerCapture(ev.pointerId); } catch (err) {}
     }
     layout[w.id] = [Math.round(from[0] + dx / zoom), Math.round(from[1] + dy / zoom)];
     place(el, w);
@@ -907,6 +1050,105 @@ function drag(e, w, el) {
   el.addEventListener('pointercancel', up);
 }
 
+// ---- terminals -----------------------------------------------------------
+// A session lives in pty_server.py; what lives here is the emulator drawing it
+// and the socket carrying bytes each way. Both are kept per session and reused
+// across renders, so a poll never disturbs what you are typing into.
+
+const terms = new Map();          // session id -> { term, ws, wrap, natural }
+const TERM_COLS = 100, TERM_ROWS = 30;
+// A prompt is whatever the shell says it is, and plenty of them are drawn out
+// of a Nerd Font's private use area — a Powerline arrow in a font that has
+// never heard of one is a blank. The browser falls back per glyph, so naming a
+// symbol font after the workhorse fills those in without disturbing the
+// metrics, which come from the first font only.
+const TERM_FONT = '"DejaVu Sans Mono","Liberation Mono","PowerlineSymbols",' +
+                  '"Symbols Nerd Font","CozetteVector",ui-monospace,monospace';
+const TERM_THEME = { background: '#12110d', foreground: '#e9e7df', cursor: '#e0875c',
+  black: '#2a2820', red: '#d76b5a', green: '#7fa84f', yellow: '#d0a33c',
+  blue: '#6f9bc4', magenta: '#b07ec0', cyan: '#5fa8a0', white: '#d9d5c8' };
+
+function connect(t, id) {
+  if (t.ws || !data.pty || !data.pty.on) return;
+  const ws = new WebSocket(`ws://${location.hostname}:${data.pty.port}/attach/${id}`);
+  ws.binaryType = 'arraybuffer';
+  t.ws = ws;
+  ws.onmessage = e => {
+    // bytes are the terminal; text is the server talking about it, which the
+    // window list already covers
+    if (typeof e.data !== 'string') t.term.write(new Uint8Array(e.data));
+  };
+  ws.onclose = () => { if (t.ws === ws) t.ws = null; };
+  ws.onerror = () => { if (t.ws === ws) t.ws = null; };
+}
+
+function mount(w) {
+  const id = w.term.session;
+  let t = terms.get(id);
+  if (t) return t;
+  const term = new Terminal({
+    cols: w.term.cols, rows: w.term.rows, theme: TERM_THEME,
+    fontFamily: TERM_FONT,
+    fontSize: 13, lineHeight: 1.1, cursorBlink: true, scrollback: 4000,
+    convertEol: false, macOptionIsMeta: true,
+  });
+  t = { term, ws: null, wrap: null, natural: null };
+  terms.set(id, t);
+  // what you type goes straight down the socket; nothing is echoed locally,
+  // because the far end is what decides what a keystroke looks like
+  term.onData(d => {
+    if (t.ws && t.ws.readyState === 1) t.ws.send(new TextEncoder().encode(d));
+  });
+  return t;
+}
+
+function dressTerm(el, w) {
+  const t = mount(w), id = w.term.session;
+  if (!t.wrap) {
+    el.innerHTML = '';
+    const wrap = document.createElement('div');
+    wrap.className = 'termwrap';
+    wrap.innerHTML = `<div class="cap"><span class="dot"></span><span class="t2"></span>` +
+                     `<span class="note"></span><span class="shut" title="Close">✕</span></div>`;
+    const host = document.createElement('div');
+    host.className = 'termhost';
+    wrap.append(host);
+    el.append(wrap);
+    // xterm measures a character by laying one out, so it has to do that at
+    // its own size: the surface scale goes on afterwards, never before
+    wrap.style.transform = 'none';
+    t.term.open(host);
+    const screen = host.querySelector('.xterm-screen') || host;
+    t.natural = [Math.ceil(host.offsetWidth || screen.offsetWidth),
+                 Math.ceil(wrap.offsetHeight)];
+    t.wrap = wrap;
+  }
+  if (t.natural) { w.w = t.natural[0]; w.h = t.natural[1]; }
+  const cap = t.wrap.querySelector('.cap');
+  cap.querySelector('.dot').style.background = colorOf(w.app);
+  cap.querySelector('.t2').textContent = w.term.running || w.title;
+  cap.querySelector('.note').textContent = w.term.alive
+    ? (w.term.cwd || '') : 'exited ' + (w.term.exit === null ? '?' : w.term.exit);
+  el.classList.toggle('gone', !w.term.alive);
+  if (w.term.alive) connect(t, id);
+}
+
+async function newTerm() {
+  const made = await fetch('/api/terminals', {
+    method: 'POST',
+    body: JSON.stringify({ cols: TERM_COLS, rows: TERM_ROWS }),
+  }).then(r => r.json()).catch(() => null);
+  if (made && made.id) { hold(true); poll(); }
+}
+$('#newterm').onclick = newTerm;
+
+async function closeTerm(id) {
+  await fetch('/api/terminals/' + id, { method: 'DELETE' }).catch(() => {});
+  const t = terms.get(id);
+  if (t && t.ws) t.ws.close();
+  poll();
+}
+
 function renderCanvas(match, q) {
   if (fitting || !zoom) fitAll();
   $('#zoom').value = Math.round(Math.sqrt(zoom / MAX_ZOOM) * 100);
@@ -918,22 +1160,51 @@ function renderCanvas(match, q) {
     let el = tileEls.get(w.id);
     if (!el) {
       el = document.createElement('div');
-      el.innerHTML = `<div class="cap"><span class="dot"></span><span class="t2"></span></div>`;
-      el.append(document.createElement('div'));
-      el.addEventListener('pointerdown', e => drag(e, tileEls.get(w.id).win, el));
+      if (!w.term) {
+        el.innerHTML = `<div class="cap"><span class="dot"></span><span class="t2"></span></div>`;
+        el.append(document.createElement('div'));
+      }
+      el.addEventListener('pointerdown', e => {
+        const win = tileEls.get(w.id).win;
+        if (win.term) {
+          // the drag takes the pointer captive, and a captured pointer's click
+          // is delivered to the tile rather than to what was under it — so the
+          // close button has to be answered here, before any of that
+          if (e.target.closest('.shut')) { e.preventDefault(); return closeTerm(win.term.session); }
+          // a terminal is for typing into, so only its caption is a handle;
+          // a photograph has nothing to click, so all of it is
+          if (!e.target.closest('.cap')) return;
+        }
+        drag(e, win, el);
+      });
       tileEls.set(w.id, el);
       $('#tiles').append(el);
     }
     el.win = w;                       // the drag handler always wants the fresh one
-    el.className = 'tile' + (w.focused ? ' focused' : '') + (match(w) ? '' : ' off')
-      + (w.id === sel ? ' sel' : '');
-    el.title = `${w.app} — ${w.title} · workspace ${w.desktop + 1}`;
-    el.querySelector('.dot').style.background = colorOf(w.app);
-    el.querySelector('.t2').textContent = w.title;
-    dress(el.lastElementChild, w);
+    el.className = 'tile' + (w.term ? ' term' : '') + (w.focused ? ' focused' : '')
+      + (match(w) ? '' : ' off') + (w.id === sel ? ' sel' : '');
+    if (w.term) {
+      el.title = `${w.title} · pid ${w.pid}`;
+      dressTerm(el, w);
+    } else {
+      el.title = `${w.app} — ${w.title} · workspace ${w.desktop + 1}`;
+      el.querySelector('.dot').style.background = colorOf(w.app);
+      el.querySelector('.t2').textContent = w.title;
+      dress(el.lastElementChild, w);
+    }
     place(el, w);
   });
-  tileEls.forEach((el, id) => { if (!live.has(id)) { el.remove(); tileEls.delete(id); } });
+  tileEls.forEach((el, id) => {
+    if (live.has(id)) return;
+    el.remove();
+    tileEls.delete(id);
+    const t = terms.get(id.slice(4));         // a session that has gone for good
+    if (id.startsWith('web:') && t) {
+      if (t.ws) t.ws.close();
+      t.term.dispose();
+      terms.delete(id.slice(4));
+    }
+  });
 }
 
 // ---- getting about: wheel, drag, and two fingers -------------------------
@@ -1008,6 +1279,12 @@ addEventListener('pointercancel', liftFinger, true);
 async function activate(id) {
   sel = id;
   render();
+  if (id.startsWith('web:')) {
+    // this one is already in front of you; focusing it means the keyboard
+    const t = terms.get(id.slice(4));
+    if (t) t.term.focus();
+    return;
+  }
   try { await fetch('/api/focus', { method: 'POST', body: JSON.stringify({ id }) }); }
   catch (e) {}
   poll();
@@ -1044,18 +1321,21 @@ function move(dx, dy) {
     const at = here.findIndex(w => w.id === cur.id);
     if (at + dy >= 0 && at + dy < here.length) { sel = here[at + dy].id; return (render(), reveal()); }
   }
-  const cols = data.grid.cols, cells = cols * data.grid.rows;
-  let i = cur.desktop;
-  for (let step = 0; step < cells; step++) {   // walk the grid to the next occupied cell
-    i += dx + dy * cols;
-    if (i < 0) i += cells;
-    if (i >= cells) i -= cells;
-    const there = ordered(i).filter(match);
+  // the desktop's own grid is not what is on screen — the seating plan is, and
+  // it has a cell for the terminals, which no workspace layout would ever hold
+  const p = plan(), cells = [...p.at.keys()], n = cells.length;
+  let i = Math.max(0, cells.indexOf(cur.desktop));
+  for (let step = 0; step < n; step++) {
+    i += dx + dy * p.cols;
+    if (i < 0) i += n;
+    if (i >= n) i -= n;
+    const there = ordered(cells[i]).filter(match);
     if (there.length) { sel = there[dy > 0 ? 0 : there.length - 1].id; return (render(), reveal()); }
   }
 }
 
 document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'TEXTAREA') return;   // a terminal has the keyboard
   if (e.target.tagName === 'INPUT') {
     if (e.key === 'Escape') { e.target.value = ''; e.target.blur(); sel = null; render(); }
     return;
@@ -1069,6 +1349,7 @@ document.addEventListener('keydown', e => {
     return full ? setFull(false) : undefined;
   }
   if (k === 'f') { e.preventDefault(); return setFull(!full); }
+  if (k === 't') { e.preventDefault(); return void newTerm(); }
   if (k === 'Enter' || k === ' ') { const w = selected(); if (w) { e.preventDefault(); activate(w.id); } return; }
   const moves = { ArrowUp: [0, -1], k: [0, -1], ArrowDown: [0, 1], j: [0, 1],
                   ArrowLeft: [-1, 0], h: [-1, 0], ArrowRight: [1, 0], l: [1, 0] };
@@ -1109,7 +1390,27 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _vendor(self, name):
+        """xterm.js, from disk next to this script.
+
+        The page is one string in this file and means to stay that way, but
+        half a megabyte of terminal emulator is not going in it. Only these two
+        names are ever served, and only from that one directory.
+        """
+        kind = {"xterm.js": "application/javascript", "xterm.css": "text/css"}.get(name)
+        if not kind:
+            return self._send(json.dumps({"error": "not found"}), code=404)
+        here = os.path.join(os.path.dirname(os.path.abspath(__file__)), "vendor")
+        try:
+            with open(os.path.join(here, name), "rb") as f:
+                body = f.read()
+        except OSError:
+            return self._send(json.dumps({"error": "vendor/%s is missing" % name}), code=404)
+        self._send(body, kind + "; charset=utf-8", cache="public, max-age=86400")
+
     def do_GET(self):
+        if self.path.startswith("/vendor/"):
+            return self._vendor(self.path[len("/vendor/"):].split("?")[0])
         if self.path.startswith("/api/windows"):
             if SHOTS_ON and "screens=1" in self.path:
                 watch_shots()
@@ -1132,8 +1433,33 @@ class Handler(BaseHTTPRequestHandler):
             self._send(json.dumps({"error": "not found"}), code=404)
 
     def do_POST(self):
-        if not self.path.startswith("/api/focus"):
+        if self.path.startswith("/api/terminals"):
+            if not PTY_ON:
+                return self._send(json.dumps({"error": "terminals are off"}), code=403)
+            try:
+                n = int(self.headers.get("Content-Length", 0))
+                body = json.loads(self.rfile.read(n) or b"{}")
+            except (ValueError, json.JSONDecodeError):
+                return self._send(json.dumps({"error": "bad request"}), code=400)
+            # starting a shell is slower than asking what exists, so give it room
+            made = pty("/sessions", "POST", body, timeout=5)
+            if made is None:
+                return self._send(json.dumps({"error": _pty_error}), code=502)
+            return self._send(json.dumps(made), code=201 if "id" in made else 400)
+        if self.path.startswith("/api/focus"):
+            return self.do_focus()
+        return self._send(json.dumps({"error": "not found"}), code=404)
+
+    def do_DELETE(self):
+        if not self.path.startswith("/api/terminals/"):
             return self._send(json.dumps({"error": "not found"}), code=404)
+        sid = self.path[len("/api/terminals/"):].split("?")[0]
+        gone = pty("/sessions/" + sid, "DELETE", timeout=5)
+        if gone is None:
+            return self._send(json.dumps({"error": _pty_error}), code=502)
+        self._send(json.dumps(gone))
+
+    def do_focus(self):
         if not self.allow_focus:
             return self._send(json.dumps({"error": "focus disabled (--no-focus)"}), code=403)
         try:
@@ -1148,7 +1474,7 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main():
-    global SHOTS_ON, SHOT_WIDTH
+    global SHOTS_ON, SHOT_WIDTH, PTY_PORT, PTY_ON
     ap = argparse.ArgumentParser()
     ap.add_argument("--port", type=int, default=DEFAULT_PORT)
     ap.add_argument("--host", default="127.0.0.1")
@@ -1158,10 +1484,16 @@ def main():
                     help="never photograph the screen; the map stays a diagram")
     ap.add_argument("--shot-width", type=int, default=SHOT_WIDTH, metavar="PX",
                     help="width of each workspace photo (default %d)" % SHOT_WIDTH)
+    ap.add_argument("--pty-port", type=int, default=PTY_PORT, metavar="N",
+                    help="where pty_server.py is listening (default %d)" % PTY_PORT)
+    ap.add_argument("--no-terminals", action="store_true",
+                    help="never ask for terminals; the surface holds real windows only")
     args = ap.parse_args()
     Handler.allow_focus = not args.no_focus
     SHOTS_ON = not args.no_screens
     SHOT_WIDTH = max(320, args.shot_width)
+    PTY_ON = not args.no_terminals
+    PTY_PORT = args.pty_port
     url = f"http://{args.host}:{args.port}/"
     try:
         srv = ThreadingHTTPServer((args.host, args.port), Handler)

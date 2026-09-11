@@ -36,6 +36,14 @@ Each window is a tile, labelled with the app it belongs to — resolved from
 `WM_CLASS` plus the process running inside the window, so a terminal running
 `claude` or `vim` says so instead of "XTerm".
 
+**New terminal** (or `t`) puts a shell of the page's own on the same surface,
+in a cell of its own past the last workspace. It is a real terminal, drawn by
+xterm.js and wired to `pty_server.py`: click into it and type. Drag it by its
+title bar rather than anywhere on it — the rest of it is for typing into — and
+`✕` closes it. Everything else about a tile still holds: it scales with the
+surface, so zoom out and the terminal goes small with the photographs, zoom in
+and you can read it.
+
 The tiles show real pixels. X only hands out what is actually on the glass, so
 a window on another workspace cannot be photographed — only the workspace in
 front of you can. So the last photo taken of each workspace is kept and its
@@ -130,8 +138,16 @@ this port. `--shell` picks what a session runs (default `$SHELL`),
 runs the whole thing against a server of its own on a free port: typing,
 resizing, Ctrl-C, reattaching, two watchers on one terminal, and the refusals.
 
-Nothing draws these in the browser yet — that is the xterm.js half, still to
-come. `winlist_server.py`'s **Architecture** dialog shows where it goes.
+`winlist_server.py` draws them. It asks this server what exists, folds the
+answer into the same window list as the real windows, and the page dials
+`/attach` straight from the tab — so the bytes of a terminal never make the
+detour through the window list. It degrades quietly: no terminal server, no
+terminals, and the surface is just windows again.
+
+The emulator is xterm.js 6.0.0, vendored in `vendor/` rather than fetched from
+anywhere at runtime. A prompt full of Nerd Font glyphs needs a font that has
+them; the page names `PowerlineSymbols` and a couple of others after its
+workhorse, and the browser falls back per glyph.
 
 Resource monitor
 ---
