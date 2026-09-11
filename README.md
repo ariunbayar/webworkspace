@@ -113,11 +113,17 @@ X11 only (uses `xprop`/`xdotool`, plus `xwd` and `convert` for the photos).
 Terminals
 ---
 
-Shells the browser can hold on to, one pseudo-terminal each, stdlib only:
+Shells the browser can hold on to, one pseudo-terminal each, stdlib only.
+`winlist_server.py` runs this inside itself, so there is normally nothing to
+start: the terminals come up with the page and go when it goes, and `pstree`
+shows one process holding the shells rather than two programs to remember. Run
+it on its own when you want it on its own:
 
     python3 pty_server.py
 
-Serves http://127.0.0.1:8767/sessions. A page cannot start a shell — it has no
+Serves http://127.0.0.1:8767/sessions. One already listening there is somebody
+else's — `winlist_server.py` leaves it alone and uses it as it stands, rather
+than taking over something it did not start and would then have to stop. A page cannot start a shell — it has no
 way in — so this holds the terminals instead: it starts one on a PTY, streams
 what it prints to whoever is attached, and writes back what they type. The
 terminal lives here rather than in the tab, so a reload reattaches to the
@@ -155,6 +161,12 @@ answer into the same window list as the real windows, and the page dials
 `/attach` straight from the tab — so the bytes of a terminal never make the
 detour through the window list. It degrades quietly: no terminal server, no
 terminals, and the surface is just windows again.
+
+Stopping it takes the shells with it, before it returns rather than on a timer
+somebody might not wait for: each gets the SIGHUP that closing a terminal
+window sends, a couple of seconds to go quietly, and then a signal it cannot
+refuse. Being killed is the ordinary way a server ends, so SIGTERM comes in by
+the same door as Ctrl-C. `--no-terminals` holds none at all.
 
 The emulator is xterm.js 6.0.0, vendored in `vendor/` rather than fetched from
 anywhere at runtime. A prompt full of Nerd Font glyphs needs a font that has

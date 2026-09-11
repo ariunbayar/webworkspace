@@ -74,6 +74,18 @@ class Session:
         self.lock = threading.Lock()
         self._tail = b""                # a title sequence split across two reads
 
+        # After a fork, a process holding threads may only do what is safe to do
+        # in a signal handler until it execs — and setting an environment
+        # variable is not on that list, since it can want the allocator's lock
+        # while another thread is holding it. So the environment is finished
+        # here, on the near side of the fork, and handed to exec as a whole.
+        env = dict(os.environ)
+        env["TERM"] = "xterm-256color"
+        # the terminal knows its own size; a stale copy in the environment
+        # would only contradict it
+        env.pop("COLUMNS", None)
+        env.pop("LINES", None)
+
         pid, fd = pty.fork()
         if pid == 0:                    # the child is the shell, and never returns
             try:
@@ -89,12 +101,7 @@ class Session:
                     signal.signal(sig, signal.SIG_DFL)
                 signal.pthread_sigmask(signal.SIG_SETMASK, set())
                 os.chdir(cwd)
-                os.environ["TERM"] = "xterm-256color"
-                # the terminal knows its own size; a stale copy in the
-                # environment would only contradict it
-                os.environ.pop("COLUMNS", None)
-                os.environ.pop("LINES", None)
-                os.execvp(argv[0], argv)
+                os.execvpe(argv[0], argv, env)
             except Exception as e:      # exec failed: say so on the terminal itself
                 os.write(2, ("pty_server: cannot run %s: %s\r\n" % (argv[0], e)).encode())
             os._exit(127)
@@ -236,19 +243,23 @@ class Session:
         if not self.alive():
             return
         try:
-            pgid = os.getpgid(self.pid)
-            os.killpg(pgid, signal.SIGHUP)
+            os.killpg(os.getpgid(self.pid), signal.SIGHUP)
         except OSError:
             return
         # closing a terminal window is a request, not a negotiation: anything
-        # still there in a moment is taken down
-        def insist():
-            if self.alive():
-                try:
-                    os.killpg(pgid, signal.SIGKILL)
-                except OSError:
-                    pass
-        threading.Timer(3.0, insist).start()
+        # still there in a moment is taken down. The timer is a daemon, so
+        # waiting on it is never what keeps the program from exiting.
+        later = threading.Timer(3.0, self.kill)
+        later.daemon = True
+        later.start()
+
+    def kill(self):
+        if not self.alive():
+            return
+        try:
+            os.killpg(os.getpgid(self.pid), signal.SIGKILL)
+        except OSError:
+            pass
 
 
 class Sessions:
@@ -563,6 +574,45 @@ class Handler(BaseHTTPRequestHandler):
             conn.send_json({"session": s.info()})
 
 
+# ---- serving --------------------------------------------------------------
+
+def serve(host="127.0.0.1", port=DEFAULT_PORT, shell=None, max_sessions=MAX_SESSIONS):
+    """Start the terminal server on threads of its own and hand it back.
+
+    Whoever calls this owns it — `winlist_server.py` runs it inside itself so
+    there is one program to start and one to stop, and `main()` below runs it
+    the same way and then simply waits. Raises OSError if the port is taken,
+    which usually means one of these is already running there.
+    """
+    Handler.sessions = Sessions(shell or os.environ.get("SHELL", "/bin/bash"), max_sessions)
+    threading.Thread(target=Handler.sessions.sweep, daemon=True).start()
+    srv = ThreadingHTTPServer((host, port), Handler)
+    srv.daemon_threads = True
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    return srv
+
+
+def stop(srv, grace=2.0):
+    """Shut the door, and hang up on everything still inside.
+
+    A shell outliving the thing that started it is exactly what a terminal
+    emulator is supposed to prevent, so this is not optional tidying — and it
+    finishes before this returns rather than on a timer somebody might not wait
+    for. A shell that goes quietly costs nothing; one that will not go is given
+    `grace` seconds and then killed.
+    """
+    srv.shutdown()
+    srv.server_close()
+    sessions = list(Handler.sessions.by_id.values())
+    for s in sessions:
+        Handler.sessions.drop(s.id)
+    deadline = time.time() + grace
+    for s in sessions:
+        while s.alive() and time.time() < deadline:
+            time.sleep(0.02)
+        s.kill()
+
+
 # ---- main -----------------------------------------------------------------
 
 def main():
@@ -581,22 +631,18 @@ def main():
         sys.exit("refusing to listen on %s: anyone who can reach it gets a shell here.\n"
                  "Say --allow-remote if that is genuinely what you want." % args.host)
 
-    Handler.sessions = Sessions(args.shell, args.max_sessions)
-    threading.Thread(target=Handler.sessions.sweep, daemon=True).start()
     try:
-        srv = ThreadingHTTPServer((args.host, args.port), Handler)
+        srv = serve(args.host, args.port, args.shell, args.max_sessions)
     except OSError as e:
         sys.exit("cannot listen on %s:%d (%s) — another pty_server is probably "
                  "already running" % (args.host, args.port, e))
-    srv.daemon_threads = True
     print("pty → http://%s:%d/sessions  running %s  (Ctrl-C to stop)"
           % (args.host, args.port, args.shell))
     try:
-        srv.serve_forever()
+        threading.Event().wait()        # the serving happens on its own thread
     except KeyboardInterrupt:
         print("\nbye")
-        for sid in list(Handler.sessions.by_id):
-            Handler.sessions.drop(sid)
+        stop(srv)
 
 
 if __name__ == "__main__":
