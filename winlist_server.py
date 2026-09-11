@@ -10,8 +10,10 @@ Run:  python3 winlist_server.py           # then open http://localhost:8766
       python3 winlist_server.py --no-focus  # read-only, refuse focus requests
       python3 winlist_server.py --no-screens  # never photograph the screen
 
-Terminals the page started itself come from pty_server.py and sit on the same
-surface as the real windows, drawn by xterm.js rather than photographed.
+Terminals the page started itself sit on the same surface as the real windows,
+drawn by xterm.js rather than photographed. pty_server.py holds them, and this
+runs it inside itself: one program to start, one to stop, and no shell left
+behind when it stops.
 
 X11 only: it reads EWMH properties via xprop/xdotool, and photographs the
 workspace you are on with xwd + ImageMagick's convert.
@@ -21,6 +23,7 @@ import json
 import os
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import threading
@@ -348,6 +351,36 @@ def terminals(desktop, across):
         })
         x += wide + GAP
     return out
+
+
+def start_terminals(port):
+    """Run the terminal server inside this one.
+
+    It is its own program and still runs as one, but there is no reason to make
+    somebody start two things and remember to stop two things — and a shell
+    left running after the page that opened it has gone is exactly what a
+    terminal is supposed to prevent. So it is held here, on threads of this
+    process, and it goes when this goes.
+
+    Somebody already listening on that port is a pty_server started by hand:
+    that one is theirs to own and to stop, so we leave it alone and use it.
+    """
+    global _pty_error
+    try:
+        import pty_server
+    except ImportError as e:
+        _pty_error = "no terminal server here to run (%s)" % e
+        return None
+    try:
+        return pty_server.serve(port=port)
+    except OSError:
+        return None            # somebody else's, already there
+
+
+def stop_terminals(srv):
+    if srv:
+        import pty_server
+        pty_server.stop(srv)
 
 
 def geometries(ids):
@@ -1573,9 +1606,10 @@ def main():
     ap.add_argument("--shot-width", type=int, default=SHOT_WIDTH, metavar="PX",
                     help="width of each workspace photo (default %d)" % SHOT_WIDTH)
     ap.add_argument("--pty-port", type=int, default=PTY_PORT, metavar="N",
-                    help="where pty_server.py is listening (default %d)" % PTY_PORT)
+                    help="port for the terminals (default %d); one already "
+                         "listening there is used as it stands" % PTY_PORT)
     ap.add_argument("--no-terminals", action="store_true",
-                    help="never ask for terminals; the surface holds real windows only")
+                    help="do not hold terminals at all; the surface is real windows only")
     args = ap.parse_args()
     Handler.allow_focus = not args.no_focus
     SHOTS_ON = not args.no_screens
@@ -1596,11 +1630,24 @@ def main():
         threading.Thread(target=keep_shots, daemon=True).start()
     if args.open:
         threading.Thread(target=show_page, args=(url, args.port), daemon=True).start()
+
+    pty_srv = start_terminals(PTY_PORT) if PTY_ON else None
     print(f"winlist → {url}  (Ctrl-C to stop)")
+    if PTY_ON:
+        print("terminals → :%d, %s" % (PTY_PORT, "ours, and they stop when this does"
+                                       if pty_srv else "already running there, left alone"))
+
+    # being killed is the ordinary way a server ends, and a shell must not
+    # outlive this one either way, so SIGTERM comes in by the same door as Ctrl-C
+    def hang_up(*_):
+        raise KeyboardInterrupt
+    signal.signal(signal.SIGTERM, hang_up)
     try:
         srv.serve_forever()
     except KeyboardInterrupt:
         print("\nbye")
+    finally:
+        stop_terminals(pty_srv)
 
 
 if __name__ == "__main__":
