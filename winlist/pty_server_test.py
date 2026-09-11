@@ -224,6 +224,27 @@ def run():
     code, body = api("DELETE", "/sessions/nope")
     check("closing a stranger → 404", code == 404, str(code))
 
+    print("9b. a session that has ended still has its last words")
+    code, s2 = api("POST", "/sessions", {"argv": ["/bin/bash", "--norc", "--noprofile", "-i"]})
+    dead = s2["id"]
+    w = WS("/attach/" + dead)
+    w.drain(0.6)
+    w.send(b"echo the-last-thing-it-said\n")
+    w.drain(3.0, want=b"the-last-thing-it-said")
+    w.send(b"exit\n")
+    time.sleep(1.0)
+    w.close()
+    code, lst = api("GET", "/sessions")
+    check("it is listed as ended", mine(lst, dead).get("alive") is False, str(mine(lst, dead))[:110])
+    check("and remembers where it was working", mine(lst, dead).get("cwd", "") != "",
+          repr(mine(lst, dead).get("cwd")))
+    back = WS("/attach/" + dead)
+    check("attaching to it still works", "101" in back.status, back.status)
+    said = back.drain(2.5, want=b"the-last-thing-it-said")
+    check("its last words come back", b"the-last-thing-it-said" in said, repr(said[-90:]))
+    back.close()
+    api("DELETE", "/sessions/" + dead)
+
     print("10. bad input")
     code, body = api("POST", "/sessions", {"cwd": "/no/such/place"})
     check("nonexistent cwd → 400", code == 400, str(body))

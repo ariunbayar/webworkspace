@@ -675,9 +675,14 @@ PAGE = r"""<!doctype html>
   .termhost .xterm { padding:2px 3px }
   /* a session that has ended keeps its last words, and says so */
   .tile.gone { opacity:.62 }
-  .cap .shut { flex:none; cursor:pointer; opacity:.55; padding:0 3px; font-size:12px;
-               line-height:1; border-radius:3px }
-  .cap .shut:hover { opacity:1; background:var(--accent); color:#fff }
+  .cap .shut, .cap .again { flex:none; cursor:pointer; opacity:.55; padding:0 3px;
+               font-size:12px; line-height:1; border-radius:3px }
+  .cap .shut:hover, .cap .again:hover { opacity:1; background:var(--accent); color:#fff }
+  /* there is nothing to start again while it is still running */
+  .cap .again { display:none; font-size:10.5px; padding:1px 6px; opacity:.9;
+                border:1px solid currentColor }
+  .tile.gone .cap .again { display:inline }
+  .tile.gone .cap .note { color:var(--accent); opacity:1 }
   .cap .note { flex:none; font-size:10px; opacity:.75 }
   /* a corner to pull: the terminal is the only tile with a size of its own to
      change, since the rest are pictures of windows somebody else is sizing */
@@ -1136,7 +1141,7 @@ function mount(w) {
     fontSize: 13, lineHeight: 1.1, cursorBlink: true, scrollback: 4000,
     convertEol: false, macOptionIsMeta: true,
   });
-  t = { term, ws: null, wrap: null, natural: null, cell: null, pad: [0, 0] };
+  t = { term, ws: null, wrap: null, natural: null, cell: null, pad: [0, 0], read: false };
   terms.set(id, t);
   // what you type goes straight down the socket; nothing is echoed locally,
   // because the far end is what decides what a keystroke looks like
@@ -1153,7 +1158,9 @@ function dressTerm(el, w) {
     const wrap = document.createElement('div');
     wrap.className = 'termwrap';
     wrap.innerHTML = `<div class="cap"><span class="dot"></span><span class="t2"></span>` +
-                     `<span class="note"></span><span class="shut" title="Close">✕</span></div>`;
+                     `<span class="note"></span>` +
+                     `<span class="again" title="Start a new shell in this tile">new shell</span>` +
+                     `<span class="shut" title="Close">✕</span></div>`;
     const host = document.createElement('div');
     host.className = 'termhost';
     wrap.append(host);
@@ -1174,9 +1181,13 @@ function dressTerm(el, w) {
   cap.querySelector('.dot').style.background = colorOf(w.app);
   cap.querySelector('.t2').textContent = w.term.running || w.title;
   cap.querySelector('.note').textContent = w.term.alive
-    ? (w.term.cwd || '') : 'exited ' + (w.term.exit === null ? '?' : w.term.exit);
+    ? (w.term.cwd || '')
+    : 'exited ' + (w.term.exit === null ? '?' : w.term.exit);
   el.classList.toggle('gone', !w.term.alive);
+  // a running session is reconnected whenever its socket has dropped; one that
+  // has ended is asked once for what it said, and then it is finished
   if (w.term.alive) connect(t, id);
+  else if (!t.read) { t.read = true; connect(t, id); }
 }
 
 // What one character costs, worked out from what xterm.js actually laid out
@@ -1257,6 +1268,26 @@ async function newTerm() {
 }
 $('#newterm').onclick = newTerm;
 
+// A shell that has exited leaves a tile that can be read and not much else.
+// Starting another one is not the same session — the old one is gone and its
+// scrollback with it — but it is the same place on the surface, the same size
+// and the same directory, which is what you meant by pointing at that tile.
+async function restartTerm(w) {
+  const made = await fetch('/api/terminals', {
+    method: 'POST',
+    body: JSON.stringify({ cols: w.term.cols, rows: w.term.rows,
+                           cwd: w.term.cwd || undefined }),
+  }).then(r => r.json()).catch(() => null);
+  if (!made || !made.id) return;
+  const seat = layout[w.id];            // wherever you had put the old one
+  if (seat) {
+    layout['web:' + made.id] = seat;
+    delete layout[w.id];
+    store.set('layout', layout);
+  }
+  await closeTerm(w.term.session);
+}
+
 async function closeTerm(id) {
   await fetch('/api/terminals/' + id, { method: 'DELETE' }).catch(() => {});
   const t = terms.get(id);
@@ -1286,6 +1317,7 @@ function renderCanvas(match, q) {
           // is delivered to the tile rather than to what was under it — so the
           // close button has to be answered here, before any of that
           if (e.target.closest('.shut')) { e.preventDefault(); return closeTerm(win.term.session); }
+          if (e.target.closest('.again')) { e.preventDefault(); return restartTerm(win); }
           if (e.target.closest('.grip')) return grab(e, win, el);
           // a terminal is for typing into, so only its caption is a handle;
           // a photograph has nothing to click, so all of it is

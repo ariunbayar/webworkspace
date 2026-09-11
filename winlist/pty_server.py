@@ -67,6 +67,7 @@ class Session:
         self.cols, self.rows = cols, rows
         self.started = time.time()
         self.ended = None
+        self.last_cwd = cwd             # where it was working, for after it ends
         self.title = ""
         self.exit = None
         self.buf = bytearray()          # scrollback, so a reload can catch up
@@ -186,13 +187,15 @@ class Session:
             cwd = os.readlink("/proc/%d/cwd" % pgid)
         except OSError:
             cwd = ""
+        if cwd:
+            self.last_cwd = cwd
         return comm, cwd
 
     def alive(self):
         return self.exit is None
 
     def info(self):
-        comm, cwd = self._foreground() if self.alive() else ("", "")
+        comm, cwd = self._foreground() if self.alive() else ("", self.last_cwd)
         with self.lock:
             size = len(self.buf)
         return {
@@ -528,8 +531,6 @@ class Handler(BaseHTTPRequestHandler):
             return self._send({"error": "no such session"}, code=404)
         if not key or "websocket" not in (self.headers.get("Upgrade") or "").lower():
             return self._send({"error": "/attach wants a websocket"}, code=426)
-        if not s.alive():
-            return self._send({"error": "that session has ended"}, code=410)
 
         self.send_response(101, "Switching Protocols")
         self.send_header("Upgrade", "websocket")
@@ -546,6 +547,10 @@ class Handler(BaseHTTPRequestHandler):
             if backlog:
                 conn.send(backlog)
             conn.send_json({"session": s.info()})
+            if not s.alive():
+                # nothing more will ever come, and nothing typed can go
+                # anywhere: it has been read, and that is the whole visit
+                return conn.close(1000, "session has ended")
             while True:
                 msg = conn.read()
                 if msg is None:
