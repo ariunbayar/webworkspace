@@ -583,7 +583,7 @@ PAGE = r"""<!doctype html>
   │  the virtual screen — this page                        │
   │                                                        │
   │   ┌─────────┐ ┌─────────┐    ┌──────────────────────┐  │
-  │   │ window  │ │ window  │    │ tile: xterm.js       │  │
+  │   │ window  │ │ window  │    │ tile: xterm.js (soon)│  │
   │   │  photo  │ │  photo  │    │ $ npx tsc --noEmit▌  │  │
   │   └─────────┘ └─────────┘    └────▲────────────┬────┘  │
   │      tiles you arrange by hand    │            │       │
@@ -593,7 +593,7 @@ PAGE = r"""<!doctype html>
         │                             │            │
   ┌─────┴──────────────┐         ┌────┴────────────▼─────┐
   │ winlist_server.py  │   GET   │ pty_server.py         │
-  │      :_PORT_       │────────►│      :8767  (planned) │
+  │      :_PORT_       │────────►│      :8767            │
   │ xprop · xdotool    │/sessions│ pty.fork + select     │
   │ xwd · convert      │  200ms  │ scrollback per shell  │
   └─────┬──────────────┘ timeout └───┬────────────┬──────┘
@@ -609,10 +609,11 @@ PAGE = r"""<!doctype html>
     <code>xprop</code> and <code>xdotool</code> what exists, and photographs a workspace
     whenever you visit it — X only hands out the pixels on the glass, so a workspace you
     are not looking at cannot be captured.</p>
-    <p><b>Right, and still to build:</b> shells this page starts itself. It knows their pid,
-    working directory and text outright rather than guessing from <code>WM_CLASS</code>,
-    and it can hold them open across a reload. They join the same
-    <code>windows[]</code> list as synthetic entries, which is what lets them share
+    <p><b>Right:</b> shells this page starts itself. <code>pty_server.py</code> holds
+    them, so it knows their pid, working directory and what is running in them outright
+    rather than guessing from <code>WM_CLASS</code>, and they survive a reload. The tiles
+    that draw them are the part still to build; when they arrive the sessions join the
+    same <code>windows[]</code> list as synthetic entries, which is what lets them share
     the surface with real windows.</p>
   </div>
 </dialog>
