@@ -26,7 +26,7 @@ Open windows
 
 Every window there is on one surface, laid out however you like, stdlib only:
 
-    python3 winlist_server.py --open
+    python3 winlist/winlist_server.py --open
 
 Serves http://127.0.0.1:8766/ and brings the page up in the browser — raising
 the window that already shows it rather than opening another tab, so launching
@@ -120,7 +120,7 @@ start: the terminals come up with the page and go when it goes, and `pstree`
 shows one process holding the shells rather than two programs to remember. Run
 it on its own when you want it on its own:
 
-    python3 pty_server.py
+    python3 winlist/pty_server.py
 
 Serves http://127.0.0.1:8767/sessions. One already listening there is somebody
 else's — `winlist_server.py` leaves it alone and uses it as it stands, rather
@@ -152,7 +152,7 @@ same-origin policy, so a site you happen to be reading could otherwise dial
 this port. `--shell` picks what a session runs (default `$SHELL`),
 `--max-sessions` caps how many at once.
 
-    python3 pty_server_test.py
+    python3 winlist/pty_server_test.py
 
 runs the whole thing against a server of its own on a free port: typing,
 resizing, Ctrl-C, reattaching, two watchers on one terminal, and the refusals.
