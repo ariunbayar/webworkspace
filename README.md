@@ -148,6 +148,13 @@ Because it owns them, it can say what X never could: the pid, the directory the
 foreground program is sitting in, the name of that program, and the title the
 program set for itself. No guessing from `WM_CLASS`.
 
+A shell opened here is a new session, not a continuation of whatever started
+the server, so the session markers some programs leave in the environment are
+dropped on the way in. Without that, a Claude Code run inside one of these
+terminals finds the marker its parent left, decides it is a subprocess rather
+than a session of its own, and turns transcript saving off. Settings are kept —
+only per-session plumbing goes.
+
     GET    /sessions              every session, and what is running in it
     POST   /sessions              start one: {"cwd", "argv", "cols", "rows"}
     POST   /sessions/<id>/resize  {"cols", "rows"}
