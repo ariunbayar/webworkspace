@@ -44,6 +44,12 @@ title bar rather than anywhere on it — the rest of it is for typing into — a
 surface, so zoom out and the terminal goes small with the photographs, zoom in
 and you can read it.
 
+A shell that exits leaves its tile behind, greyed, with its last words still
+in it and the reason it went in the title bar. `↻` starts another one in its
+place — the same size, the same directory, the same spot on the surface, since
+that is what pointing at that tile meant — and `✕` clears it away. Left alone,
+it goes by itself after ten minutes.
+
 Pull the bottom-right corner to resize it. The count of characters is what
 changes, not the picture: the terminal is told, the kernel is told, and the
 program running in it gets a SIGWINCH and redraws while you are still pulling,
@@ -143,7 +149,9 @@ program set for itself. No guessing from `WM_CLASS`.
 
 Each session keeps its last 256 KB of output, handed over the moment you
 attach, so a terminal redraws itself instead of coming up blank. A session that
-has ended stays listed for ten minutes so its last words are still readable.
+has ended stays listed for ten minutes and can still be attached to: it hands
+over what it said and then closes, so its last words survive a reload rather
+than only lasting as long as the tab that watched it die.
 
 Handing out shells deserves some care, so: it listens on loopback and refuses
 anything else unless you say `--allow-remote`, and it turns away handshakes
