@@ -125,6 +125,8 @@ arrows step one grid cell, `Enter` or `Esc` finishes. The grid shows only while
 moving or resizing, and dragging with the mouse snaps to it too.
 In NORMAL mode the mouse only moves and resizes: it never reaches a terminal (no
 selecting, clicks or wheel-scrolling), and a click only picks it. `Enter` types into it.
+Run in a terminal, press `r` there to restart the server (instead of Ctrl-C and running
+it again); an open page reloads itself once the new run answers. Terminals are kept.
 Run with `--no-focus` to serve read-only, `--no-screens` to never photograph
 the screen, `--port N` to change the port.
 
