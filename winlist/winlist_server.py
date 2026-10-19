@@ -730,6 +730,9 @@ PAGE = r"""<!doctype html>
                    cursor:grab; flex:none }
   .tile.term.dragging .termwrap .cap { cursor:grabbing }
   .termhost { flex:none }
+  /* NORMAL mode: the mouse only moves and resizes windows. The terminal's own
+     element is made deaf, so no click, selection or wheel reaches xterm.js */
+  body:not(.insert) .termhost { pointer-events:none }
   .termhost .xterm { padding:2px 3px }
   /* a session that has ended keeps its last words, and says so */
   .tile.gone { opacity:.62 }
@@ -776,6 +779,13 @@ PAGE = r"""<!doctype html>
   .mode { font:600 10.5px ui-monospace,monospace; padding:2px 7px; border-radius:3px;
           background:var(--chip); color:var(--dim) }
   .mode.insert { background:var(--accent); color:#fff }
+  .mode.grid { background:#d9a300; color:#111 }
+  /* the grid exists only while a window is being moved or resized; it is drawn
+     over the frame, not in the canvas, so it can run on past every edge */
+  #grid { position:absolute; inset:0; pointer-events:none; display:none; z-index:80;
+          background-image:linear-gradient(to right, rgba(217,163,0,.35) 1px, transparent 1px),
+                           linear-gradient(to bottom, rgba(217,163,0,.35) 1px, transparent 1px) }
+  #grid.on { display:block }
   code { font-size:10.5px; background:var(--chip); padding:1px 4px; border-radius:3px }
 </style>
 <div class="wrap">
@@ -797,10 +807,11 @@ PAGE = r"""<!doctype html>
     <span class="keys"><kbd>↑↓←→</kbd>/<kbd>hjkl</kbd> pick · <kbd>Enter</kbd> focus ·
       <kbd>/</kbd> filter · <kbd>f</kbd> full window · <kbd>t</kbd> terminal ·
       <kbd>1</kbd> 1:1 ·
+      <kbd>m</kbd> move · <kbd>r</kbd> resize (<kbd>hjkl</kbd> step, <kbd>Enter</kbd> done) ·
       <kbd>a</kbd> architecture · <kbd>Esc</kbd> clear ·
       <kbd>Ctrl+Space</kbd> leave a terminal</span>
   </div>
-  <div class="pan" id="pan"><div class="canvas" id="canvas"><div id="tiles"></div></div></div>
+  <div class="pan" id="pan"><div class="canvas" id="canvas"><div id="tiles"></div></div><div id="grid"></div></div>
   <footer id="foot"></footer>
 </div>
 <dialog id="archbox">
@@ -871,6 +882,7 @@ let layout = store.get('layout', {});      // window id -> [x, y] on the virtual
 let zoom = store.get('zoom', 0);           // 0 until we have measured a fit
 let origin = store.get('origin', [0, 0]);  // where the surface sits in the frame
 let fitting = store.get('fitting', true);  // keep fitting until you take the wheel
+const GRID = 40;                           // virtual px: what moving and resizing snap to
 const GUTTER = 140;                        // virtual px between one workspace and the next
 
 function shotUrl(i) {
@@ -1132,6 +1144,21 @@ function place(el, w) {
   el.style.height = Math.max(60, w.h * zoom) + 'px';
 }
 
+// The grid is only there while a window is being moved or resized. It is a
+// repeating background laid over the frame, lined up with the surface's origin.
+function showGrid(on) {
+  const g = $('#grid');
+  g.classList.toggle('on', on);
+  if (!on) return;
+  const step = GRID * zoom;
+  g.style.backgroundSize = `${step}px ${step}px`;
+  g.style.backgroundPosition = `${origin[0]}px ${origin[1]}px`;
+}
+const snap = v => Math.round(v / GRID) * GRID;
+// one grid line on in a direction; from a spot between lines, the next one that way
+const stepTo = (v, dir) => dir > 0 ? (Math.floor(v / GRID) + 1) * GRID
+                                   : (Math.ceil(v / GRID) - 1) * GRID;
+
 function drag(e, w, el) {
   if (e.button) return;
   e.preventDefault();
@@ -1144,13 +1171,14 @@ function drag(e, w, el) {
     if (!moved) {
       moved = true;
       el.classList.add('dragging');
+      showGrid(true);
       $('#tiles').append(el);          // the one you just touched belongs on top
       // moving an element in the document drops its pointer capture, and the
       // drag then only lasts while the pointer happens to stay over the tile —
       // which for a terminal, grabbed by a thin title bar, is no time at all
       try { el.setPointerCapture(ev.pointerId); } catch (err) {}
     }
-    layout[w.id] = [Math.round(from[0] + dx / zoom), Math.round(from[1] + dy / zoom)];
+    layout[w.id] = [snap(from[0] + dx / zoom), snap(from[1] + dy / zoom)];
     place(el, w);
   };
   const done = settle => {
@@ -1158,12 +1186,15 @@ function drag(e, w, el) {
     el.removeEventListener('pointerup', up);
     el.removeEventListener('pointercancel', up);
     el.classList.remove('dragging');
+    showGrid(false);
     letGo = null;
     // a tile the pinch interrupted keeps the ground it covered, so what is on
     // screen and what is remembered never disagree
     if (moved) { store.set('layout', layout); hold(false); }
     if (!settle) return;
-    if (moved) { sel = w.id; render(); } else activate(w.id);
+    // a click on a terminal in NORMAL only picks it: Enter is what types into it
+    const typing = document.body.classList.contains('insert');
+    if (moved || (w.term && !typing)) { sel = w.id; render(); } else activate(w.id);
   };
   const up = ev => {
     try { el.releasePointerCapture(ev.pointerId); } catch (err) {}
@@ -1334,6 +1365,22 @@ function span(t, cols, rows) {
 // same shape of code: the terminal is resized as you go, and the far end is
 // told each time the count actually changes — which is what a real terminal
 // does, and why a full-screen program redraws while you are still pulling.
+function resizeTo(w, el, t, edge) {
+  const [x, y] = seatOf(w);
+  const cols = Math.max(20, Math.round((edge[0] - x - t.pad[0]) / t.cell[0]));
+  const rows = Math.max(5, Math.round((edge[1] - y - t.pad[1]) / t.cell[1]));
+  if (cols === t.term.cols && rows === t.term.rows) return false;
+  t.term.resize(cols, rows);
+  t.natural = span(t, cols, rows);
+  w.w = t.natural[0];
+  w.h = t.natural[1];
+  place(el, w);
+  if (t.ws && t.ws.readyState === 1) {
+    t.ws.send(JSON.stringify({ resize: { cols, rows } }));
+  }
+  return true;
+}
+
 function grab(e, w, el) {
   if (e.button) return;
   e.preventDefault();
@@ -1341,26 +1388,19 @@ function grab(e, w, el) {
   const t = terms.get(w.term.session);
   if (!t || !t.cell) return;
   const sx = e.clientX, sy = e.clientY;
-  const cols0 = t.term.cols, rows0 = t.term.rows;
+  const h0 = w.h;
   const tag = document.createElement('div');
   tag.className = 'termsize';
   el.append(tag);
   const show = () => { tag.textContent = `${t.term.cols}×${t.term.rows}`; };
   show();
+  showGrid(true);
   el.setPointerCapture(e.pointerId);
   const move = ev => {
-    const cols = Math.max(20, Math.round(cols0 + (ev.clientX - sx) / zoom / t.cell[0]));
-    const rows = Math.max(5, Math.round(rows0 + (ev.clientY - sy) / zoom / t.cell[1]));
-    if (cols === t.term.cols && rows === t.term.rows) return;
-    t.term.resize(cols, rows);
-    t.natural = span(t, cols, rows);
-    w.w = t.natural[0];
-    w.h = t.natural[1];
-    place(el, w);
-    show();
-    if (t.ws && t.ws.readyState === 1) {
-      t.ws.send(JSON.stringify({ resize: { cols, rows } }));
-    }
+    // the far corner lands on the nearest grid line, give or take half a character
+    const [x, y] = seatOf(w);
+    const edge = [snap(x + w.w + (ev.clientX - sx) / zoom), snap(y + h0 + (ev.clientY - sy) / zoom)];
+    if (resizeTo(w, el, t, edge)) show();
   };
   const done = ev => {
     try { el.releasePointerCapture(ev.pointerId); } catch (err) {}
@@ -1368,6 +1408,7 @@ function grab(e, w, el) {
     el.removeEventListener('pointerup', done);
     el.removeEventListener('pointercancel', done);
     tag.remove();
+    showGrid(false);
     measure(t);                      // what it settled at, measured not assumed
     hold(false);
     poll();
@@ -1434,7 +1475,8 @@ function renderCanvas(match, q) {
           if (e.target.closest('.grip')) return grab(e, win, el);
           // a terminal is for typing into, so only its caption is a handle;
           // a photograph has nothing to click, so all of it is
-          if (!e.target.closest('.cap')) return;
+          // — except in NORMAL, where the mouse moves windows and never types
+          if (document.body.classList.contains('insert') && !e.target.closest('.cap')) return;
         }
         drag(e, win, el);
       });
@@ -1477,7 +1519,7 @@ $('#pan').addEventListener('wheel', e => {
   // it is a terminal rather than a tile: the wheel belongs to it. Zoomed out
   // far enough that nobody could read it, it is a tile again and the wheel
   // goes back to meaning zoom.
-  if (zoom > 0.5 && e.target.closest('.termhost')) return;
+  if (zoom > 0.5 && e.target.closest('.termhost') && document.body.classList.contains('insert')) return;
   e.preventDefault();
   zoomAbout(zoom * Math.exp(-e.deltaY * 0.0015), e.clientX, e.clientY);
 }, { passive: false });
@@ -1547,6 +1589,8 @@ addEventListener('pointercancel', liftFinger, true);
 
 async function activate(id) {
   sel = id;
+  const el = tileEls.get(id);
+  if (el) $('#tiles').append(el);      // focusing it brings it to the front, as a drag does
   render();
   if (id.startsWith('web:')) {
     // this one is already in front of you; focusing it means the keyboard
@@ -1608,8 +1652,45 @@ function move(dx, dy) {
 // the keyboard is, so it is read from the focus rather than kept alongside it.
 function showMode() {
   const typing = !!(document.activeElement && document.activeElement.closest('.termhost'));
-  $('#mode').textContent = typing ? 'INSERT' : 'NORMAL';
-  $('#mode').classList.toggle('insert', typing);
+  $('#mode').textContent = editing ? editing.toUpperCase() : typing ? 'INSERT' : 'NORMAL';
+  $('#mode').classList.toggle('insert', typing && !editing);
+  document.body.classList.toggle('insert', typing);
+  $('#mode').classList.toggle('grid', !!editing);
+}
+
+// Moving and resizing from the keyboard are modes of their own inside NORMAL:
+// hjkl step the picked window one grid cell, Enter or Esc leaves. Only a
+// terminal has a size to change, so r does nothing on a photograph.
+let editing = null;       // 'move' | 'resize' | null
+function edit(how) {
+  const w = selected();
+  const t = w && w.term && terms.get(w.term.session);
+  if (!w || (how === 'resize' && !(t && t.cell && w.term.alive))) return;
+  editing = how;
+  showGrid(true);
+  showMode();
+}
+function endEdit() {
+  editing = null;
+  showGrid(false);
+  store.set('layout', layout);
+  hold(false);
+  showMode();
+  poll();
+}
+function nudge(dx, dy) {
+  const w = selected(), el = w && tileEls.get(w.id);
+  if (!el) return endEdit();
+  const [x, y] = seatOf(w);
+  if (editing === 'move') {
+    layout[w.id] = [dx ? stepTo(x, dx) : snap(x), dy ? stepTo(y, dy) : snap(y)];
+    place(el, w);
+    return;
+  }
+  const t = terms.get(w.term.session);
+  if (!t) return endEdit();
+  const edge = [x + w.w, y + w.h];
+  resizeTo(w, el, t, [dx ? stepTo(edge[0], dx) : edge[0], dy ? stepTo(edge[1], dy) : edge[1]]);
 }
 document.addEventListener('focusin', showMode);
 document.addEventListener('focusout', () => setTimeout(showMode));
@@ -1623,6 +1704,15 @@ document.addEventListener('keydown', e => {
   }
   const k = e.key;
   if (archbox.open) return;
+  if (editing) {
+    if (e.ctrlKey || e.altKey || e.metaKey) return;
+    e.preventDefault();
+    if (k === 'Escape' || k === 'Enter') return endEdit();
+    const step = { ArrowUp: [0, -1], k: [0, -1], ArrowDown: [0, 1], j: [0, 1],
+                   ArrowLeft: [-1, 0], h: [-1, 0], ArrowRight: [1, 0], l: [1, 0] }[k];
+    if (step) nudge(...step);
+    return;
+  }
   // the page's own keys are bare letters: anything held with them is the browser's
   if (e.ctrlKey || e.altKey || e.metaKey) return;              // the dialog handles its own Esc
   if (k === 'a') { e.preventDefault(); return showArch(); }
@@ -1631,6 +1721,7 @@ document.addEventListener('keydown', e => {
     if ($('#q').value || sel) { $('#q').value = ''; sel = null; return render(); }
     return full ? setFull(false) : undefined;
   }
+  if (k === 'm' || k === 'r') { e.preventDefault(); return edit(k === 'm' ? 'move' : 'resize'); }
   if (k === 'f') { e.preventDefault(); return setFull(!full); }
   if (k === 't') { e.preventDefault(); return void newTerm(); }
   if (k === '1') { e.preventDefault(); return actualSize(); }
