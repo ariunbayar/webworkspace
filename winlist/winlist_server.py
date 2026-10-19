@@ -730,6 +730,9 @@ PAGE = r"""<!doctype html>
                    cursor:grab; flex:none }
   .tile.term.dragging .termwrap .cap { cursor:grabbing }
   .termhost { flex:none }
+  /* NORMAL mode: the mouse only moves and resizes windows. The terminal's own
+     element is made deaf, so no click, selection or wheel reaches xterm.js */
+  body:not(.insert) .termhost { pointer-events:none }
   .termhost .xterm { padding:2px 3px }
   /* a session that has ended keeps its last words, and says so */
   .tile.gone { opacity:.62 }
@@ -1189,7 +1192,9 @@ function drag(e, w, el) {
     // screen and what is remembered never disagree
     if (moved) { store.set('layout', layout); hold(false); }
     if (!settle) return;
-    if (moved) { sel = w.id; render(); } else activate(w.id);
+    // a click on a terminal in NORMAL only picks it: Enter is what types into it
+    const typing = document.body.classList.contains('insert');
+    if (moved || (w.term && !typing)) { sel = w.id; render(); } else activate(w.id);
   };
   const up = ev => {
     try { el.releasePointerCapture(ev.pointerId); } catch (err) {}
@@ -1470,7 +1475,8 @@ function renderCanvas(match, q) {
           if (e.target.closest('.grip')) return grab(e, win, el);
           // a terminal is for typing into, so only its caption is a handle;
           // a photograph has nothing to click, so all of it is
-          if (!e.target.closest('.cap')) return;
+          // — except in NORMAL, where the mouse moves windows and never types
+          if (document.body.classList.contains('insert') && !e.target.closest('.cap')) return;
         }
         drag(e, win, el);
       });
@@ -1513,7 +1519,7 @@ $('#pan').addEventListener('wheel', e => {
   // it is a terminal rather than a tile: the wheel belongs to it. Zoomed out
   // far enough that nobody could read it, it is a tile again and the wheel
   // goes back to meaning zoom.
-  if (zoom > 0.5 && e.target.closest('.termhost')) return;
+  if (zoom > 0.5 && e.target.closest('.termhost') && document.body.classList.contains('insert')) return;
   e.preventDefault();
   zoomAbout(zoom * Math.exp(-e.deltaY * 0.0015), e.clientX, e.clientY);
 }, { passive: false });
@@ -1648,6 +1654,7 @@ function showMode() {
   const typing = !!(document.activeElement && document.activeElement.closest('.termhost'));
   $('#mode').textContent = editing ? editing.toUpperCase() : typing ? 'INSERT' : 'NORMAL';
   $('#mode').classList.toggle('insert', typing && !editing);
+  document.body.classList.toggle('insert', typing);
   $('#mode').classList.toggle('grid', !!editing);
 }
 
