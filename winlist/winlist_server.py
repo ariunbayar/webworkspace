@@ -683,6 +683,13 @@ PAGE = r"""<!doctype html>
   body.full h1, body.full footer, body.full .keys { display:none }
   body.full .sub { margin-bottom:8px }
   body.full .bar { margin-bottom:10px }
+  /* the top bar stays folded away until asked for, and the surface takes the page */
+  body.bare .sub, body.bare .bar { display:none }
+  body.app.bare .wrap { padding:0 }
+  body.bare .pan { border:0; border-radius:0 }
+  #tray { position:fixed; top:6px; right:8px; z-index:95; font-size:11px; line-height:1;
+          padding:3px 7px; opacity:.55 }
+  #tray:hover { opacity:1 }
   /* the surface wants the viewport itself rather than a column of page */
   body.app { overflow:hidden }
   body.app .wrap { height:100vh; padding-bottom:10px; display:flex; flex-direction:column }
@@ -699,7 +706,6 @@ PAGE = r"""<!doctype html>
          font-size:12px; padding:5px 10px; border-radius:6px; cursor:pointer }
   .btn:hover { color:var(--fg); border-color:var(--dim) }
   .btn[aria-pressed=true] { background:var(--accent); border-color:var(--accent); color:#fff }
-  #full { font-size:14px; line-height:1; padding:5px 9px }
   #zoom { width:96px; accent-color:var(--accent) }
   /* the surface is placed, not scrolled: overflow is hidden and the canvas is
      translated, so a drag can carry everything as far as you like */
@@ -814,8 +820,6 @@ PAGE = r"""<!doctype html>
   <div class="sub"><b id="stat">loading…</b> · <span id="ts"></span></div>
   <div class="bar">
     <input type="search" id="q" placeholder="Filter title or app…">
-    <button id="full" class="btn" aria-pressed="false"
-            title="Give it the whole browser window (f)">⤢</button>
     <span class="ctl" id="ctl">
       <input type="range" id="zoom" min="2" max="100" step="1" title="Zoom">
       <button id="fit" class="btn">Fit</button>
@@ -827,7 +831,7 @@ PAGE = r"""<!doctype html>
     </span>
     <span class="mode" id="mode"></span>
     <span class="keys"><kbd>↑↓←→</kbd>/<kbd>hjkl</kbd> pick · <kbd>Enter</kbd> focus ·
-      <kbd>/</kbd> filter · <kbd>f</kbd> full window · <kbd>t</kbd> terminal ·
+      <kbd>/</kbd> filter · <kbd>b</kbd> top bar · <kbd>t</kbd> terminal ·
       <kbd>1</kbd> 1:1 · <kbd>z</kbd> loupe ·
       <kbd>m</kbd> move · <kbd>r</kbd> resize (<kbd>hjkl</kbd> step, <kbd>Enter</kbd> done) ·
       <kbd>a</kbd> architecture · <kbd>Esc</kbd> clear ·
@@ -836,6 +840,7 @@ PAGE = r"""<!doctype html>
   <div class="pan" id="pan"><div class="canvas" id="canvas"><div id="tiles"></div></div><div id="grid"></div><div id="loupe"><div class="lens"></div></div></div>
   <footer id="foot"></footer>
 </div>
+<button id="tray" class="btn" title="Show or hide the top bar (b)">▾</button>
 <dialog id="archbox">
   <div class="archhead">
     <h2>How this fits together</h2><span class="grow"></span>
@@ -900,7 +905,7 @@ const store = {
 
 let data = null, failures = 0, sel = null;
 let started = null;                        // which run of the server we are talking to
-let full = store.get('full', false);       // fill the browser window, F11 not involved
+let bare = store.get('bare', true);        // top bar folded away, the surface takes the page
 let layout = store.get('layout', {});      // window id -> [x, y] on the virtual screen
 let zoom = store.get('zoom', 0);           // 0 until we have measured a fit
 let origin = store.get('origin', [0, 0]);  // where the surface sits in the frame
@@ -914,15 +919,16 @@ function shotUrl(i) {
 }
 
 
-function setFull(v) {
-  full = v;
-  store.set('full', v);
-  document.body.classList.toggle('full', v);
-  document.body.classList.toggle('app', v);
-  $('#full').setAttribute('aria-pressed', v);
+// always the whole browser window, F11 not involved
+document.body.classList.add('full', 'app');
+function setBare(v) {
+  bare = v;
+  store.set('bare', v);
+  document.body.classList.toggle('bare', v);
+  $('#tray').textContent = v ? '▾' : '▴';
   render();
 }
-$('#full').onclick = () => setFull(!full);
+$('#tray').onclick = () => setBare(!bare);
 
 // none of the plumbing shows on the page, so it gets a picture of its own
 const archbox = $('#archbox');
@@ -957,7 +963,7 @@ $('#reset').onclick = () => {
   render();
 };
 // the canvas keeps fitting the window — through a resize, through going
-// full-window — until you either work the slider or start arranging tiles
+// the top bar in or out — until you either work the slider or start arranging tiles
 addEventListener('resize', render);
 $('#q').addEventListener('input', () => { sel = null; render(); });
 
@@ -1878,13 +1884,13 @@ document.addEventListener('keydown', e => {
   // the page's own keys are bare letters: anything held with them is the browser's
   if (e.ctrlKey || e.altKey || e.metaKey) return;              // the dialog handles its own Esc
   if (k === 'a') { e.preventDefault(); return showArch(); }
-  if (k === '/') { e.preventDefault(); $('#q').focus(); return; }
+  if (k === '/') { e.preventDefault(); if (bare) setBare(false); $('#q').focus(); return; }
   if (k === 'Escape') {
     if ($('#q').value || sel) { $('#q').value = ''; sel = null; return render(); }
-    return full ? setFull(false) : undefined;
+    return bare ? undefined : setBare(true);
   }
   if (k === 'm' || k === 'r') { e.preventDefault(); return edit(k === 'm' ? 'move' : 'resize'); }
-  if (k === 'f') { e.preventDefault(); return setFull(!full); }
+  if (k === 'b') { e.preventDefault(); return setBare(!bare); }
   if (k === 't') { e.preventDefault(); return void newTerm(); }
   if (k === '1') { e.preventDefault(); return actualSize(); }
   if (k === 'z') { e.preventDefault(); return setLens(!lensOn); }
@@ -1894,7 +1900,7 @@ document.addEventListener('keydown', e => {
   if (moves[k]) { e.preventDefault(); move(...moves[k]); }
 });
 
-setFull(full);
+setBare(bare);
 setLens(lensOn);
 render();
 poll();
