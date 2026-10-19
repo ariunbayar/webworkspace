@@ -1338,12 +1338,25 @@ function grab(e, w, el) {
   el.addEventListener('pointercancel', done);
 }
 
+// A new terminal opens in the middle of whatever you are looking at, and the
+// view stays where it is: you zoomed in there to work there.
 async function newTerm() {
+  const pan = $('#pan');
+  const at = [(pan.clientWidth / 2 - origin[0]) / zoom,
+              (pan.clientHeight / 2 - origin[1]) / zoom];
   const made = await fetch('/api/terminals', {
     method: 'POST',
     body: JSON.stringify({ cols: termCols(), rows: termRows() }),
   }).then(r => r.json()).catch(() => null);
-  if (made && made.id) { hold(true); poll(); }
+  if (!made || !made.id) return;
+  if (!zoom) { hold(true); return poll(); }
+  hold(false);                   // a refit now would carry the view off to it
+  await poll();                  // its size is only known once it is listed
+  const w = data.windows.find(v => v.id === 'web:' + made.id);
+  if (!w) return;
+  layout[w.id] = [Math.round(at[0] - w.w / 2), Math.round(at[1] - w.h / 2)];
+  store.set('layout', layout);
+  render();
 }
 $('#newterm').onclick = newTerm;
 
