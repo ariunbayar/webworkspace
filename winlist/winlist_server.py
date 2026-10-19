@@ -785,12 +785,14 @@ PAGE = r"""<!doctype html>
     <span class="ctl" id="ctl">
       <input type="range" id="zoom" min="2" max="100" step="1" title="Zoom">
       <button id="fit" class="btn">Fit</button>
+      <button id="actual" class="btn" title="Actual size: terminals at their own pixels, sharpest text (1)">1:1</button>
       <button id="reset" class="btn">Reset layout</button>
       <button id="newterm" class="btn" title="Start a terminal on this surface (t)">New terminal</button>
       <button id="arch" class="btn" title="How this fits together (a)">Architecture</button>
     </span>
     <span class="keys"><kbd>↑↓←→</kbd>/<kbd>hjkl</kbd> pick · <kbd>Enter</kbd> focus ·
       <kbd>/</kbd> filter · <kbd>f</kbd> full window · <kbd>t</kbd> terminal ·
+      <kbd>1</kbd> 1:1 ·
       <kbd>a</kbd> architecture · <kbd>Esc</kbd> clear</span>
   </div>
   <div class="pan" id="pan"><div class="canvas" id="canvas"><div id="tiles"></div></div></div>
@@ -893,6 +895,15 @@ $('#zoom').addEventListener('input', () => {
   setZoom(MAX_ZOOM * Math.pow($('#zoom').value / 100, 2));
 });
 $('#fit').onclick = () => { hold(true); fitAll(); render(); };
+// 1:1 is the one zoom where a terminal is not scaled at all, so its text lands
+// on whole pixels; held about the picked tile, or the middle with none picked
+function actualSize() {
+  const el = sel && tileEls.get(sel);
+  if (!el) return setZoom(1);
+  const r = el.getBoundingClientRect();
+  zoomAbout(1, r.left + r.width / 2, r.top + r.height / 2);
+}
+$('#actual').onclick = actualSize;
 $('#reset').onclick = () => {
   layout = {};
   store.set('layout', layout);
@@ -1585,6 +1596,7 @@ document.addEventListener('keydown', e => {
   }
   if (k === 'f') { e.preventDefault(); return setFull(!full); }
   if (k === 't') { e.preventDefault(); return void newTerm(); }
+  if (k === '1') { e.preventDefault(); return actualSize(); }
   if (k === 'Enter' || k === ' ') { const w = selected(); if (w) { e.preventDefault(); activate(w.id); } return; }
   const moves = { ArrowUp: [0, -1], k: [0, -1], ArrowDown: [0, 1], j: [0, 1],
                   ArrowLeft: [-1, 0], h: [-1, 0], ArrowRight: [1, 0], l: [1, 0] };
