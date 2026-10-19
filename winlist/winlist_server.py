@@ -48,9 +48,11 @@ def prop(text, name):
     """Value of one property out of a multi-property xprop dump.
 
     xprop prints either `NAME(TYPE) = value` or, for window lists,
-    `NAME(WINDOW): window id # 0xa, 0xb`."""
+    `NAME(WINDOW): window id # 0xa, 0xb`. A property the window does not
+    have comes out as `NAME:  not found.`, which is no value at all."""
     m = re.search(r"^%s(?:\([^)]*\))?\s*[=:]\s*(.*)$" % re.escape(name), text, re.M)
-    return m.group(1).strip() if m else ""
+    v = m.group(1).strip() if m else ""
+    return "" if v == "not found." else v
 
 
 def unquote(s):
@@ -531,7 +533,7 @@ def sample():
         if "SKIP_TASKBAR" in state or "SKIP_PAGER" in state:
             continue  # panels, OSDs, shell overlays
         title = unquote(prop(p, "_NET_WM_NAME") or prop(p, "WM_NAME"))
-        if not title or "not found" in title:
+        if not title:
             continue
         try:
             desktop = int(prop(p, "_NET_WM_DESKTOP"))
