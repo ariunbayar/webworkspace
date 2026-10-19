@@ -129,16 +129,18 @@ Terminals
 ---
 
 Shells the browser can hold on to, one pseudo-terminal each, stdlib only.
-`winlist_server.py` runs this inside itself, so there is normally nothing to
-start: the terminals come up with the page and go when it goes, and `pstree`
-shows one process holding the shells rather than two programs to remember. Run
-it on its own when you want it on its own:
+`winlist_server.py` starts this when nothing is listening on its port, so there
+is normally nothing to start. It runs as a process of its own and is left
+running when winlist stops, so restarting winlist to pick up a change keeps your
+shells; the next winlist finds it there and uses it. To end the terminals:
+
+    pkill -f pty_server.py
+
+Or run it on its own when you want it on its own:
 
     python3 winlist/pty_server.py
 
-Serves http://127.0.0.1:8767/sessions. One already listening there is somebody
-else's — `winlist_server.py` leaves it alone and uses it as it stands, rather
-than taking over something it did not start and would then have to stop. A page cannot start a shell — it has no
+Serves http://127.0.0.1:8767/sessions. A page cannot start a shell — it has no
 way in — so this holds the terminals instead: it starts one on a PTY, streams
 what it prints to whoever is attached, and writes back what they type. The
 terminal lives here rather than in the tab, so a reload reattaches to the

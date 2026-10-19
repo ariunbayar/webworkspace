@@ -11,9 +11,9 @@ Run:  python3 winlist_server.py           # then open http://localhost:8766
       python3 winlist_server.py --no-screens  # never photograph the screen
 
 Terminals the page started itself sit on the same surface as the real windows,
-drawn by xterm.js rather than photographed. pty_server.py holds them, and this
-runs it inside itself: one program to start, one to stop, and no shell left
-behind when it stops.
+drawn by xterm.js rather than photographed. pty_server.py holds them; this
+starts it when nobody has, as a process of its own, so restarting this one
+leaves your shells where they were. `pkill -f pty_server.py` ends them.
 
 X11 only: it reads EWMH properties via xprop/xdotool, and photographs the
 workspace you are on with xwd + ImageMagick's convert.
@@ -410,33 +410,30 @@ def terminals(desktop, across):
 
 
 def start_terminals(port):
-    """Run the terminal server inside this one.
+    """Start the terminal server, unless one is already listening.
 
-    It is its own program and still runs as one, but there is no reason to make
-    somebody start two things and remember to stop two things — and a shell
-    left running after the page that opened it has gone is exactly what a
-    terminal is supposed to prevent. So it is held here, on threads of this
-    process, and it goes when this goes.
-
-    Somebody already listening on that port is a pty_server started by hand:
-    that one is theirs to own and to stop, so we leave it alone and use it.
+    It runs as a process of its own, in a session of its own, so it outlives
+    this one: restarting winlist to pick up a change should not take your shells
+    with it. One already there — left by an earlier winlist, or started by
+    hand — is simply used. Says which of the two it was.
     """
     global _pty_error
-    try:
-        import pty_server
-    except ImportError as e:
-        _pty_error = "no terminal server here to run (%s)" % e
+    if pty("/sessions") is not None:
+        return "already running there, used as it stands"
+    here = os.path.join(os.path.dirname(os.path.abspath(__file__)), "pty_server.py")
+    if not os.path.exists(here):
+        _pty_error = "no terminal server here to run"
         return None
-    try:
-        return pty_server.serve(port=port)
-    except OSError:
-        return None            # somebody else's, already there
-
-
-def stop_terminals(srv):
-    if srv:
-        import pty_server
-        pty_server.stop(srv)
+    proc = subprocess.Popen([sys.executable, here, "--port", str(port)],
+                            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                            stderr=subprocess.DEVNULL, start_new_session=True)
+    for _ in range(20):
+        time.sleep(0.1)
+        if pty("/sessions") is not None:
+            return "started, and kept across restarts (pid %d)" % proc.pid
+        if proc.poll() is not None:
+            break
+    return None
 
 
 def geometries(ids):
@@ -1749,14 +1746,13 @@ def main():
     if args.open:
         threading.Thread(target=show_page, args=(url, args.port), daemon=True).start()
 
-    pty_srv = start_terminals(PTY_PORT) if PTY_ON else None
+    how = start_terminals(PTY_PORT) if PTY_ON else None
     print(f"winlist → {url}  (Ctrl-C to stop)")
     if PTY_ON:
-        print("terminals → :%d, %s" % (PTY_PORT, "ours, and they stop when this does"
-                                       if pty_srv else "already running there, left alone"))
+        print("terminals → :%d, %s" % (PTY_PORT, how or "not running: " + _pty_error))
 
-    # being killed is the ordinary way a server ends, and a shell must not
-    # outlive this one either way, so SIGTERM comes in by the same door as Ctrl-C
+    # being killed is the ordinary way a server ends, so SIGTERM comes in by the
+    # same door as Ctrl-C
     def hang_up(*_):
         raise KeyboardInterrupt
     signal.signal(signal.SIGTERM, hang_up)
@@ -1764,8 +1760,6 @@ def main():
         srv.serve_forever()
     except KeyboardInterrupt:
         print("\nbye")
-    finally:
-        stop_terminals(pty_srv)
 
 
 if __name__ == "__main__":
