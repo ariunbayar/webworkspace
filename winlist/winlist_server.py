@@ -1583,6 +1583,8 @@ addEventListener('pointercancel', liftFinger, true);
 
 async function activate(id) {
   sel = id;
+  const el = tileEls.get(id);
+  if (el) $('#tiles').append(el);      // focusing it brings it to the front, as a drag does
   render();
   if (id.startsWith('web:')) {
     // this one is already in front of you; focusing it means the keyboard
