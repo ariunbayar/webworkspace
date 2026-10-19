@@ -794,6 +794,19 @@ PAGE = r"""<!doctype html>
           background-image:linear-gradient(to right, rgba(217,163,0,.35) 1px, transparent 1px),
                            linear-gradient(to bottom, rgba(217,163,0,.35) 1px, transparent 1px) }
   #grid.on { display:block }
+  /* a window onto the surface at actual size, whatever the zoom: what is under
+     the pointer, one virtual pixel to one screen pixel. It never takes a click */
+  #loupe { position:absolute; left:10px; bottom:10px; width:min(720px,80%); height:min(240px,40%);
+           overflow:hidden; pointer-events:none; z-index:90; display:none;
+           border:1px solid var(--dim); border-radius:6px; background:var(--empty);
+           box-shadow:0 6px 22px rgba(0,0,0,.35) }
+  #loupe.on { display:block }
+  #loupe.right { left:auto; right:10px }
+  #loupe .lens { position:absolute; top:0; left:0 }
+  #loupe .lens > div { position:absolute; overflow:hidden }
+  #loupe .pic { position:absolute; inset:0 }
+  #loupe::after { content:''; position:absolute; left:50%; top:50%; width:9px; height:9px;
+                  margin:-5px 0 0 -5px; border:1px solid var(--accent); border-radius:50% }
   code { font-size:10.5px; background:var(--chip); padding:1px 4px; border-radius:3px }
 </style>
 <div class="wrap">
@@ -807,6 +820,7 @@ PAGE = r"""<!doctype html>
       <input type="range" id="zoom" min="2" max="100" step="1" title="Zoom">
       <button id="fit" class="btn">Fit</button>
       <button id="actual" class="btn" title="Actual size: terminals at their own pixels, sharpest text (1)">1:1</button>
+      <button id="lens" class="btn" aria-pressed="false" title="Show what is under the pointer at actual size (z)">Loupe</button>
       <button id="reset" class="btn">Reset layout</button>
       <button id="newterm" class="btn" title="Start a terminal on this surface (t)">New terminal</button>
       <button id="arch" class="btn" title="How this fits together (a)">Architecture</button>
@@ -814,12 +828,12 @@ PAGE = r"""<!doctype html>
     <span class="mode" id="mode"></span>
     <span class="keys"><kbd>↑↓←→</kbd>/<kbd>hjkl</kbd> pick · <kbd>Enter</kbd> focus ·
       <kbd>/</kbd> filter · <kbd>f</kbd> full window · <kbd>t</kbd> terminal ·
-      <kbd>1</kbd> 1:1 ·
+      <kbd>1</kbd> 1:1 · <kbd>z</kbd> loupe ·
       <kbd>m</kbd> move · <kbd>r</kbd> resize (<kbd>hjkl</kbd> step, <kbd>Enter</kbd> done) ·
       <kbd>a</kbd> architecture · <kbd>Esc</kbd> clear ·
       <kbd>Ctrl+Space</kbd> leave a terminal</span>
   </div>
-  <div class="pan" id="pan"><div class="canvas" id="canvas"><div id="tiles"></div></div><div id="grid"></div></div>
+  <div class="pan" id="pan"><div class="canvas" id="canvas"><div id="tiles"></div></div><div id="grid"></div><div id="loupe"><div class="lens"></div></div></div>
   <footer id="foot"></footer>
 </div>
 <dialog id="archbox">
@@ -1544,6 +1558,70 @@ function renderCanvas(match, q) {
   });
 }
 
+// ---- the loupe: the surface under the pointer at 1:1 ----------------------
+// Rebuilt rather than mirrored: each tile in reach is laid out again at its
+// own size — a photograph cut the same way, a terminal as a copy of its rows.
+
+let lensOn = store.get('lens', true), lensAt = null, lensFrame = 0;
+
+function setLens(v) {
+  lensOn = v;
+  store.set('lens', v);
+  $('#lens').setAttribute('aria-pressed', v);
+  drawLens();
+}
+$('#lens').onclick = () => setLens(!lensOn);
+
+function drawLens() {
+  lensFrame = 0;
+  const loupe = $('#loupe'), lens = loupe.querySelector('.lens');
+  loupe.classList.toggle('on', !!(lensOn && lensAt && data));
+  if (!loupe.classList.contains('on')) return;
+  const box = $('#pan').getBoundingClientRect();
+  const px = lensAt[0] - box.left, py = lensAt[1] - box.top;
+  // out of its own way: under the pointer, it moves to the other corner
+  const r = loupe.getBoundingClientRect();
+  if (lensAt[0] >= r.left && lensAt[0] <= r.right && lensAt[1] >= r.top && lensAt[1] <= r.bottom)
+    loupe.classList.toggle('right');
+  const W = loupe.clientWidth, H = loupe.clientHeight;
+  const vx = (px - origin[0]) / zoom, vy = (py - origin[1]) / zoom;
+  const x0 = vx - W / 2, y0 = vy - H / 2;
+  const match = visible();
+  lens.textContent = '';
+  data.windows.slice().sort((a, b) => a.z - b.z).forEach(w => {
+    const [x, y] = seatOf(w);
+    if (x > x0 + W || y > y0 + H || x + w.w < x0 || y + w.h < y0) return;
+    const el = document.createElement('div');
+    el.style.cssText = `left:${Math.round(x - x0)}px;top:${Math.round(y - y0)}px;`
+      + `width:${w.w}px;height:${w.h}px` + (match(w) ? '' : ';opacity:.3');
+    if (w.term) {
+      const t = terms.get(w.term.session), xt = t && t.wrap && t.wrap.querySelector('.xterm');
+      if (!xt) return;
+      // the caption stays at screen size on the surface too, so it is the same
+      // height here; below it, the rows at their own size
+      el.style.background = '#12110d';
+      const rows = xt.cloneNode(true);
+      rows.style.marginTop = t.capH + 'px';
+      el.append(rows);
+    } else {
+      const pic = document.createElement('div');
+      el.append(pic);
+      dress(pic, w);
+    }
+    lens.append(el);
+  });
+}
+
+function aimLens(e) {
+  lensAt = [e.clientX, e.clientY];
+  if (lensOn && !lensFrame) lensFrame = requestAnimationFrame(drawLens);
+}
+$('#pan').addEventListener('pointermove', aimLens);
+$('#pan').addEventListener('wheel', aimLens);
+$('#pan').addEventListener('pointerleave', () => { lensAt = null; drawLens(); });
+// a terminal keeps talking with the pointer still, so the copy keeps up
+setInterval(() => { if (lensOn && lensAt && !lensFrame) drawLens(); }, 250);
+
 // ---- getting about: wheel, drag, and two fingers -------------------------
 
 let letGo = null;   // how to call off whatever single-pointer gesture is running
@@ -1778,6 +1856,7 @@ document.addEventListener('keydown', e => {
   if (k === 'f') { e.preventDefault(); return setFull(!full); }
   if (k === 't') { e.preventDefault(); return void newTerm(); }
   if (k === '1') { e.preventDefault(); return actualSize(); }
+  if (k === 'z') { e.preventDefault(); return setLens(!lensOn); }
   if (k === 'Enter' || k === ' ') { const w = selected(); if (w) { e.preventDefault(); activate(w.id); } return; }
   const moves = { ArrowUp: [0, -1], k: [0, -1], ArrowDown: [0, 1], j: [0, 1],
                   ArrowLeft: [-1, 0], h: [-1, 0], ArrowRight: [1, 0], l: [1, 0] };
@@ -1785,6 +1864,7 @@ document.addEventListener('keydown', e => {
 });
 
 setFull(full);
+setLens(lensOn);
 render();
 poll();
 setInterval(poll, 2000);
