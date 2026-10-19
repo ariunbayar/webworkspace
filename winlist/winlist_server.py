@@ -1403,7 +1403,8 @@ function grab(e, w, el) {
   const t = terms.get(w.term.session);
   if (!t || !t.cell) return;
   const sx = e.clientX, sy = e.clientY;
-  const h0 = w.h;
+  // the size it had when grabbed: resizeTo changes w.w and w.h as you pull
+  const w0 = w.w, h0 = w.h;
   const tag = document.createElement('div');
   tag.className = 'termsize';
   el.append(tag);
@@ -1414,7 +1415,7 @@ function grab(e, w, el) {
   const move = ev => {
     // the far corner lands on the nearest grid line, give or take half a character
     const [x, y] = seatOf(w);
-    const edge = [snap(x + w.w + (ev.clientX - sx) / zoom), snap(y + h0 + (ev.clientY - sy) / zoom)];
+    const edge = [snap(x + w0 + (ev.clientX - sx) / zoom), snap(y + h0 + (ev.clientY - sy) / zoom)];
     if (resizeTo(w, el, t, edge)) show();
   };
   const done = ev => {
@@ -1720,8 +1721,13 @@ function nudge(dx, dy) {
   }
   const t = terms.get(w.term.session);
   if (!t) return endEdit();
-  const edge = [x + w.w, y + w.h];
-  resizeTo(w, el, t, [dx ? stepTo(edge[0], dx) : edge[0], dy ? stepTo(edge[1], dy) : edge[1]]);
+  // the edge sits half a character either side of a grid line, so the next
+  // line can be too close to change the count: keep going until it does
+  let edge = [x + w.w, y + w.h];
+  for (let i = 0; i < 8; i++) {
+    edge = [dx ? stepTo(edge[0], dx) : edge[0], dy ? stepTo(edge[1], dy) : edge[1]];
+    if (resizeTo(w, el, t, edge)) break;
+  }
 }
 document.addEventListener('focusin', showMode);
 document.addEventListener('focusout', () => setTimeout(showMode));
