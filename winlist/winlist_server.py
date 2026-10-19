@@ -1291,9 +1291,9 @@ function dressTerm(el, w) {
     : 'exited ' + (w.term.exit === null ? '?' : w.term.exit);
   el.classList.toggle('gone', !w.term.alive);
   // a running session is reconnected whenever its socket has dropped; one that
-  // has ended is asked once for what it said, and then it is finished
+  // has ended is closed, the way a terminal window goes when its shell exits
   if (w.term.alive) connect(t, id);
-  else if (!t.read) { t.read = true; connect(t, id); }
+  else if (!t.closing) { t.closing = true; closeTerm(id); }
 }
 
 // What one character costs, worked out from what xterm.js actually laid out
