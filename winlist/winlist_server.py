@@ -796,7 +796,7 @@ PAGE = r"""<!doctype html>
   #grid.on { display:block }
   /* a window onto the surface at actual size, whatever the zoom: what is under
      the pointer, one virtual pixel to one screen pixel. It never takes a click */
-  #loupe { position:absolute; left:10px; bottom:10px; width:min(360px,40%); height:min(240px,40%);
+  #loupe { position:absolute; left:10px; bottom:10px; width:min(720px,80%); height:min(240px,40%);
            overflow:hidden; pointer-events:none; z-index:90; display:none;
            border:1px solid var(--dim); border-radius:6px; background:var(--empty);
            box-shadow:0 6px 22px rgba(0,0,0,.35) }
