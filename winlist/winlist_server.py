@@ -1445,17 +1445,22 @@ async function newTerm() {
     body: JSON.stringify({ cols: termCols(), rows: termRows() }),
   }).then(r => r.json()).catch(() => null);
   if (!made || !made.id) return;
-  // you asked for a terminal to type into, so the keyboard goes to it
-  const typeHere = () => { const t = terms.get(made.id); if (t) t.term.focus(); };
-  if (!zoom) { hold(true); await poll(); return typeHere(); }
+  // the new one is picked and brought to the front, but you stay in NORMAL:
+  // Enter is what types into it, as with any other terminal
+  const pickIt = () => {
+    sel = 'web:' + made.id;
+    const el = tileEls.get(sel);
+    if (el) $('#tiles').append(el);
+    render();
+  };
+  if (!zoom) { hold(true); await poll(); return pickIt(); }
   hold(false);                   // a refit now would carry the view off to it
   await poll();                  // its size is only known once it is listed
   const w = data.windows.find(v => v.id === 'web:' + made.id);
   if (!w) return;
   layout[w.id] = [Math.round(at[0] - w.w / 2), Math.round(at[1] - w.h / 2)];
   store.set('layout', layout);
-  render();
-  typeHere();
+  pickIt();
 }
 $('#newterm').onclick = newTerm;
 
