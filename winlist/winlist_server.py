@@ -26,8 +26,10 @@ import shutil
 import signal
 import subprocess
 import sys
+import termios
 import threading
 import time
+import tty
 import urllib.error
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -880,7 +882,7 @@ const store = {
 };
 
 let data = null, failures = 0, sel = null;
-let restartFrom = null;                    // start time of the server we asked to restart, until another answers
+let started = null;                        // which run of the server we are talking to
 let full = store.get('full', false);       // fill the browser window, F11 not involved
 let layout = store.get('layout', {});      // window id -> [x, y] on the virtual screen
 let zoom = store.get('zoom', 0);           // 0 until we have measured a fit
@@ -948,7 +950,9 @@ async function poll() {
     const r = await fetch('/api/windows?screens=1');
     data = await r.json();
     failures = 0;
-    if (restartFrom !== null && data.started !== restartFrom) return location.reload();
+    // restarted from its terminal: the page it served is the old one
+    if (started !== null && data.started !== started) return location.reload();
+    started = data.started;
   } catch (e) { failures++; }
   render();
 }
@@ -988,8 +992,7 @@ function status(match, q) {
   $('#stat').textContent = `${hits.length - ours}${q ? " of " + (data.windows.length - ours) : ""} windows · `
     + (ours ? `${ours} terminal${ours > 1 ? 's' : ''} of our own · ` : '')
     + `${data.grid.cols}×${data.grid.rows} workspaces · ${desks} in use`;
-  $('#ts').innerHTML = restartFrom !== null ? `<span class="stale">restarting…</span>`
-    : failures ? `<span class="stale">disconnected — retrying</span>`
+  $('#ts').innerHTML = failures ? `<span class="stale">disconnected — retrying</span>`
     : `updated ${data.captured}`;
   $('#foot').innerHTML = `Every window on one surface, seeded from where it `
       + `really sits and then yours to arrange: drag a tile and only the tile moves — the `
@@ -1426,16 +1429,6 @@ function grab(e, w, el) {
 
 // A new terminal opens in the middle of whatever you are looking at, and the
 // view stays where it is: you zoomed in there to work there.
-// The server answers, then replaces itself; poll() reloads the page once a
-// different process is the one answering.
-async function restart() {
-  if (restartFrom !== null) return;
-  restartFrom = data ? data.started : 0;
-  render();
-  try { await fetch('/api/restart', { method: 'POST' }); }
-  catch (e) { restartFrom = null; render(); }
-}
-
 async function newTerm() {
   const pan = $('#pan');
   const at = [(pan.clientWidth / 2 - origin[0]) / zoom,
@@ -1740,7 +1733,6 @@ document.addEventListener('keydown', e => {
   if (k === 'm' || k === 'r') { e.preventDefault(); return edit(k === 'm' ? 'move' : 'resize'); }
   if (k === 'f') { e.preventDefault(); return setFull(!full); }
   if (k === 't') { e.preventDefault(); return void newTerm(); }
-  if (k === 'R') { e.preventDefault(); return void restart(); }
   if (k === '1') { e.preventDefault(); return actualSize(); }
   if (k === 'Enter' || k === ' ') { const w = selected(); if (w) { e.preventDefault(); activate(w.id); } return; }
   const moves = { ArrowUp: [0, -1], k: [0, -1], ArrowDown: [0, 1], j: [0, 1],
@@ -1840,11 +1832,6 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(json.dumps(made), code=201 if "id" in made else 400)
         if self.path.startswith("/api/focus"):
             return self.do_focus()
-        if self.path.startswith("/api/restart"):
-            self._send(json.dumps({"ok": True}))
-            # let the answer get out before the process is replaced
-            threading.Timer(0.3, relaunch, [self.server]).start()
-            return
         return self._send(json.dumps({"error": "not found"}), code=404)
 
     def do_DELETE(self):
@@ -1877,8 +1864,40 @@ def relaunch(srv):
     port; the terminal server is a process of its own and is found again.
     """
     srv.server_close()
+    cooked()
     argv = [a for a in sys.argv[1:] if a != "--open"]   # the page is already open
     os.execv(sys.executable, [sys.executable, os.path.abspath(sys.argv[0])] + argv)
+
+
+_cooked = None   # the terminal's settings before we took single keys from it
+
+
+def cooked():
+    """Give the terminal back as it was found."""
+    global _cooked
+    if _cooked is not None:
+        termios.tcsetattr(0, termios.TCSADRAIN, _cooked)
+        _cooked = None
+
+
+def watch_keys(srv):
+    """`r` in the terminal winlist runs in restarts it, so Ctrl-C and run again
+    is one key. Only when stdin is a terminal; Ctrl-C still works as ever."""
+    global _cooked
+    if not sys.stdin.isatty():
+        return
+    _cooked = termios.tcgetattr(0)
+    tty.setcbreak(0)
+
+    def read():
+        while True:
+            key = os.read(0, 1)
+            if not key:
+                return
+            if key == b"r":
+                relaunch(srv)
+
+    threading.Thread(target=read, daemon=True).start()
 
 
 def main():
@@ -1920,7 +1939,7 @@ def main():
         threading.Thread(target=show_page, args=(url, args.port), daemon=True).start()
 
     how = start_terminals(PTY_PORT) if PTY_ON else None
-    print(f"winlist → {url}  (Ctrl-C to stop)")
+    print(f"winlist → {url}  (r to restart, Ctrl-C to stop)")
     if PTY_ON:
         print("terminals → :%d, %s" % (PTY_PORT, how or "not running: " + _pty_error))
 
@@ -1929,10 +1948,13 @@ def main():
     def hang_up(*_):
         raise KeyboardInterrupt
     signal.signal(signal.SIGTERM, hang_up)
+    watch_keys(srv)
     try:
         srv.serve_forever()
     except KeyboardInterrupt:
         print("\nbye")
+    finally:
+        cooked()
 
 
 if __name__ == "__main__":
