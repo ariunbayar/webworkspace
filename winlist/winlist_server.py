@@ -1219,6 +1219,15 @@ function mount(w) {
   term.onData(d => {
     if (t.ws && t.ws.readyState === 1) t.ws.send(new TextEncoder().encode(d));
   });
+  // xterm.js sends a bare CR for Shift+Enter, same as Enter. Send ESC CR
+  // instead, which is what Claude Code and readline take as "newline, don't
+  // submit". keypress has to be swallowed too, or the CR goes out as well.
+  term.attachCustomKeyEventHandler(e => {
+    if (e.key !== 'Enter' || !e.shiftKey || e.ctrlKey || e.altKey || e.metaKey) return true;
+    if (e.type === 'keydown' && t.ws && t.ws.readyState === 1) t.ws.send(new TextEncoder().encode('\x1b\r'));
+    e.preventDefault();
+    return false;
+  });
   return t;
 }
 
