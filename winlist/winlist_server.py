@@ -314,6 +314,10 @@ def xterm_look():
             look[name] = cast(res[key])
         except (KeyError, ValueError):
             pass
+    # faceSize is in points, as Xft takes it; the browser wants pixels
+    if "size" in look:
+        dpi = re.search(r"^Xft\.dpi:\s*([\d.]+)", "\n".join(lines), re.M)
+        look["size"] = round(look["size"] * (float(dpi.group(1)) if dpi else 96) / 72, 2)
     if "cursorblink" in res:
         look["blink"] = res["cursorblink"].lower() == "true"
     # bold text in a brighter colour is xterm's boldColors, off by default here
@@ -1223,8 +1227,8 @@ function mount(w) {
     fontFamily: termFont(),
     fontSize: l.size || 13,
     // xterm.js clips each row to its cell, and a tight face like Pragmata
-    // draws capitals above its own line box: at 1.1 the bar of a T is cut off
-    lineHeight: 1.25,
+    // draws capitals above its own line box: at 1.0 the bar of a T is cut off
+    lineHeight: 1.125,
     cursorBlink: l.blink === undefined ? true : l.blink,
     scrollback: l.scrollback || 4000,
     drawBoldTextInBrightColors: l.bold_bright === undefined ? true : l.bold_bright,
@@ -1274,6 +1278,10 @@ function dressTerm(el, w) {
     grip.title = 'Drag to resize this terminal';
     el.append(grip);                  // outside the scaled wrap: a handle you
   }                                   // can still grab when zoomed out
+  // measured again each time, not just at mount: the face can settle after
+  // xterm.js first lays out, and a stale size cuts off the bottom row. Not
+  // mid-resize, though, where the corner is what decides the size
+  if (!el.querySelector('.termsize')) measure(t);
   if (t.natural) { w.w = t.natural[0]; w.h = t.natural[1]; }
   const cap = t.wrap.querySelector('.cap');
   cap.querySelector('.dot').style.background = colorOf(w.app);
@@ -1294,8 +1302,13 @@ function dressTerm(el, w) {
 function measure(t) {
   const host = t.wrap.querySelector('.termhost');
   const screen = host.querySelector('.xterm-screen') || host;
+  // taken unscaled, and to the fraction: offsetHeight rounds the title bar's
+  // part-pixel down, and the tile then shaves that much off the bottom row
+  const was = t.wrap.style.transform;
+  t.wrap.style.transform = 'none';
   const wide = host.offsetWidth || screen.offsetWidth;
-  const high = t.wrap.offsetHeight;
+  const high = t.wrap.getBoundingClientRect().height;
+  t.wrap.style.transform = was;
   // the title bar and xterm's own padding are there whatever the size, so they
   // are held apart from the grid of characters rather than averaged into it
   t.pad = [Math.max(0, wide - screen.offsetWidth),
