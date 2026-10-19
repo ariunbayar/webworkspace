@@ -120,6 +120,9 @@ Click a window — or pick one with the arrow keys / `hjkl` and press Enter — 
 focus it, which also switches to its workspace; the arrow keys still walk the
 workspaces the windows came from, in order. `/` filters, `Esc` clears (then
 leaves the full window).
+`m` moves the picked window and `r` resizes it (terminals only): `hjkl` or the
+arrows step one grid cell, `Enter` or `Esc` finishes. The grid shows only while
+moving or resizing, and dragging with the mouse snaps to it too.
 Run with `--no-focus` to serve read-only, `--no-screens` to never photograph
 the screen, `--port N` to change the port.
 
