@@ -34,6 +34,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 WIN_ID = re.compile(r"^0x[0-9a-fA-F]+$")
 
+STARTED = time.time()   # tells a restarted server from the one it replaced (exec keeps the pid)
+
 # ---- shelling out ---------------------------------------------------------
 
 
@@ -583,6 +585,7 @@ def sample():
         "shots_on": SHOTS_ON,
         "shot_error": _shot_error,
         # where the page dials for a terminal, and which cell they live in
+        "started": STARTED,
         "pty": {"on": PTY_ON, "port": PTY_PORT, "cell": n_desktops, "error": _pty_error},
         "look": LOOK,          # what your xterm looks like, for ours to match
     }
@@ -877,6 +880,7 @@ const store = {
 };
 
 let data = null, failures = 0, sel = null;
+let restartFrom = null;                    // start time of the server we asked to restart, until another answers
 let full = store.get('full', false);       // fill the browser window, F11 not involved
 let layout = store.get('layout', {});      // window id -> [x, y] on the virtual screen
 let zoom = store.get('zoom', 0);           // 0 until we have measured a fit
@@ -944,6 +948,7 @@ async function poll() {
     const r = await fetch('/api/windows?screens=1');
     data = await r.json();
     failures = 0;
+    if (restartFrom !== null && data.started !== restartFrom) return location.reload();
   } catch (e) { failures++; }
   render();
 }
@@ -983,7 +988,8 @@ function status(match, q) {
   $('#stat').textContent = `${hits.length - ours}${q ? " of " + (data.windows.length - ours) : ""} windows · `
     + (ours ? `${ours} terminal${ours > 1 ? 's' : ''} of our own · ` : '')
     + `${data.grid.cols}×${data.grid.rows} workspaces · ${desks} in use`;
-  $('#ts').innerHTML = failures ? `<span class="stale">disconnected — retrying</span>`
+  $('#ts').innerHTML = restartFrom !== null ? `<span class="stale">restarting…</span>`
+    : failures ? `<span class="stale">disconnected — retrying</span>`
     : `updated ${data.captured}`;
   $('#foot').innerHTML = `Every window on one surface, seeded from where it `
       + `really sits and then yours to arrange: drag a tile and only the tile moves — the `
@@ -1420,6 +1426,16 @@ function grab(e, w, el) {
 
 // A new terminal opens in the middle of whatever you are looking at, and the
 // view stays where it is: you zoomed in there to work there.
+// The server answers, then replaces itself; poll() reloads the page once a
+// different process is the one answering.
+async function restart() {
+  if (restartFrom !== null) return;
+  restartFrom = data ? data.started : 0;
+  render();
+  try { await fetch('/api/restart', { method: 'POST' }); }
+  catch (e) { restartFrom = null; render(); }
+}
+
 async function newTerm() {
   const pan = $('#pan');
   const at = [(pan.clientWidth / 2 - origin[0]) / zoom,
@@ -1724,6 +1740,7 @@ document.addEventListener('keydown', e => {
   if (k === 'm' || k === 'r') { e.preventDefault(); return edit(k === 'm' ? 'move' : 'resize'); }
   if (k === 'f') { e.preventDefault(); return setFull(!full); }
   if (k === 't') { e.preventDefault(); return void newTerm(); }
+  if (k === 'R') { e.preventDefault(); return void restart(); }
   if (k === '1') { e.preventDefault(); return actualSize(); }
   if (k === 'Enter' || k === ' ') { const w = selected(); if (w) { e.preventDefault(); activate(w.id); } return; }
   const moves = { ArrowUp: [0, -1], k: [0, -1], ArrowDown: [0, 1], j: [0, 1],
@@ -1823,6 +1840,11 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(json.dumps(made), code=201 if "id" in made else 400)
         if self.path.startswith("/api/focus"):
             return self.do_focus()
+        if self.path.startswith("/api/restart"):
+            self._send(json.dumps({"ok": True}))
+            # let the answer get out before the process is replaced
+            threading.Timer(0.3, relaunch, [self.server]).start()
+            return
         return self._send(json.dumps({"error": "not found"}), code=404)
 
     def do_DELETE(self):
@@ -1846,6 +1868,17 @@ class Handler(BaseHTTPRequestHandler):
         if ok:
             hold_shots()  # the new workspace is worth a photo, but only once it is there
         self._send(json.dumps({"ok": ok, "msg": msg}), code=200 if ok else 400)
+
+
+def relaunch(srv):
+    """Replace this process with a fresh run of the same command line.
+
+    The listening socket is closed first so the new process can bind the same
+    port; the terminal server is a process of its own and is found again.
+    """
+    srv.server_close()
+    argv = [a for a in sys.argv[1:] if a != "--open"]   # the page is already open
+    os.execv(sys.executable, [sys.executable, os.path.abspath(sys.argv[0])] + argv)
 
 
 def main():
