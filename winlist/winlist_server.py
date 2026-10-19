@@ -802,7 +802,7 @@ PAGE = r"""<!doctype html>
            box-shadow:0 6px 22px rgba(0,0,0,.35) }
   #loupe.on { display:block }
   #loupe.right { left:auto; right:10px }
-  #loupe .lens { position:absolute; top:0; left:0 }
+  #loupe .lens { position:absolute; top:0; left:0; will-change:transform }
   #loupe .lens > div { position:absolute; overflow:hidden }
   #loupe .pic { position:absolute; inset:0 }
   #loupe::after { content:''; position:absolute; left:50%; top:50%; width:9px; height:9px;
@@ -1000,6 +1000,7 @@ function render() {
   const match = visible(), q = $('#q').value.trim();
   renderCanvas(match, q);
   status(match, q);
+  syncLens();
 }
 
 function status(match, q) {
@@ -1298,6 +1299,7 @@ function mount(w) {
   terms.set(id, t);
   // the title the shell sets (OSC 0/2) is what a desktop terminal shows, and
   // xterm.js hears it as it streams by, well before the next poll would
+  term.onRender(() => termDrew(id));
   term.onTitleChange(s => {
     t.title = s;
     if (t.cap && s) t.cap.querySelector('.t2').textContent = s;
@@ -1559,18 +1561,54 @@ function renderCanvas(match, q) {
 }
 
 // ---- the loupe: the surface under the pointer at 1:1 ----------------------
-// Rebuilt rather than mirrored: each tile in reach is laid out again at its
-// own size — a photograph cut the same way, a terminal as a copy of its rows.
+// A second copy of the surface at its own size: a photograph cut the same way,
+// a terminal as a copy of its rows. It is laid out when the surface is, and
+// following the pointer only slides it, so a move costs no layout at all.
 
 let lensOn = store.get('lens', true), lensAt = null, lensFrame = 0;
+const lensEls = new Map();        // window id -> its copy in the loupe
+const lensDirty = new Set();      // terminals whose rows changed since copied
 
 function setLens(v) {
   lensOn = v;
   store.set('lens', v);
   $('#lens').setAttribute('aria-pressed', v);
-  drawLens();
+  syncLens();
+  aimLens();
 }
 $('#lens').onclick = () => setLens(!lensOn);
+
+// called from render(): tiles come, go and move, and the copy follows
+function syncLens() {
+  if (!lensOn || !data) return;
+  const lens = $('#loupe .lens'), match = visible(), live = new Set();
+  data.windows.slice().sort((a, b) => a.z - b.z).forEach(w => {
+    live.add(w.id);
+    let el = lensEls.get(w.id);
+    if (!el) {
+      el = document.createElement('div');
+      el.append(document.createElement('div'));
+      lensEls.set(w.id, el);
+      if (w.term) lensDirty.add(w.term.session);
+    }
+    lens.append(el);                  // in stacking order, cheap when already there
+    const [x, y] = seatOf(w);
+    el.style.cssText = `left:${x}px;top:${y}px;width:${w.w}px;height:${w.h}px`
+      + (w.term ? ';background:#12110d' : '') + (match(w) ? '' : ';opacity:.3');
+    el.win = w;
+    if (w.term) return;
+    // a photograph only needs cutting again when the cut changes
+    const key = shotUrl(w.desktop) + JSON.stringify([w.crop, w.over, w.seen, w.w, w.h]);
+    if (el.key !== key) { el.key = key; dress(el.firstChild, w); }
+  });
+  lensEls.forEach((el, id) => { if (!live.has(id)) { el.remove(); lensEls.delete(id); } });
+}
+
+// a terminal that has redrawn: copy its rows over, if the loupe can see it
+function termDrew(id) {
+  lensDirty.add(id);
+  if (lensOn && lensAt && !lensFrame) lensFrame = requestAnimationFrame(drawLens);
+}
 
 function drawLens() {
   lensFrame = 0;
@@ -1578,49 +1616,42 @@ function drawLens() {
   loupe.classList.toggle('on', !!(lensOn && lensAt && data));
   if (!loupe.classList.contains('on')) return;
   const box = $('#pan').getBoundingClientRect();
-  const px = lensAt[0] - box.left, py = lensAt[1] - box.top;
   // out of its own way: under the pointer, it moves to the other corner
   const r = loupe.getBoundingClientRect();
   if (lensAt[0] >= r.left && lensAt[0] <= r.right && lensAt[1] >= r.top && lensAt[1] <= r.bottom)
     loupe.classList.toggle('right');
   const W = loupe.clientWidth, H = loupe.clientHeight;
-  const vx = (px - origin[0]) / zoom, vy = (py - origin[1]) / zoom;
-  const x0 = vx - W / 2, y0 = vy - H / 2;
-  const match = visible();
-  lens.textContent = '';
-  data.windows.slice().sort((a, b) => a.z - b.z).forEach(w => {
+  const x0 = (lensAt[0] - box.left - origin[0]) / zoom - W / 2;
+  const y0 = (lensAt[1] - box.top - origin[1]) / zoom - H / 2;
+  lens.style.transform = `translate(${Math.round(-x0)}px,${Math.round(-y0)}px)`;
+  // only the terminals in view are copied, and only once per redraw
+  lensDirty.forEach(id => {
+    const el = lensEls.get('web:' + id), w = el && el.win;
+    if (!w) return lensDirty.delete(id);
     const [x, y] = seatOf(w);
     if (x > x0 + W || y > y0 + H || x + w.w < x0 || y + w.h < y0) return;
-    const el = document.createElement('div');
-    el.style.cssText = `left:${Math.round(x - x0)}px;top:${Math.round(y - y0)}px;`
-      + `width:${w.w}px;height:${w.h}px` + (match(w) ? '' : ';opacity:.3');
-    if (w.term) {
-      const t = terms.get(w.term.session), xt = t && t.wrap && t.wrap.querySelector('.xterm');
-      if (!xt) return;
-      // the caption stays at screen size on the surface too, so it is the same
-      // height here; below it, the rows at their own size
-      el.style.background = '#12110d';
-      const rows = xt.cloneNode(true);
-      rows.style.marginTop = t.capH + 'px';
-      el.append(rows);
-    } else {
-      const pic = document.createElement('div');
-      el.append(pic);
-      dress(pic, w);
-    }
-    lens.append(el);
+    const t = terms.get(id), xt = t && t.wrap && t.wrap.querySelector('.xterm');
+    if (!xt) return;
+    lensDirty.delete(id);
+    // the caption stays at screen size on the surface too, so it is the same
+    // height here; below it, the rows at their own size. The shell keeps the
+    // .xterm classes, which is what xterm.js hangs its colours on
+    const shell = document.createElement('div');
+    shell.className = xt.className;
+    shell.style.marginTop = t.capH + 'px';
+    shell.append(xt.querySelector('.xterm-screen').cloneNode(true));
+    el.replaceChildren(shell);
   });
 }
 
 function aimLens(e) {
-  lensAt = [e.clientX, e.clientY];
+  if (e) lensAt = [e.clientX, e.clientY];
   if (lensOn && !lensFrame) lensFrame = requestAnimationFrame(drawLens);
+  else if (!lensOn) drawLens();
 }
 $('#pan').addEventListener('pointermove', aimLens);
 $('#pan').addEventListener('wheel', aimLens);
 $('#pan').addEventListener('pointerleave', () => { lensAt = null; drawLens(); });
-// a terminal keeps talking with the pointer still, so the copy keeps up
-setInterval(() => { if (lensOn && lensAt && !lensFrame) drawLens(); }, 250);
 
 // ---- getting about: wheel, drag, and two fingers -------------------------
 
