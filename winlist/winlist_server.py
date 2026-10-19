@@ -714,6 +714,7 @@ PAGE = r"""<!doctype html>
   .tile.dragging { cursor:grabbing; box-shadow:0 12px 34px rgba(0,0,0,.4); z-index:60 }
   .tile.focused { border-color:var(--accent) }
   .tile.sel { outline:10px solid var(--accent); outline-offset:5px }
+  body:not(.insert) .tile.sel { outline-color:#9aa0a6 }   /* NORMAL is grey, INSERT keeps the accent */
   .tile.off { opacity:.3 }
   .cap { display:flex; align-items:center; gap:5px; padding:3px 6px; flex:none;
          border-bottom:1px solid var(--line); background:var(--panel) }
