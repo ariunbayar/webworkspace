@@ -1403,7 +1403,8 @@ function grab(e, w, el) {
   const t = terms.get(w.term.session);
   if (!t || !t.cell) return;
   const sx = e.clientX, sy = e.clientY;
-  const h0 = w.h;
+  // the size it had when grabbed: resizeTo changes w.w and w.h as you pull
+  const w0 = w.w, h0 = w.h;
   const tag = document.createElement('div');
   tag.className = 'termsize';
   el.append(tag);
@@ -1414,7 +1415,7 @@ function grab(e, w, el) {
   const move = ev => {
     // the far corner lands on the nearest grid line, give or take half a character
     const [x, y] = seatOf(w);
-    const edge = [snap(x + w.w + (ev.clientX - sx) / zoom), snap(y + h0 + (ev.clientY - sy) / zoom)];
+    const edge = [snap(x + w0 + (ev.clientX - sx) / zoom), snap(y + h0 + (ev.clientY - sy) / zoom)];
     if (resizeTo(w, el, t, edge)) show();
   };
   const done = ev => {
@@ -1444,17 +1445,22 @@ async function newTerm() {
     body: JSON.stringify({ cols: termCols(), rows: termRows() }),
   }).then(r => r.json()).catch(() => null);
   if (!made || !made.id) return;
-  // you asked for a terminal to type into, so the keyboard goes to it
-  const typeHere = () => { const t = terms.get(made.id); if (t) t.term.focus(); };
-  if (!zoom) { hold(true); await poll(); return typeHere(); }
+  // the new one is picked and brought to the front, but you stay in NORMAL:
+  // Enter is what types into it, as with any other terminal
+  const pickIt = () => {
+    sel = 'web:' + made.id;
+    const el = tileEls.get(sel);
+    if (el) $('#tiles').append(el);
+    render();
+  };
+  if (!zoom) { hold(true); await poll(); return pickIt(); }
   hold(false);                   // a refit now would carry the view off to it
   await poll();                  // its size is only known once it is listed
   const w = data.windows.find(v => v.id === 'web:' + made.id);
   if (!w) return;
   layout[w.id] = [Math.round(at[0] - w.w / 2), Math.round(at[1] - w.h / 2)];
   store.set('layout', layout);
-  render();
-  typeHere();
+  pickIt();
 }
 $('#newterm').onclick = newTerm;
 
@@ -1720,8 +1726,13 @@ function nudge(dx, dy) {
   }
   const t = terms.get(w.term.session);
   if (!t) return endEdit();
-  const edge = [x + w.w, y + w.h];
-  resizeTo(w, el, t, [dx ? stepTo(edge[0], dx) : edge[0], dy ? stepTo(edge[1], dy) : edge[1]]);
+  // the edge sits half a character either side of a grid line, so the next
+  // line can be too close to change the count: keep going until it does
+  let edge = [x + w.w, y + w.h];
+  for (let i = 0; i < 8; i++) {
+    edge = [dx ? stepTo(edge[0], dx) : edge[0], dy ? stepTo(edge[1], dy) : edge[1]];
+    if (resizeTo(w, el, t, edge)) break;
+  }
 }
 document.addEventListener('focusin', showMode);
 document.addEventListener('focusout', () => setTimeout(showMode));
