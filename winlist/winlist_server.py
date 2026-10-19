@@ -773,6 +773,9 @@ PAGE = r"""<!doctype html>
   .archbody p { color:var(--dim); font-size:11px; margin:11px 0 0; max-width:64ch }
   .archbody b { color:var(--fg); font-weight:600 }
   footer { color:var(--dim); font-size:11px; margin-top:18px; border-top:1px solid var(--line); padding-top:9px }
+  .mode { font:600 10.5px ui-monospace,monospace; padding:2px 7px; border-radius:3px;
+          background:var(--chip); color:var(--dim) }
+  .mode.insert { background:var(--accent); color:#fff }
   code { font-size:10.5px; background:var(--chip); padding:1px 4px; border-radius:3px }
 </style>
 <div class="wrap">
@@ -790,10 +793,12 @@ PAGE = r"""<!doctype html>
       <button id="newterm" class="btn" title="Start a terminal on this surface (t)">New terminal</button>
       <button id="arch" class="btn" title="How this fits together (a)">Architecture</button>
     </span>
+    <span class="mode" id="mode"></span>
     <span class="keys"><kbd>↑↓←→</kbd>/<kbd>hjkl</kbd> pick · <kbd>Enter</kbd> focus ·
       <kbd>/</kbd> filter · <kbd>f</kbd> full window · <kbd>t</kbd> terminal ·
       <kbd>1</kbd> 1:1 ·
-      <kbd>a</kbd> architecture · <kbd>Esc</kbd> clear</span>
+      <kbd>a</kbd> architecture · <kbd>Esc</kbd> clear ·
+      <kbd>Ctrl+Space</kbd> leave a terminal</span>
   </div>
   <div class="pan" id="pan"><div class="canvas" id="canvas"><div id="tiles"></div></div></div>
   <footer id="foot"></footer>
@@ -1241,6 +1246,13 @@ function mount(w) {
   // instead, which is what Claude Code and readline take as "newline, don't
   // submit". keypress has to be swallowed too, or the CR goes out as well.
   term.attachCustomKeyEventHandler(e => {
+    // Ctrl+Space hands the keyboard back to the page, like Esc out of vi's
+    // insert mode — Esc itself belongs to whatever runs in the terminal
+    if (e.code === 'Space' && e.ctrlKey && !e.altKey && !e.metaKey) {
+      if (e.type === 'keydown') { term.blur(); sel = 'web:' + id; render(); }
+      e.preventDefault();
+      return false;
+    }
     if (e.key !== 'Enter' || !e.shiftKey || e.ctrlKey || e.altKey || e.metaKey) return true;
     if (e.type === 'keydown' && t.ws && t.ws.readyState === 1) t.ws.send(new TextEncoder().encode('\x1b\r'));
     e.preventDefault();
@@ -1591,6 +1603,18 @@ function move(dx, dy) {
   }
 }
 
+// Two modes, as in vi: NORMAL, where the keys move about the surface, and
+// INSERT, where a terminal has them all. Which one you are in is just where
+// the keyboard is, so it is read from the focus rather than kept alongside it.
+function showMode() {
+  const typing = !!(document.activeElement && document.activeElement.closest('.termhost'));
+  $('#mode').textContent = typing ? 'INSERT' : 'NORMAL';
+  $('#mode').classList.toggle('insert', typing);
+}
+document.addEventListener('focusin', showMode);
+document.addEventListener('focusout', () => setTimeout(showMode));
+showMode();
+
 document.addEventListener('keydown', e => {
   if (e.target.tagName === 'TEXTAREA') return;   // a terminal has the keyboard
   if (e.target.tagName === 'INPUT') {
@@ -1598,7 +1622,9 @@ document.addEventListener('keydown', e => {
     return;
   }
   const k = e.key;
-  if (archbox.open) return;              // the dialog handles its own Esc
+  if (archbox.open) return;
+  // the page's own keys are bare letters: anything held with them is the browser's
+  if (e.ctrlKey || e.altKey || e.metaKey) return;              // the dialog handles its own Esc
   if (k === 'a') { e.preventDefault(); return showArch(); }
   if (k === '/') { e.preventDefault(); $('#q').focus(); return; }
   if (k === 'Escape') {
