@@ -410,6 +410,7 @@ def terminals(desktop, across):
                 "cols": t.get("cols", 80), "rows": t.get("rows", 24),
                 "alive": t.get("alive", False), "exit": t.get("exit"),
                 "running": t.get("running", ""), "cwd": where,
+                "title": t.get("title", ""),
                 "age": t.get("age", 0),
             },
         })
@@ -1276,8 +1277,14 @@ function mount(w) {
     drawBoldTextInBrightColors: l.bold_bright === undefined ? true : l.bold_bright,
     convertEol: false, macOptionIsMeta: true,
   });
-  t = { term, ws: null, wrap: null, natural: null, cell: null, pad: [0, 0], read: false };
+  t = { term, ws: null, wrap: null, natural: null, cell: null, pad: [0, 0], read: false, title: '' };
   terms.set(id, t);
+  // the title the shell sets (OSC 0/2) is what a desktop terminal shows, and
+  // xterm.js hears it as it streams by, well before the next poll would
+  term.onTitleChange(s => {
+    t.title = s;
+    if (t.wrap && s) t.wrap.querySelector('.t2').textContent = s;
+  });
   // what you type goes straight down the socket; nothing is echoed locally,
   // because the far end is what decides what a keystroke looks like
   term.onData(d => {
@@ -1338,7 +1345,7 @@ function dressTerm(el, w) {
   if (t.natural) { w.w = t.natural[0]; w.h = t.natural[1]; }
   const cap = t.wrap.querySelector('.cap');
   cap.querySelector('.dot').style.background = colorOf(w.app);
-  cap.querySelector('.t2').textContent = w.term.running || w.title;
+  cap.querySelector('.t2').textContent = t.title || w.term.title || w.term.running || w.title;
   cap.querySelector('.note').textContent = w.term.alive
     ? (w.term.cwd || '')
     : 'exited ' + (w.term.exit === null ? '?' : w.term.exit);
