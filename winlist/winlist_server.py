@@ -1491,6 +1491,8 @@ function renderCanvas(match, q) {
           // a photograph has nothing to click, so all of it is
           // — except in NORMAL, where the mouse moves windows and never types
           if (document.body.classList.contains('insert') && !e.target.closest('.cap')) return;
+        } else if (document.body.classList.contains('insert')) {
+          return;                // in INSERT a photograph is just more surface: it pans
         }
         drag(e, win, el);
       });
@@ -1542,8 +1544,22 @@ $('#pan').addEventListener('wheel', e => {
 // This listens on the frame rather than on the canvas: the canvas is a 0x0
 // element that its tiles simply overflow, so it has no background of its own
 // to press — the empty space you are reaching for belongs to the frame.
+// In INSERT the pointer outside the window you are typing into still carries
+// the surface — the wheel already zooms there — while the active window and
+// the other terminals keep their clicks, and a photograph is only surface.
+function carries(e) {
+  const tile = e.target.closest('.tile');
+  if (!tile || !document.body.classList.contains('insert')) return !tile;
+  return !tile.classList.contains('term') && tile !== document.activeElement.closest('.tile');
+}
+
+// a press would take the keyboard away from the terminal, so it is not let
+$('#pan').addEventListener('mousedown', e => {
+  if (document.body.classList.contains('insert') && carries(e)) e.preventDefault();
+});
+
 $('#pan').addEventListener('pointerdown', e => {
-  if (e.target.closest('.tile') || pointers.size > 1) return;   // one finger drags, two pinch
+  if (!carries(e) || pointers.size > 1) return;   // one finger drags, two pinch
   const pan = $('#pan');
   let px = e.clientX, py = e.clientY;
   pan.classList.add('grabbing');
