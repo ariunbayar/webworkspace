@@ -713,7 +713,7 @@ PAGE = r"""<!doctype html>
   .tile:hover { border-color:var(--dim) }
   .tile.dragging { cursor:grabbing; box-shadow:0 12px 34px rgba(0,0,0,.4); z-index:60 }
   .tile.focused { border-color:var(--accent) }
-  .tile.sel { outline:2px solid var(--accent); outline-offset:1px }
+  .tile.sel { outline:10px solid var(--accent); outline-offset:5px }
   .tile.off { opacity:.3 }
   .cap { display:flex; align-items:center; gap:5px; padding:3px 6px; flex:none;
          border-bottom:1px solid var(--line); background:var(--panel) }
@@ -1314,6 +1314,11 @@ function dressTerm(el, w) {
     host.className = 'termhost';
     wrap.append(host);
     el.append(wrap);
+    // the keyboard arriving here by any route (a click, a script) makes this
+    // the picked window, so the outline never stays behind on the last one
+    host.addEventListener('focusin', () => {
+      if (sel !== 'web:' + id && document.body.classList.contains('insert')) activate('web:' + id);
+    });
     // xterm measures a character by laying one out, so it has to do that at
     // its own size: the surface scale goes on afterwards, never before
     wrap.style.transform = 'none';
