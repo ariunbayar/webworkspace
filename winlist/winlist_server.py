@@ -899,9 +899,15 @@ $('#fit').onclick = () => { hold(true); fitAll(); render(); };
 // on whole pixels; held about the picked tile, or the middle with none picked
 function actualSize() {
   const el = sel && tileEls.get(sel);
-  if (!el) return setZoom(1);
-  const r = el.getBoundingClientRect();
-  zoomAbout(1, r.left + r.width / 2, r.top + r.height / 2);
+  if (!el) setZoom(1);
+  else {
+    const r = el.getBoundingClientRect();
+    zoomAbout(1, r.left + r.width / 2, r.top + r.height / 2);
+  }
+  // and on whole screen pixels too: half a pixel off and the text smears
+  const box = $('#pan').getBoundingClientRect();
+  shift(Math.round(box.left + origin[0]) - box.left - origin[0],
+        Math.round(box.top + origin[1]) - box.top - origin[1]);
 }
 $('#actual').onclick = actualSize;
 $('#reset').onclick = () => {
@@ -1216,7 +1222,9 @@ function mount(w) {
     cols: w.term.cols, rows: w.term.rows, theme: termTheme(),
     fontFamily: termFont(),
     fontSize: l.size || 13,
-    lineHeight: 1.1,
+    // xterm.js clips each row to its cell, and a tight face like Pragmata
+    // draws capitals above its own line box: at 1.1 the bar of a T is cut off
+    lineHeight: 1.25,
     cursorBlink: l.blink === undefined ? true : l.blink,
     scrollback: l.scrollback || 4000,
     drawBoldTextInBrightColors: l.bold_bright === undefined ? true : l.bold_bright,
