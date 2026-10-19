@@ -731,11 +731,12 @@ PAGE = r"""<!doctype html>
      everything else, zoom in and you can read it and type into it. */
   .tile.term { background:#12110d; border-color:#3a372c }
   .tile.term.focused { border-color:var(--accent) }
-  .termwrap { position:absolute; top:0; left:0; transform-origin:0 0;
-              display:flex; flex-direction:column }
-  .termwrap .cap { background:#1d1c17; border-bottom-color:#34322a; color:#b9b5a8;
-                   cursor:grab; flex:none }
-  .tile.term.dragging .termwrap .cap { cursor:grabbing }
+  /* …all of it but the caption, which stays at screen size like a
+     photograph's, so the title reads the same at any zoom */
+  .termbody { position:relative; flex:1; min-height:0; overflow:hidden }
+  .termwrap { position:absolute; top:0; left:0; transform-origin:0 0 }
+  .tile.term .cap { cursor:grab }
+  .tile.term.dragging .cap { cursor:grabbing }
   .termhost { flex:none }
   /* NORMAL mode: the mouse only moves and resizes windows. The terminal's own
      element is made deaf, so no click, selection or wheel reaches xterm.js */
@@ -1146,8 +1147,10 @@ function place(el, w) {
     // it cannot be given a floor the way a photograph can: the tile is exactly
     // as big as what is inside it
     const t = terms.get(w.term.session);
+    // the caption is the one part left at screen size
+    const cap = t && t.cap ? t.capH : 0;
     el.style.width = w.w * zoom + 'px';
-    el.style.height = w.h * zoom + 'px';
+    el.style.height = (w.h - cap) * zoom + cap + 'px';
     if (t && t.wrap) t.wrap.style.transform = `scale(${zoom})`;
     return;
   }
@@ -1222,7 +1225,7 @@ function drag(e, w, el) {
 // and the socket carrying bytes each way. Both are kept per session and reused
 // across renders, so a poll never disturbs what you are typing into.
 
-const terms = new Map();          // session id -> { term, ws, wrap, natural }
+const terms = new Map();          // session id -> { term, ws, wrap, cap, natural }
 // What a terminal looks like is yours to say, and you have already said it in
 // ~/.Xresources: the server reads the plain XTerm class at startup and these
 // are only what is used when it has nothing to go on.
@@ -1277,13 +1280,13 @@ function mount(w) {
     drawBoldTextInBrightColors: l.bold_bright === undefined ? true : l.bold_bright,
     convertEol: false, macOptionIsMeta: true,
   });
-  t = { term, ws: null, wrap: null, natural: null, cell: null, pad: [0, 0], read: false, title: '' };
+  t = { term, ws: null, wrap: null, cap: null, capH: 0, natural: null, cell: null, pad: [0, 0], read: false, title: '' };
   terms.set(id, t);
   // the title the shell sets (OSC 0/2) is what a desktop terminal shows, and
   // xterm.js hears it as it streams by, well before the next poll would
   term.onTitleChange(s => {
     t.title = s;
-    if (t.wrap && s) t.wrap.querySelector('.t2').textContent = s;
+    if (t.cap && s) t.cap.querySelector('.t2').textContent = s;
   });
   // what you type goes straight down the socket; nothing is echoed locally,
   // because the far end is what decides what a keystroke looks like
@@ -1312,16 +1315,15 @@ function mount(w) {
 function dressTerm(el, w) {
   const t = mount(w), id = w.term.session;
   if (!t.wrap) {
-    el.innerHTML = '';
-    const wrap = document.createElement('div');
-    wrap.className = 'termwrap';
-    wrap.innerHTML = `<div class="cap"><span class="dot"></span><span class="t2"></span>` +
-                     `<span class="note"></span>` +
-                     `<span class="shut" title="Close">✕</span></div>`;
+    el.innerHTML = `<div class="cap"><span class="dot"></span><span class="t2"></span>` +
+                   `<span class="note"></span>` +
+                   `<span class="shut" title="Close">✕</span></div>` +
+                   `<div class="termbody"><div class="termwrap"></div></div>`;
+    const wrap = el.querySelector('.termwrap');
     const host = document.createElement('div');
     host.className = 'termhost';
     wrap.append(host);
-    el.append(wrap);
+    t.cap = el.querySelector('.cap');
     // the keyboard arriving here by any route (a click, a script) makes this
     // the picked window, so the outline never stays behind on the last one
     host.addEventListener('focusin', () => {
@@ -1343,7 +1345,7 @@ function dressTerm(el, w) {
   // mid-resize, though, where the corner is what decides the size
   if (!el.querySelector('.termsize')) measure(t);
   if (t.natural) { w.w = t.natural[0]; w.h = t.natural[1]; }
-  const cap = t.wrap.querySelector('.cap');
+  const cap = t.cap;
   cap.querySelector('.dot').style.background = colorOf(w.app);
   cap.querySelector('.t2').textContent = t.title || w.term.title || w.term.running || w.title;
   cap.querySelector('.note').textContent = w.term.alive
@@ -1367,7 +1369,9 @@ function measure(t) {
   const was = t.wrap.style.transform;
   t.wrap.style.transform = 'none';
   const wide = host.offsetWidth || screen.offsetWidth;
-  const high = t.wrap.getBoundingClientRect().height;
+  // the caption is outside the scaled part, but still counted in the tile
+  t.capH = t.cap.getBoundingClientRect().height;
+  const high = t.wrap.getBoundingClientRect().height + t.capH;
   t.wrap.style.transform = was;
   // the title bar and xterm's own padding are there whatever the size, so they
   // are held apart from the grid of characters rather than averaged into it
