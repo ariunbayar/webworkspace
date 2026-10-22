@@ -800,6 +800,10 @@ PAGE = r"""<!doctype html>
           background-image:linear-gradient(to right, rgba(217,163,0,.35) 1px, transparent 1px),
                            linear-gradient(to bottom, rgba(217,163,0,.35) 1px, transparent 1px) }
   #grid.on { display:block }
+  /* small quiet triangles on the frame's edge, pointing at windows out of view */
+  .edge { position:absolute; width:8px; height:8px; margin:-4px 0 0 -4px; pointer-events:none;
+          z-index:70; background:var(--dim); opacity:.4;
+          clip-path:polygon(0 0, 100% 50%, 0 100%) }
   /* a window onto the surface at actual size, whatever the zoom: what is under
      the pointer, one virtual pixel to one screen pixel. It never takes a click */
   #loupe { position:absolute; left:10px; bottom:10px; width:min(720px,80%); height:min(240px,40%);
@@ -837,7 +841,7 @@ PAGE = r"""<!doctype html>
       <kbd>a</kbd> architecture · <kbd>Esc</kbd> clear ·
       <kbd>Ctrl+Space</kbd> leave a terminal</span>
   </div>
-  <div class="pan" id="pan"><div class="canvas" id="canvas"><div id="tiles"></div></div><div id="grid"></div><div id="loupe"><div class="lens"></div></div></div>
+  <div class="pan" id="pan"><div class="canvas" id="canvas"><div id="tiles"></div></div><div id="grid"></div><div id="edges"></div><div id="loupe"><div class="lens"></div></div></div>
   <footer id="foot"></footer>
 </div>
 <button id="tray" class="btn" title="Show or hide the top bar (b)">▾</button>
@@ -1097,6 +1101,50 @@ function shift(dx, dy) {          // slide the whole surface, no edges to run in
   origin = [origin[0] + dx, origin[1] + dy];
   store.set('origin', origin);
   $('#canvas').style.transform = `translate(${origin[0]}px,${origin[1]}px)`;
+  markEdges();
+}
+
+// A triangle on the frame's edge for windows wholly out of view, on the line from
+// the frame's middle to the window's. Nearby ones share a triangle, and a window
+// the search has ruled out gets none.
+let edgeQueued = false;
+function markEdges() {
+  if (edgeQueued) return;
+  edgeQueued = true;
+  requestAnimationFrame(() => { edgeQueued = false; drawEdges(); });
+}
+function drawEdges() {
+  const pan = $('#pan'), box = $('#edges'), W = pan.clientWidth, H = pan.clientHeight;
+  const spots = new Map();
+  if (data && W && H) {
+    const match = visible(), cx = W / 2, cy = H / 2, inset = 8;
+    data.windows.forEach(w => {
+      if (!match(w)) return;
+      const [x, y] = seatOf(w);
+      const px = origin[0] + x * zoom, py = origin[1] + y * zoom;
+      const pw = w.term ? w.w * zoom : Math.max(90, w.w * zoom);
+      const ph = w.term ? w.h * zoom : Math.max(60, w.h * zoom);
+      if (px < W && px + pw > 0 && py < H && py + ph > 0) return;   // some of it shows
+      const dx = px + pw / 2 - cx, dy = py + ph / 2 - cy;
+      const k = Math.min((cx - inset) / Math.abs(dx || 1e-9), (cy - inset) / Math.abs(dy || 1e-9));
+      const ex = cx + dx * k, ey = cy + dy * k;
+      spots.set(Math.round(ex / 40) + ',' + Math.round(ey / 40),
+                [ex, ey, Math.atan2(dy, dx)]);
+    });
+  }
+  const list = [...spots.values()];
+  while (box.children.length < list.length) {
+    const d = document.createElement('div');
+    d.className = 'edge';
+    box.append(d);
+  }
+  while (box.children.length > list.length) box.lastChild.remove();
+  list.forEach(([ex, ey, a], i) => {
+    const s = box.children[i].style;
+    s.left = ex + 'px';
+    s.top = ey + 'px';
+    s.transform = `rotate(${a}rad)`;
+  });
 }
 
 // zoom about a point: whatever is under the mouse, or between the fingers, is
@@ -1538,6 +1586,7 @@ function renderCanvas(match, q) {
   if (fitting || !zoom) fitAll();
   $('#zoom').value = Math.round(Math.sqrt(zoom / MAX_ZOOM) * 100);
   $('#canvas').style.transform = `translate(${origin[0]}px,${origin[1]}px)`;
+  markEdges();
 
   const live = new Set();
   data.windows.slice().sort((a, b) => a.z - b.z).forEach(w => {
@@ -1813,6 +1862,7 @@ function reveal() {
   store.set('origin', origin);
   hold(false);
   $('#canvas').style.transform = `translate(${origin[0]}px,${origin[1]}px)`;
+  markEdges();
 }
 
 function move(dx, dy) {
