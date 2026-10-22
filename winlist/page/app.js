@@ -1651,12 +1651,35 @@ function endEdit() {
   if (editBack) activate(editBack);
   editBack = null;
 }
+// Moved on the grid, a tile takes the nearest size on it too, so its far
+// edges line up with the next tile's as well as its corner: a card exactly, a
+// terminal to the character, a photograph by its width, keeping its shape.
+function fitGrid(w, el) {
+  const g = gridStep(), [x, y] = seatOf(w);
+  const ww = Math.max(g, snap(w.w)), hh = Math.max(g, snap(w.h));
+  if (w.link) {
+    w.w = Math.max(90, ww);
+    w.h = Math.max(60, hh);
+    const l = links.find(v => 'link:' + v.id === w.id);
+    if (l) { l.w = w.w; l.h = w.h; store.set('links', links); }
+  } else if (w.term) {
+    const t = terms.get(w.term.session);
+    if (t && t.cell && w.term.alive) resizeTo(w, el, t, [x + ww, y + hh]);
+  } else {
+    const s0 = scales[w.id] || 1, s = ww / (w.w / s0);
+    w.w = w.w / s0 * s;
+    w.h = w.h / s0 * s;
+    if (Math.abs(s - 1) < 0.001) delete scales[w.id]; else scales[w.id] = s;
+    store.set('scales', scales);
+  }
+}
 function nudge(dx, dy, grow) {
   const w = selected(), el = w && tileEls.get(w.id);
   if (!el) return endEdit();
   const [x, y] = seatOf(w);
   if (editing === 'move' || (editing === 'tile' && !grow)) {
     layout[w.id] = [dx ? stepTo(x, dx) : snap(x), dy ? stepTo(y, dy) : snap(y)];
+    fitGrid(w, el);
     place(el, w);
     return;
   }
