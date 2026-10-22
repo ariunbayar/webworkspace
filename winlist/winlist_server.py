@@ -1213,8 +1213,8 @@ function addLink(url, title) {
   const id = Date.now().toString(36), pan = $('#pan');
   links.push({ id, url, title });
   store.set('links', links);
-  layout['link:' + id] = [snap((pan.clientWidth / 2 - origin[0]) / zoom - 160),
-                          snap((pan.clientHeight / 2 - origin[1]) / zoom - 32)];
+  layout['link:' + id] = clearSpot([(pan.clientWidth / 2 - origin[0]) / zoom - 160,
+                                    (pan.clientHeight / 2 - origin[1]) / zoom - 32], 'link:' + id);
   store.set('layout', layout);
   sel = 'link:' + id;
   if (data) data.windows.push(linkWin(links[links.length - 1]));
