@@ -1,0 +1,141 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>__TITLE__</title>
+<link rel="stylesheet" href="/vendor/xterm.css">
+<script src="/vendor/xterm.js"></script>
+<script src="/vendor/marked.min.js"></script>
+<link rel="stylesheet" href="/page/style.css">
+<div class="wrap">
+  <h1>Open windows</h1>
+  <div class="sub"><b id="stat">loading…</b> · <span id="ts"></span></div>
+  <div class="bar">
+    <input type="search" id="q" placeholder="Filter title or app…">
+    <span class="ctl" id="ctl">
+      <input type="range" id="zoom" min="2" max="100" step="1" title="Zoom">
+      <button id="actual" class="btn" title="Actual size: terminals at their own pixels, sharpest text (1)">1:1</button>
+      <button id="lens" class="btn" aria-pressed="false" title="Show what is under the pointer at actual size (z)">Loupe</button>
+      <button id="reset" class="btn">Reset layout</button>
+      <button id="newterm" class="btn" title="Start a terminal on this surface (t)">New terminal</button>
+      <button id="arch" class="btn" title="How this fits together (a)">Architecture</button>
+    </span>
+    <span class="mode" id="mode"></span>
+    <span class="keys"><kbd>↑↓←→</kbd>/<kbd>hjkl</kbd> pick · <kbd>Enter</kbd> focus ·
+      <kbd>/</kbd> filter · <kbd>b</kbd> top bar · <kbd>t</kbd> terminal ·
+      <kbd>g</kbd> group · <kbd>o</kbd> markdown · <kbd>p</kbd> picture · <kbd>1</kbd> 1:1 · <kbd>z</kbd> loupe ·
+      <kbd>m</kbd> move · <kbd>r</kbd> resize (<kbd>hjkl</kbd> step, <kbd>Enter</kbd> done) ·
+      <kbd>a</kbd> architecture · <kbd>?</kbd> help · <kbd>Esc</kbd> clear ·
+      <kbd>Ctrl+Space</kbd> leave a terminal</span>
+  </div>
+  <div class="pan" id="pan"><div class="canvas" id="canvas"><div id="groups"></div><div id="tiles"></div></div><div id="grid"></div><div id="edges"></div><div id="loupe"><div class="lens"></div></div></div>
+  <footer id="foot"></footer>
+</div>
+<button id="tray" class="btn" title="Show or hide the top bar (b)">▾</button>
+<dialog id="linkbox">
+  <form method="dialog" class="linkform">
+    <input id="linkurl" type="text" placeholder="Paste or type a URL" autocomplete="off" spellcheck="false">
+    <button class="btn" value="add">Add card</button>
+  </form>
+</dialog>
+<dialog id="imgbox">
+  <form method="dialog" class="linkform">
+    <input id="imgsrc" type="text" placeholder="Path to an image, or an image URL" autocomplete="off" spellcheck="false">
+    <button class="btn" value="add">Show</button>
+  </form>
+</dialog>
+<dialog id="docbox">
+  <form method="dialog" class="linkform">
+    <input id="docpath" type="text" placeholder="Path to a markdown file, e.g. ~/notes/todo.md" autocomplete="off" spellcheck="false">
+    <button class="btn" value="add">Open</button>
+  </form>
+</dialog>
+<dialog id="helpbox">
+  <div class="archhead">
+    <h2>Keys</h2><span class="grow"></span>
+    <button id="helpclose" class="btn">Close</button>
+  </div>
+  <div class="archbody helpbody">
+    <section><h3>Getting about</h3><table>
+      <tr><td><kbd>↑↓←→</kbd> <kbd>hjkl</kbd></td><td>pick the next window</td></tr>
+      <tr><td><kbd>Enter</kbd> <kbd>Space</kbd></td><td>focus it: type into a terminal, open a card</td></tr>
+      <tr><td><kbd>/</kbd></td><td>filter by title or app</td></tr>
+      <tr><td><kbd>Esc</kbd></td><td>clear the filter and the pick, then fold the top bar</td></tr>
+      <tr><td><kbd>1</kbd></td><td>actual size about the picked window</td></tr>
+      <tr><td><kbd>z</kbd></td><td>loupe on or off</td></tr>
+      <tr><td><kbd>b</kbd></td><td>top bar in or out</td></tr>
+    </table></section>
+    <section><h3>Arranging</h3><table>
+      <tr><td><kbd>m</kbd></td><td>move the picked window</td></tr>
+      <tr><td><kbd>r</kbd></td><td>resize the picked terminal</td></tr>
+      <tr><td><kbd>hjkl</kbd></td><td>step one grid cell, while moving or resizing</td></tr>
+      <tr><td><kbd>Enter</kbd> <kbd>Esc</kbd></td><td>done moving or resizing</td></tr>
+    </table></section>
+    <section><h3>Making</h3><table>
+      <tr><td><kbd>t</kbd></td><td>new terminal</td></tr>
+      <tr><td><kbd>u</kbd></td><td>link card: type or paste a URL</td></tr>
+      <tr><td><kbd>p</kbd></td><td>picture: an image file or image URL; double-click opens it full size</td></tr>
+      <tr><td><kbd>o</kbd></td><td>open a markdown file; it follows your saves. <kbd>Enter</kbd> to scroll it (<kbd>jk</kbd> <kbd>du</kbd>), <kbd>Esc</kbd> back out</td></tr>
+      <tr><td><kbd>g</kbd></td><td>group: drag its caption to carry the windows wholly inside</td></tr>
+    </table></section>
+    <section><h3>In a terminal</h3><table>
+      <tr><td><kbd>Ctrl+Space</kbd></td><td>hand the keyboard back to the page</td></tr>
+      <tr><td><kbd>Shift+Enter</kbd></td><td>newline without submitting</td></tr>
+      <tr><td><kbd>Ctrl+Alt+F</kbd></td><td>next font profile from ~/.Xresources (or click its name in the title bar)</td></tr>
+    </table></section>
+    <section><h3>Mouse and touch</h3><table>
+      <tr><td>wheel, pinch</td><td>zoom; over a readable terminal, scroll it</td></tr>
+      <tr><td>drag the background</td><td>pan, or slide two fingers</td></tr>
+      <tr><td>one finger on a terminal</td><td>scroll it</td></tr>
+      <tr><td>drag a corner</td><td>resize a terminal or a card</td></tr>
+      <tr><td>double-click a card</td><td>open its page</td></tr>
+    </table></section>
+    <section><h3>This page</h3><table>
+      <tr><td><kbd>a</kbd></td><td>how it fits together</td></tr>
+      <tr><td><kbd>?</kbd></td><td>this card</td></tr>
+    </table></section>
+  </div>
+</dialog>
+<dialog id="archbox">
+  <div class="archhead">
+    <h2>How this fits together</h2><span class="grow"></span>
+    <button id="archclose" class="btn">Close</button>
+  </div>
+  <div class="archbody">
+<pre>  ┌──────────────────────── Chrome ────────────────────────┐
+  │  the virtual screen — this page                        │
+  │                                                        │
+  │   ┌─────────┐ ┌─────────┐    ┌──────────────────────┐  │
+  │   │ window  │ │ window  │    │ tile: xterm.js       │  │
+  │   │  photo  │ │  photo  │    │ $ npx tsc --noEmit▌  │  │
+  │   └─────────┘ └─────────┘    └────▲────────────┬────┘  │
+  │      tiles you arrange by hand    │            │       │
+  └───────────────────────────────────┼────────────┼───────┘
+        ▲                             │ bytes out  │ keys in
+        │ GET /api/windows            │ WebSocket  │
+        │                             │            │
+  ┌─────┴──────────────┐         ┌────┴────────────▼─────┐
+  │ winlist_server.py  │   GET   │ pty_server.py         │
+  │      :_PORT_       │────────►│      :8767            │
+  │ xprop · xdotool    │/sessions│ pty.fork + select     │
+  │ xwd · convert      │  200ms  │ scrollback per shell  │
+  └─────┬──────────────┘ timeout └───┬────────────┬──────┘
+        │ asks X                     │ PTY        │ PTY
+        ▼                            ▼            ▼
+  ┌────────────────────┐         ┌──────┐    ┌────────┐
+  │ X11 / window mgr   │         │ bash │    │ claude │
+  │ Chrome, editors,   │         └──────┘    └────────┘
+  │ gnome-terminal     │         shells this page started:
+  └────────────────────┘         it owns these, and only these
+    watched, never owned</pre>
+    <p><b>Left, and running now:</b> real X windows, watched but never owned. The page asks
+    <code>xprop</code> and <code>xdotool</code> what exists, and photographs a workspace
+    whenever you visit it — X only hands out the pixels on the glass, so a workspace you
+    are not looking at cannot be captured.</p>
+    <p><b>Right:</b> shells this page starts itself. <code>pty_server.py</code> holds
+    them, so it knows their pid, working directory and what is running in them outright
+    rather than guessing from <code>WM_CLASS</code>, and they survive a reload — the tab
+    only holds the emulator drawing one. Sessions arrive in the same
+    <code>windows[]</code> list as synthetic entries, in a cell of their own past the
+    last workspace, which is what lets them share the surface with real windows.</p>
+  </div>
+</dialog>
+<script src="/page/app.js"></script>

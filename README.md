@@ -32,6 +32,10 @@ Serves http://127.0.0.1:8766/ and brings the page up in the browser — raising
 the window that already shows it rather than opening another tab, so launching
 this twice costs nothing. Drop `--open` to just serve. The page polls every 2s.
 
+The page is its own three files in `winlist/page/` — `index.html`, `style.css`
+and `app.js` — read from disk on every load, so an edit to any of them shows on
+a reload of the tab, with no restart of the server.
+
 Each window is a tile, labelled with the app it belongs to — resolved from
 `WM_CLASS` plus the process running inside the window, so a terminal running
 `claude` or `vim` says so instead of "XTerm".
