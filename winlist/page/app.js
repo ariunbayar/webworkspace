@@ -42,6 +42,9 @@ function follow(target, move, end) {
 }
 const CAP_H = 28;                          // screen px: a tile's caption, as .cap sets it
 const GRID = 40;                           // virtual px: what moving and resizing snap to
+// zoomed out to a quarter or less a cell is a few screen px, too fine to step
+// across with the keyboard, so the grid doubles there
+const gridStep = () => zoom <= 0.25 ? GRID * 2 : GRID;
 const GUTTER = 140;                        // virtual px between one workspace and the next
 
 function shotUrl(i) {
@@ -803,15 +806,15 @@ function showGrid(on) {
   const g = $('#grid');
   g.classList.toggle('on', on);
   if (!on) return;
-  const step = GRID * zoom;
+  const step = gridStep() * zoom;
   g.style.backgroundSize = `${step}px ${step}px`;
   // a dot sits in the middle of its cell, so shift half a cell to put it on the line
   g.style.backgroundPosition = `${origin[0] - step / 2}px ${origin[1] - step / 2}px`;
 }
-const snap = v => Math.round(v / GRID) * GRID;
+const snap = v => Math.round(v / gridStep()) * gridStep();
 // one grid line on in a direction; from a spot between lines, the next one that way
-const stepTo = (v, dir) => dir > 0 ? (Math.floor(v / GRID) + 1) * GRID
-                                   : (Math.ceil(v / GRID) - 1) * GRID;
+const stepTo = (v, dir) => dir > 0 ? (Math.floor(v / gridStep()) + 1) * gridStep()
+                                   : (Math.ceil(v / gridStep()) - 1) * gridStep();
 
 function drag(e, w, el) {
   if (e.button || pointers.size > 1) return;   // a second finger means pinch
@@ -1623,6 +1626,7 @@ function showMode() {
   $('#mode').classList.toggle('insert', typing && !editing);
   document.body.classList.toggle('insert', typing);
   $('#mode').classList.toggle('grid', !!editing);
+  document.body.classList.toggle('tiling', editing === 'tile');
 }
 
 // Moving and resizing from the keyboard are modes of their own inside NORMAL:

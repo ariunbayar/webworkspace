@@ -66,6 +66,9 @@
   /* a card takes no keys, so it is never INSERT's colour — unless it is a
      document you have gone into */
   .tile.link.sel:not(:focus-within) { outline-color:#9aa0a6 }
+  /* Super+Enter: the tile being moved and sized wears the mode's colour */
+  body.tiling .tile.sel, body.tiling .tile.link.sel:not(:focus-within) {
+    outline:10px dashed #d9a300 }
   .tile.off { opacity:.3 }
   /* a fixed height, so a tile's caption is something to aim a finger at and
      the scaled part under it knows exactly how much room it has (CAP_H) */
