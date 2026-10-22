@@ -39,8 +39,11 @@ Each window is a tile, labelled with the app it belongs to — resolved from
 Terminals look like the ones you already configured: the server reads the plain
 `XTerm` class out of your X resources at startup — palette, font and face size,
 cursor blink, scrollback, and the geometry a new one opens at — and the page
-uses them. A named class like `font-cozette*` is a profile you ask for by name,
-not the default you get by typing `xterm`, so it is left alone. Nothing there,
+uses them. A named profile like `font-cozette*` is not the default, but its face
+is one you can switch to: **Ctrl+Alt+F** in a terminal (the same keys as
+`xterm-font` on the desktop), or click the profile's name in its title bar,
+steps to the next one — `pragmata`, named after the default's face, then each
+`font-*` profile. The grid keeps its size and the tile grows or shrinks around it. Nothing there,
 or no X at all, and it falls back to its own colours.
 
 **New terminal** (or `t`) puts a shell of the page's own on the same surface,

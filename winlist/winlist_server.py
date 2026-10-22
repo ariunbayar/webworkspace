@@ -293,11 +293,15 @@ LOOK = {}          # read once at startup; nothing here changes while we run
 def xterm_look():
     """Read the default XTerm resources, as far as a browser can honour them."""
     lines = sh("xrdb", "-query").splitlines()
-    res = {}
+    res, named = {}, {}
     for line in lines:
         key, sep, val = line.partition(":")
         if sep and key.startswith(XTERM_CLASS):
             res[key[len(XTERM_CLASS):].strip().lower()] = val.strip()
+        # the named profiles are only read for their face, to switch to
+        m = sep and re.match(r"(font-[\w-]+)\*(\w+)$", key.strip())
+        if m:
+            named.setdefault(m.group(1), {})[m.group(2).lower()] = val.strip()
     if not res:
         return {}
 
@@ -321,9 +325,25 @@ def xterm_look():
         except (KeyError, ValueError):
             pass
     # faceSize is in points, as Xft takes it; the browser wants pixels
+    dpi = re.search(r"^Xft\.dpi:\s*([\d.]+)", "\n".join(lines), re.M)
+    px = lambda pt: round(pt * (float(dpi.group(1)) if dpi else 96) / 72, 2)
     if "size" in look:
-        dpi = re.search(r"^Xft\.dpi:\s*([\d.]+)", "\n".join(lines), re.M)
-        look["size"] = round(look["size"] * (float(dpi.group(1)) if dpi else 96) / 72, 2)
+        look["size"] = px(look["size"])
+    # The faces a terminal can be switched between: the default first, named
+    # after its own face, then each `font-*` profile under its own name
+    if look.get("font"):
+        profiles = [{"name": look["font"].split()[0].lower(), "font": look["font"],
+                     "size": look.get("size")}]
+        for name, r in sorted(named.items()):
+            if not r.get("facename"):
+                continue
+            try:
+                size = px(float(r["facesize"]))
+            except (KeyError, ValueError):
+                size = look.get("size")
+            profiles.append({"name": name.removeprefix("font-"), "font": r["facename"], "size": size})
+        if len(profiles) > 1:
+            look["profiles"] = profiles
     if "cursorblink" in res:
         look["blink"] = res["cursorblink"].lower() == "true"
     # bold text in a brighter colour is xterm's boldColors, off by default here
@@ -901,6 +921,9 @@ PAGE = r"""<!doctype html>
   .cap .shut:hover { opacity:1; background:var(--accent); color:#fff }
   .tile.gone .cap .note { color:var(--accent); opacity:1 }
   .cap .note { flex:none; font-size:11px; opacity:.75 }
+  .cap .prof { flex:none; font-size:11px; opacity:.55; cursor:pointer; padding:0 4px; border-radius:3px }
+  .cap .prof:empty { display:none }
+  .cap .prof:hover { opacity:1; background:var(--line) }
   /* a corner to pull: a terminal and a link are the only tiles with a size of
      their own to change, since the rest are pictures of windows somebody else
      is sizing */
@@ -1104,6 +1127,7 @@ PAGE = r"""<!doctype html>
     <section><h3>In a terminal</h3><table>
       <tr><td><kbd>Ctrl+Space</kbd></td><td>hand the keyboard back to the page</td></tr>
       <tr><td><kbd>Shift+Enter</kbd></td><td>newline without submitting</td></tr>
+      <tr><td><kbd>Ctrl+Alt+F</kbd></td><td>next font profile from ~/.Xresources (or click its name in the title bar)</td></tr>
     </table></section>
     <section><h3>Mouse and touch</h3><table>
       <tr><td>wheel, pinch</td><td>zoom; over a readable terminal, scroll it</td></tr>
@@ -2008,7 +2032,9 @@ const termRows = () => look().rows || FALLBACK_ROWS;
 const FALLBACK_FONT = '"DejaVu Sans Mono","Liberation Mono"';
 // whatever the font is, the symbol fonts come after it, never instead of it
 const SYMBOLS = ',"PowerlineSymbols","Symbols Nerd Font",ui-monospace,monospace';
-const termFont = () => (look().font ? `"${look().font}",` : '') + FALLBACK_FONT + SYMBOLS;
+const termFont = (face = look().font) => (face ? `"${face}",` : '') + FALLBACK_FONT + SYMBOLS;
+// the faces in ~/.Xresources a terminal can switch between, default first
+const profiles = () => look().profiles || [];
 const FALLBACK_THEME = { background: '#12110d', foreground: '#e9e7df', cursor: '#e0875c',
   black: '#2a2820', red: '#d76b5a', green: '#7fa84f', yellow: '#d0a33c',
   blue: '#6f9bc4', magenta: '#b07ec0', cyan: '#5fa8a0', white: '#d9d5c8' };
@@ -2047,7 +2073,7 @@ function mount(w) {
     drawBoldTextInBrightColors: l.bold_bright === undefined ? true : l.bold_bright,
     convertEol: false, macOptionIsMeta: true,
   });
-  t = { term, ws: null, wrap: null, cap: null, capH: 0, natural: null, cell: null, pad: [0, 0], read: false, title: '' };
+  t = { term, ws: null, wrap: null, cap: null, capH: 0, natural: null, cell: null, pad: [0, 0], read: false, title: '', prof: 0 };
   terms.set(id, t);
   // the title the shell sets (OSC 0/2) is what a desktop terminal shows, and
   // xterm.js hears it as it streams by, well before the next poll would
@@ -2072,12 +2098,30 @@ function mount(w) {
       e.preventDefault();
       return false;
     }
+    // Ctrl+Alt+F, the same keys as xterm-font on the desktop: the next face
+    if (e.code === 'KeyF' && e.ctrlKey && e.altKey && !e.metaKey) {
+      if (e.type === 'keydown') swapFace(id);
+      e.preventDefault();
+      return false;
+    }
     if (e.key !== 'Enter' || !e.shiftKey || e.ctrlKey || e.altKey || e.metaKey) return true;
     if (e.type === 'keydown' && t.ws && t.ws.readyState === 1) t.ws.send(new TextEncoder().encode('\x1b\r'));
     e.preventDefault();
     return false;
   });
   return t;
+}
+
+// A new face keeps the count of characters and the tile grows or shrinks
+// around it, the way an xterm window does when its font is changed under it.
+function swapFace(id) {
+  const t = terms.get(id), ps = profiles();
+  if (!t || ps.length < 2) return;
+  t.prof = (t.prof + 1) % ps.length;
+  t.term.options.fontFamily = termFont(ps[t.prof].font);
+  t.term.options.fontSize = ps[t.prof].size || 13;
+  if (t.wrap) measure(t);
+  render();
 }
 
 // xterm.js turns a mouse position into a cell with its own unscaled cell size,
@@ -2118,6 +2162,7 @@ function dressTerm(el, w) {
   if (!t.wrap) {
     el.innerHTML = `<div class="cap"><span class="dot"></span><span class="t2"></span>` +
                    `<span class="note"></span>` +
+                   `<span class="prof" title="Switch font (Ctrl+Alt+F)"></span>` +
                    `<span class="shut" title="Close">✕</span></div>` +
                    `<div class="termbody"><div class="termwrap"></div></div>`;
     const wrap = el.querySelector('.termwrap');
@@ -2174,6 +2219,7 @@ function dressTerm(el, w) {
   if (t.natural) { w.w = t.natural[0]; w.h = t.natural[1]; }
   const cap = t.cap;
   cap.querySelector('.dot').style.background = colorOf(w.app);
+  cap.querySelector('.prof').textContent = (profiles()[t.prof] || {}).name || '';
   cap.querySelector('.t2').textContent = t.title || w.term.title || w.term.running || w.title;
   cap.querySelector('.note').textContent = w.term.alive
     ? (w.term.cwd || '')
@@ -2391,6 +2437,7 @@ function renderCanvas(match, q) {
           // is delivered to the tile rather than to what was under it — so the
           // close button has to be answered here, before any of that
           if (e.target.closest('.shut')) { e.preventDefault(); return closeTerm(win.term.session); }
+          if (e.target.closest('.prof')) { e.preventDefault(); return swapFace(win.term.session); }
           if (e.target.closest('.grip')) return grab(e, win, el);
           // a terminal is for typing into, so only its caption is a handle;
           // a photograph has nothing to click, so all of it is
