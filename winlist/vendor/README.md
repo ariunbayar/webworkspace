@@ -13,3 +13,11 @@ somewhere else at the moment you need it.
 
 To move to another version, drop the two files in and change nothing else —
 `winlist_server.py` serves whatever is here, by name.
+
+`marked.min.js` is marked 12.0.2, also unmodified, from
+
+    https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js
+
+It turns a markdown file on the surface into HTML. The page drops any raw HTML
+in the file and keeps only http(s) and mailto links, since whatever it shows
+sits next to terminals it can type into.

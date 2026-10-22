@@ -659,6 +659,29 @@ def gh_state(url):
     return answer
 
 
+# A markdown file shown on the surface is read from disk each time it changes,
+# so it reads like the editor it was written in. Only text files, and only to
+# this page: the answer is the file itself, unlike anything else here.
+DOC_EXT = (".md", ".markdown", ".txt")
+
+
+def read_doc(path, since=None):
+    path = os.path.abspath(os.path.expanduser(path or ""))
+    if not path.lower().endswith(DOC_EXT):
+        return None, "only .md, .markdown or .txt files"
+    try:
+        st = os.stat(path)
+        if not os.path.isfile(path) or st.st_size > 2 << 20:
+            return None, "not a file, or over 2 MB"
+        out = {"path": path, "name": os.path.basename(path), "mtime": st.st_mtime_ns}
+        if str(st.st_mtime_ns) != since:
+            with open(path, encoding="utf-8", errors="replace") as f:
+                out["text"] = f.read()
+        return out, None
+    except OSError as e:
+        return None, e.strerror or "cannot read it"
+
+
 def send_link(url, title=None):
     if not re.match(r"https?://[^/\s]+", url or ""):
         return None
@@ -740,6 +763,7 @@ PAGE = r"""<!doctype html>
 <title>__TITLE__</title>
 <link rel="stylesheet" href="/vendor/xterm.css">
 <script src="/vendor/xterm.js"></script>
+<script src="/vendor/marked.min.js"></script>
 <style>
   :root { --bg:#f7f7f5; --panel:#fff; --line:#e3e2dd; --fg:#1c1b19; --dim:#6f6d67;
           --accent:#b8562f; --chip:#efeee9; --empty:#f2f1ed }
@@ -868,6 +892,24 @@ PAGE = r"""<!doctype html>
   .card .ttl { display:flex; align-items:center; gap:7px; font-size:13px; color:var(--fg);
                white-space:nowrap; overflow:hidden; text-overflow:ellipsis }
   .card .ttl img { width:16px; height:16px; flex:none }
+  /* a markdown file, drawn at its own size and scaled with the surface like a
+     terminal, so zooming in is how you read it */
+  .pic.doc { padding:0; overflow:hidden; display:block; background:var(--panel) }
+  .docwrap { position:absolute; top:0; left:0; width:100%; height:100%; overflow:auto;
+             transform-origin:0 0; box-sizing:border-box; padding:14px 18px }
+  .md { font:14px/1.55 system-ui, sans-serif; color:var(--fg) }
+  .md h1, .md h2, .md h3 { line-height:1.25; margin:1.1em 0 .45em }
+  .md h1 { font-size:1.6em } .md h2 { font-size:1.3em } .md h3 { font-size:1.1em }
+  .md > :first-child { margin-top:0 }
+  .md p, .md ul, .md ol, .md pre, .md table, .md blockquote { margin:0 0 .8em }
+  .md code { font:12.5px ui-monospace, monospace; background:var(--chip); padding:1px 4px;
+             border-radius:4px }
+  .md pre { background:var(--chip); padding:9px 11px; border-radius:6px; overflow:auto }
+  .md pre code { background:none; padding:0 }
+  .md blockquote { border-left:3px solid var(--line); padding-left:10px; color:var(--dim) }
+  .md table { border-collapse:collapse } .md td, .md th { border:1px solid var(--line); padding:3px 8px }
+  .md a { color:var(--accent) } .md img { max-width:100% }
+  .md .gone { color:var(--accent) }
   /* GitHub's own colours for where an issue or PR stands */
   .card .gh { display:inline-block; padding:0 6px; margin-right:6px; border-radius:8px;
               color:#fff; font-size:10px; line-height:15px; vertical-align:1px }
@@ -956,7 +998,7 @@ PAGE = r"""<!doctype html>
     <span class="mode" id="mode"></span>
     <span class="keys"><kbd>↑↓←→</kbd>/<kbd>hjkl</kbd> pick · <kbd>Enter</kbd> focus ·
       <kbd>/</kbd> filter · <kbd>b</kbd> top bar · <kbd>t</kbd> terminal ·
-      <kbd>g</kbd> group · <kbd>1</kbd> 1:1 · <kbd>z</kbd> loupe ·
+      <kbd>g</kbd> group · <kbd>o</kbd> markdown · <kbd>1</kbd> 1:1 · <kbd>z</kbd> loupe ·
       <kbd>m</kbd> move · <kbd>r</kbd> resize (<kbd>hjkl</kbd> step, <kbd>Enter</kbd> done) ·
       <kbd>a</kbd> architecture · <kbd>?</kbd> help · <kbd>Esc</kbd> clear ·
       <kbd>Ctrl+Space</kbd> leave a terminal</span>
@@ -969,6 +1011,12 @@ PAGE = r"""<!doctype html>
   <form method="dialog" class="linkform">
     <input id="linkurl" type="text" placeholder="Paste or type a URL" autocomplete="off" spellcheck="false">
     <button class="btn" value="add">Add card</button>
+  </form>
+</dialog>
+<dialog id="docbox">
+  <form method="dialog" class="linkform">
+    <input id="docpath" type="text" placeholder="Path to a markdown file, e.g. ~/notes/todo.md" autocomplete="off" spellcheck="false">
+    <button class="btn" value="add">Open</button>
   </form>
 </dialog>
 <dialog id="helpbox">
@@ -995,6 +1043,7 @@ PAGE = r"""<!doctype html>
     <section><h3>Making</h3><table>
       <tr><td><kbd>t</kbd></td><td>new terminal</td></tr>
       <tr><td><kbd>u</kbd></td><td>link card: type or paste a URL</td></tr>
+      <tr><td><kbd>o</kbd></td><td>open a markdown file; it follows your saves</td></tr>
       <tr><td><kbd>g</kbd></td><td>group: drag its caption to carry the windows wholly inside</td></tr>
     </table></section>
     <section><h3>In a terminal</h3><table>
@@ -1130,6 +1179,30 @@ linkbox.addEventListener('close', async () => {
     addLink(l.url, l.title);
   } catch (e) {}
 });
+// o asks for a markdown file; the server checks it is one before it is shown
+const docbox = $('#docbox');
+function askDoc() {
+  if (docbox.open) return;
+  $('#docpath').value = '';
+  docbox.returnValue = '';
+  docbox.showModal();
+  $('#docpath').focus();
+}
+docbox.addEventListener('close', async () => {
+  const path = $('#docpath').value.trim();
+  if (docbox.returnValue !== 'add' || !path) return;
+  try {
+    const r = await fetch('/api/file?path=' + encodeURIComponent(path));
+    const d = await r.json();
+    if (!r.ok) return alertDoc(d.error);
+    addDoc(d.path, d.name);
+  } catch (e) {}
+});
+function alertDoc(msg) {            // said where you were typing, not in a modal
+  askDoc();
+  $('#docpath').value = '';
+  $('#docpath').placeholder = 'Could not open it: ' + (msg || 'unknown error');
+}
 const helpbox = $('#helpbox');
 const showHelp = () => { if (!helpbox.open) helpbox.showModal(); };
 $('#helpclose').onclick = () => helpbox.close();
@@ -1537,19 +1610,80 @@ let links = store.get('links', []);
 let taken = store.get('taken', []);    // ids of links sent from outside, already carded
 
 function linkWin(l) {
-  return { id: 'link:' + l.id, link: l, title: l.title, app: new URL(l.url).host,
-           w: l.w || 320, h: l.h || 64, x: 0, y: 0, z: 1e9, desktop: null };
+  return { id: 'link:' + l.id, link: l, title: l.title,
+           app: l.path ? 'Markdown' : new URL(l.url).host,
+           w: l.w || (l.path ? 720 : 320), h: l.h || (l.path ? 900 : 64),
+           x: 0, y: 0, z: 1e9, desktop: null };
+}
+
+// ---- docs: a markdown file kept on the surface, read again when it changes --
+const docs = new Map();             // path -> {mtime, html} or {error}
+const md = new marked.Marked({ gfm: true });
+md.use({ renderer: {
+  // a file can carry HTML, and this page can type into terminals: none of it runs
+  html: () => '',
+  link: (href, title, text) => /^(https?:|mailto:)/i.test(href || '')
+    ? `<a href="${esc(href)}" target="_blank" rel="noopener">${text}</a>` : text,
+  image: (href, title, text) => /^https?:/i.test(href || '')
+    ? `<img src="${esc(href)}" alt="${esc(text || '')}">` : esc(text || ''),
+} });
+
+async function readDocs() {
+  let changed = false;
+  for (const l of links) {
+    if (!l.path) continue;
+    const had = docs.get(l.path);
+    const q = 'path=' + encodeURIComponent(l.path) + (had && had.mtime ? '&since=' + had.mtime : '');
+    try {
+      const r = await fetch('/api/file?' + q), d = await r.json();
+      if (!r.ok) {
+        if (!had || !had.error) { docs.set(l.path, { error: d.error }); changed = true; }
+      } else if ('text' in d) {
+        docs.set(l.path, { mtime: d.mtime, html: md.parse(d.text) });
+        changed = true;
+      }
+    } catch (e) {}
+  }
+  if (changed) render();
+}
+
+function docKey(w) {
+  const d = docs.get(w.link.path);
+  return w.link.path + ' ' + (d ? d.mtime || d.error : '');
+}
+
+function docCard(pic, w) {
+  const old = pic.querySelector('.docwrap'), top = old ? old.scrollTop : 0;
+  const d = docs.get(w.link.path);
+  pic.className = 'pic card doc';
+  pic.style.cssText = '';
+  pic.innerHTML = `<div class="docwrap"><div class="md"></div></div>`;
+  pic.querySelector('.md').innerHTML = !d ? '<p>Reading…</p>'
+    : d.error ? `<p class="gone">${esc(w.link.path)}: ${esc(d.error)}</p>` : d.html;
+  pic.querySelector('.docwrap').scrollTop = top;   // a save keeps your place
+}
+
+function addDoc(path, name) {
+  const id = Date.now().toString(36), pan = $('#pan');
+  links.push({ id, path, title: name });
+  store.set('links', links);
+  layout['link:' + id] = clearSpot([(pan.clientWidth / 2 - origin[0]) / zoom - 360,
+                                    (pan.clientHeight / 2 - origin[1]) / zoom - 450], 'link:' + id);
+  store.set('layout', layout);
+  if (!document.body.classList.contains('insert')) sel = 'link:' + id;
+  if (data) data.windows.push(linkWin(links[links.length - 1]));
+  readDocs();
 }
 
 // a closed issue was finished, so it is purple; a closed PR was given up, so red
 const ghColor = gh => ({ open: '#1f883d', merged: '#8250df', 'not planned': '#59636e',
                          closed: gh.pr ? '#cf222e' : '#8250df' })[gh.state] || '#59636e';
 const ghStates = new Map();        // card url -> {state, pr}, asked of the server
-const ghOf = w => ghStates.get(w.link.url);
+const ghOf = w => w.link.url && ghStates.get(w.link.url);
 
 async function askGitHub() {
   for (const l of links) {
-    if (!/^https:\/\/github\.com\/[^/]+\/[^/]+\/(pull|issues)\/\d+/.test(l.url)) continue;
+    if (!/^https:\/\/github\.com\/[^/]+\/[^/]+\/(pull|issues)\/\d+/.test(l.url || '')) continue;
     try {
       const r = await fetch('/api/ghstate?url=' + encodeURIComponent(l.url));
       const st = await r.json();
@@ -1560,6 +1694,7 @@ async function askGitHub() {
 }
 
 function card(pic, w) {
+  if (w.link.path) return docCard(pic, w);
   const u = new URL(w.link.url);
   pic.className = 'pic card';
   pic.style.cssText = '';
@@ -1650,6 +1785,12 @@ function place(el, w) {
   }
   el.style.width = Math.max(90, w.w * zoom) + 'px';
   el.style.height = Math.max(60, w.h * zoom) + 'px';
+  const dw = w.link && w.link.path && el.querySelector('.docwrap');
+  if (dw) {                          // the caption, ~20px, stays at screen size
+    dw.style.width = w.w + 'px';
+    dw.style.height = Math.max(0, Math.max(60, w.h * zoom) - 20) / zoom + 'px';
+    dw.style.transform = `scale(${zoom})`;
+  }
 }
 
 // The grid is only there while a window is being moved or resized. It is a
@@ -2114,6 +2255,7 @@ function renderCanvas(match, q) {
       }
       el.addEventListener('pointerdown', e => {
         const win = tileEls.get(w.id).win;
+        if (e.target.closest('.md a')) return;    // a link in a document is for following
         if (win.term) {
           // the drag takes the pointer captive, and a captured pointer's click
           // is delivered to the tile rather than to what was under it — so the
@@ -2151,8 +2293,8 @@ function renderCanvas(match, q) {
       el.querySelector('.dot').style.background = colorOf(w.app);
       el.querySelector('.t2').textContent = w.title;
       if (w.link) {
-        el.title = w.link.url;
-        const gh = ghOf(w), key = w.link.url + (gh ? ' ' + gh.state : '');
+        el.title = w.link.url || w.link.path;
+        const gh = ghOf(w), key = w.link.path ? docKey(w) : w.link.url + (gh ? ' ' + gh.state : '');
         if (gh) el.querySelector('.dot').style.background = ghColor(gh);
         const pic = el.children[1];          // the grip comes after it
         if (pic.dataset.key !== key) {
@@ -2214,7 +2356,7 @@ function syncLens() {
     el.win = w;
     if (w.term) return;
     if (w.link) {
-      const gh = ghOf(w), key = w.link.url + (gh ? ' ' + gh.state : '');
+      const gh = ghOf(w), key = w.link.path ? docKey(w) : w.link.url + (gh ? ' ' + gh.state : '');
       if (el.key !== key) { el.key = key; card(el.firstChild, w); }
       return;
     }
@@ -2284,6 +2426,7 @@ $('#pan').addEventListener('wheel', e => {
   // far enough that nobody could read it, it is a tile again and the wheel
   // goes back to meaning zoom.
   if (zoom > 0.5 && e.target.closest('.termhost') && document.body.classList.contains('insert')) return;
+  if (zoom > 0.3 && e.target.closest('.docwrap')) return;      // a document scrolls
   e.preventDefault();
   zoomAbout(zoom * Math.exp(-e.deltaY * 0.0015), e.clientX, e.clientY);
 }, { passive: false });
@@ -2371,7 +2514,7 @@ async function activate(id) {
   render();
   if (id.startsWith('link:')) {
     const w = data.windows.find(x => x.id === id);
-    if (w) window.open(w.link.url, '_blank', 'noopener');
+    if (w && w.link.url) window.open(w.link.url, '_blank', 'noopener');
     return;
   }
   if (id.startsWith('web:')) {
@@ -2516,6 +2659,7 @@ document.addEventListener('keydown', e => {
   if (k === 'b') { e.preventDefault(); return setBare(!bare); }
   if (k === 't') { e.preventDefault(); return void newTerm(); }
   if (k === 'u') { e.preventDefault(); return askLink(); }
+  if (k === 'o') { e.preventDefault(); return askDoc(); }
   if (k === 'g') { e.preventDefault(); return newGroup(); }
   if (k === '1') { e.preventDefault(); return actualSize(); }
   if (k === 'z') { e.preventDefault(); return setLens(!lensOn); }
@@ -2532,6 +2676,8 @@ poll();
 setInterval(poll, 2000);
 askGitHub();
 setInterval(askGitHub, 60000);
+readDocs();
+setInterval(readDocs, 2000);
 </script>
 """
 
@@ -2539,7 +2685,7 @@ setInterval(askGitHub, 60000);
 # ---- server ---------------------------------------------------------------
 
 
-def same_page(origin, host):
+def same_page(origin, host, named=False):
     """Whether a request that changes something came from this page.
 
     Any site open in the browser can post to localhost, and the answer being
@@ -2548,9 +2694,9 @@ def same_page(origin, host):
     one: same host and port, and that host a loopback name or a bare address —
     never a domain, which could be made to point here after the page loaded.
     """
-    if not origin:
+    if not origin and not named:
         return True                     # curl, and anything else without a page
-    if origin.split("//", 1)[-1].split("/")[0] != host:
+    if origin and origin.split("//", 1)[-1].split("/")[0] != host:
         return False
     name = host[:host.find("]") + 1] if host.startswith("[") else host.rsplit(":", 1)[0]
     return name in ("127.0.0.1", "localhost", "[::1]") or bool(
@@ -2587,7 +2733,8 @@ class Handler(BaseHTTPRequestHandler):
         half a megabyte of terminal emulator is not going in it. Only these two
         names are ever served, and only from that one directory.
         """
-        kind = {"xterm.js": "application/javascript", "xterm.css": "text/css"}.get(name)
+        kind = {"xterm.js": "application/javascript", "xterm.css": "text/css",
+                "marked.min.js": "application/javascript"}.get(name)
         if not kind:
             return self._send(json.dumps({"error": "not found"}), code=404)
         here = os.path.join(os.path.dirname(os.path.abspath(__file__)), "vendor")
@@ -2614,6 +2761,13 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(json.dumps({"error": "no photo of that workspace yet"}), code=404)
             # the url carries the capture time, so a given one never changes
             self._send(data, "image/jpeg", cache="private, max-age=300")
+        elif self.path.startswith("/api/file?"):
+            # a page under any other name could be a site pointed here to read
+            if not same_page(None, self.headers.get("Host", ""), named=True):
+                return self._send(json.dumps({"error": "refused"}), code=403)
+            q = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
+            doc, err = read_doc(q.get("path", [""])[0], q.get("since", [None])[0])
+            self._send(json.dumps(doc or {"error": err}), code=200 if doc else 404)
         elif self.path.startswith("/api/ghstate?"):
             q = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
             self._send(json.dumps(gh_state(q.get("url", [""])[0])))
