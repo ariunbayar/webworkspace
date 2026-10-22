@@ -798,6 +798,14 @@ PAGE = r"""<!doctype html>
   .archbody pre { margin:0; white-space:pre; font-size:11.5px; line-height:1;
                   font-family:"DejaVu Sans Mono","Liberation Mono","Noto Sans Mono",monospace }
   .archbody p { color:var(--dim); font-size:11px; margin:11px 0 0; max-width:64ch }
+  /* every key on one card, so the bar's short list is not the only record */
+  .helpbody { columns:2 260px; column-gap:26px }
+  .helpbody section { break-inside:avoid; margin:0 0 12px }
+  .helpbody h3 { font-size:11px; margin:0 0 5px; color:var(--dim); font-weight:600;
+                 text-transform:uppercase; letter-spacing:.04em }
+  .helpbody table { border-collapse:collapse; font-size:12px; width:100% }
+  .helpbody td { padding:2px 0; vertical-align:top }
+  .helpbody td:first-child { white-space:nowrap; padding-right:12px; width:1% }
   .archbody b { color:var(--fg); font-weight:600 }
   footer { color:var(--dim); font-size:11px; margin-top:18px; border-top:1px solid var(--line); padding-top:9px }
   .mode { font:600 10.5px ui-monospace,monospace; padding:2px 7px; border-radius:3px;
@@ -847,13 +855,54 @@ PAGE = r"""<!doctype html>
       <kbd>/</kbd> filter · <kbd>b</kbd> top bar · <kbd>t</kbd> terminal ·
       <kbd>1</kbd> 1:1 · <kbd>z</kbd> loupe ·
       <kbd>m</kbd> move · <kbd>r</kbd> resize (<kbd>hjkl</kbd> step, <kbd>Enter</kbd> done) ·
-      <kbd>a</kbd> architecture · <kbd>Esc</kbd> clear ·
+      <kbd>a</kbd> architecture · <kbd>?</kbd> help · <kbd>Esc</kbd> clear ·
       <kbd>Ctrl+Space</kbd> leave a terminal</span>
   </div>
   <div class="pan" id="pan"><div class="canvas" id="canvas"><div id="tiles"></div></div><div id="grid"></div><div id="edges"></div><div id="loupe"><div class="lens"></div></div></div>
   <footer id="foot"></footer>
 </div>
 <button id="tray" class="btn" title="Show or hide the top bar (b)">▾</button>
+<dialog id="helpbox">
+  <div class="archhead">
+    <h2>Keys</h2><span class="grow"></span>
+    <button id="helpclose" class="btn">Close</button>
+  </div>
+  <div class="archbody helpbody">
+    <section><h3>Getting about</h3><table>
+      <tr><td><kbd>↑↓←→</kbd> <kbd>hjkl</kbd></td><td>pick the next window</td></tr>
+      <tr><td><kbd>Enter</kbd> <kbd>Space</kbd></td><td>focus it: type into a terminal, open a card</td></tr>
+      <tr><td><kbd>/</kbd></td><td>filter by title or app</td></tr>
+      <tr><td><kbd>Esc</kbd></td><td>clear the filter and the pick, then fold the top bar</td></tr>
+      <tr><td><kbd>1</kbd></td><td>actual size about the picked window</td></tr>
+      <tr><td><kbd>z</kbd></td><td>loupe on or off</td></tr>
+      <tr><td><kbd>b</kbd></td><td>top bar in or out</td></tr>
+    </table></section>
+    <section><h3>Arranging</h3><table>
+      <tr><td><kbd>m</kbd></td><td>move the picked window</td></tr>
+      <tr><td><kbd>r</kbd></td><td>resize the picked terminal</td></tr>
+      <tr><td><kbd>hjkl</kbd></td><td>step one grid cell, while moving or resizing</td></tr>
+      <tr><td><kbd>Enter</kbd> <kbd>Esc</kbd></td><td>done moving or resizing</td></tr>
+    </table></section>
+    <section><h3>Making</h3><table>
+      <tr><td><kbd>t</kbd></td><td>new terminal</td></tr>
+      <tr><td><kbd>u</kbd></td><td>sample link card</td></tr>
+    </table></section>
+    <section><h3>In a terminal</h3><table>
+      <tr><td><kbd>Ctrl+Space</kbd></td><td>hand the keyboard back to the page</td></tr>
+      <tr><td><kbd>Shift+Enter</kbd></td><td>newline without submitting</td></tr>
+    </table></section>
+    <section><h3>Mouse and touch</h3><table>
+      <tr><td>wheel, pinch</td><td>zoom; over a readable terminal, scroll it</td></tr>
+      <tr><td>drag the background</td><td>pan, or slide two fingers</td></tr>
+      <tr><td>one finger on a terminal</td><td>scroll it</td></tr>
+      <tr><td>drag a corner</td><td>resize a terminal or a card</td></tr>
+    </table></section>
+    <section><h3>This page</h3><table>
+      <tr><td><kbd>a</kbd></td><td>how it fits together</td></tr>
+      <tr><td><kbd>?</kbd></td><td>this card</td></tr>
+    </table></section>
+  </div>
+</dialog>
 <dialog id="archbox">
   <div class="archhead">
     <h2>How this fits together</h2><span class="grow"></span>
@@ -948,6 +997,10 @@ const archbox = $('#archbox');
 const showArch = () => { if (!archbox.open) archbox.showModal(); };
 $('#arch').onclick = showArch;
 $('#archclose').onclick = () => archbox.close();
+// the bar only has room for the common keys; ? lists them all
+const helpbox = $('#helpbox');
+const showHelp = () => { if (!helpbox.open) helpbox.showModal(); };
+$('#helpclose').onclick = () => helpbox.close();
 // squared, so the slider gives fine control down at the small end where the
 // whole surface lives and still reaches far enough in to read a window
 $('#zoom').addEventListener('input', () => {
@@ -2079,6 +2132,10 @@ document.addEventListener('keydown', e => {
     return;
   }
   const k = e.key;
+  if (helpbox.open) {
+    if (e.key === '?') { e.preventDefault(); helpbox.close(); }
+    return;
+  }
   if (archbox.open) return;
   if (editing) {
     if (e.ctrlKey || e.altKey || e.metaKey) return;
@@ -2092,6 +2149,7 @@ document.addEventListener('keydown', e => {
   // the page's own keys are bare letters: anything held with them is the browser's
   if (e.ctrlKey || e.altKey || e.metaKey) return;              // the dialog handles its own Esc
   if (k === 'a') { e.preventDefault(); return showArch(); }
+  if (k === '?') { e.preventDefault(); return showHelp(); }
   if (k === '/') { e.preventDefault(); if (bare) setBare(false); $('#q').focus(); return; }
   if (k === 'Escape') {
     if ($('#q').value || sel) { $('#q').value = ''; sel = null; return render(); }
