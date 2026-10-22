@@ -848,6 +848,19 @@ PAGE = r"""<!doctype html>
                      transparent 55% 70%, #b9b5a8 70% 80%, transparent 80%) }
   .grip:hover { opacity:.95 }
   .tile.gone .grip { display:none }
+  /* a group is a frame drawn under the windows: carry it by its caption and
+     whatever lies wholly inside goes with it */
+  .group { position:absolute; border:1px dashed var(--dim); border-radius:8px;
+           background:rgba(128,128,128,.07) }
+  .group .gcap { display:flex; align-items:center; gap:6px; padding:3px 8px; cursor:grab;
+                 font-size:11px; color:var(--dim); border-bottom:1px dashed var(--line);
+                 touch-action:none; user-select:none }
+  .group.dragging .gcap { cursor:grabbing }
+  .group .gname { flex:1; min-width:0; white-space:nowrap; overflow:hidden;
+                  text-overflow:ellipsis; outline:none }
+  .group .gname[contenteditable=true] { color:var(--fg); cursor:text }
+  .group .shut { cursor:pointer; opacity:.55; padding:0 3px; border-radius:3px }
+  .group .shut:hover { opacity:1; background:var(--accent); color:#fff }
   /* a link is kept as the least that still says what it was: the site's icon,
      the page's title and where it lives. Opening it is a click away */
   .pic.card { display:flex; flex-direction:column; justify-content:center; gap:3px;
@@ -944,12 +957,12 @@ PAGE = r"""<!doctype html>
     <span class="mode" id="mode"></span>
     <span class="keys"><kbd>↑↓←→</kbd>/<kbd>hjkl</kbd> pick · <kbd>Enter</kbd> focus ·
       <kbd>/</kbd> filter · <kbd>b</kbd> top bar · <kbd>t</kbd> terminal ·
-      <kbd>1</kbd> 1:1 · <kbd>z</kbd> loupe ·
+      <kbd>g</kbd> group · <kbd>1</kbd> 1:1 · <kbd>z</kbd> loupe ·
       <kbd>m</kbd> move · <kbd>r</kbd> resize (<kbd>hjkl</kbd> step, <kbd>Enter</kbd> done) ·
       <kbd>a</kbd> architecture · <kbd>?</kbd> help · <kbd>Esc</kbd> clear ·
       <kbd>Ctrl+Space</kbd> leave a terminal</span>
   </div>
-  <div class="pan" id="pan"><div class="canvas" id="canvas"><div id="tiles"></div></div><div id="grid"></div><div id="edges"></div><div id="loupe"><div class="lens"></div></div></div>
+  <div class="pan" id="pan"><div class="canvas" id="canvas"><div id="groups"></div><div id="tiles"></div></div><div id="grid"></div><div id="edges"></div><div id="loupe"><div class="lens"></div></div></div>
   <footer id="foot"></footer>
 </div>
 <button id="tray" class="btn" title="Show or hide the top bar (b)">▾</button>
@@ -983,6 +996,7 @@ PAGE = r"""<!doctype html>
     <section><h3>Making</h3><table>
       <tr><td><kbd>t</kbd></td><td>new terminal</td></tr>
       <tr><td><kbd>u</kbd></td><td>link card: type or paste a URL</td></tr>
+      <tr><td><kbd>g</kbd></td><td>group: drag its caption to carry the windows wholly inside</td></tr>
     </table></section>
     <section><h3>In a terminal</h3><table>
       <tr><td><kbd>Ctrl+Space</kbd></td><td>hand the keyboard back to the page</td></tr>
@@ -1214,9 +1228,153 @@ function byApp(ws) {
 // the on-screen order, which is what the arrow keys walk
 function ordered(i) { return byApp(onWorkspace(i)).flatMap(([, group]) => group); }
 
+// ---- groups: a frame you put windows in, and move together ----------------
+let groups = store.get('groups', []);   // [{id, name, x, y, w, h}] in surface px
+const groupEls = new Map();
+
+function newGroup() {
+  const pan = $('#pan'), w = 1600, h = 1000;
+  const [x, y] = clearSpot([(pan.clientWidth / 2 - origin[0]) / zoom - w / 2,
+                            (pan.clientHeight / 2 - origin[1]) / zoom - h / 2]);
+  groups.push({ id: Date.now().toString(36), name: 'Group', x, y, w, h });
+  store.set('groups', groups);
+  render();
+}
+
+function saveGroups() { store.set('groups', groups); }
+
+function placeGroup(el, g) {
+  el.style.left = g.x * zoom + 'px';
+  el.style.top = g.y * zoom + 'px';
+  el.style.width = g.w * zoom + 'px';
+  el.style.height = g.h * zoom + 'px';
+}
+
+// only a window wholly inside is the group's: one hanging over the edge stays put
+function members(g) {
+  return data.windows.filter(w => {
+    const [x, y] = seatOf(w);
+    return x >= g.x && y >= g.y && x + w.w <= g.x + g.w && y + w.h <= g.y + g.h;
+  });
+}
+
+function carryGroup(e, g, el) {
+  if (e.button) return;
+  e.preventDefault();
+  e.stopPropagation();                  // the caption is not the surface: no pan
+  const sx = e.clientX, sy = e.clientY, gx = g.x, gy = g.y;
+  const riders = members(g).map(w => [w, seatOf(w)]);
+  el.classList.add('dragging');
+  el.setPointerCapture(e.pointerId);
+  showGrid(true);
+  const move = ev => {
+    const dx = snap((ev.clientX - sx) / zoom), dy = snap((ev.clientY - sy) / zoom);
+    g.x = gx + dx; g.y = gy + dy;
+    placeGroup(el, g);
+    riders.forEach(([w, [x, y]]) => {
+      layout[w.id] = [x + dx, y + dy];
+      const t = tileEls.get(w.id);
+      if (t) place(t, w);
+    });
+  };
+  const done = () => {
+    el.removeEventListener('pointermove', move);
+    el.removeEventListener('pointerup', done);
+    el.removeEventListener('pointercancel', done);
+    el.classList.remove('dragging');
+    showGrid(false);
+    saveGroups();
+    store.set('layout', layout);
+    hold(false);
+    render();
+  };
+  el.addEventListener('pointermove', move);
+  el.addEventListener('pointerup', done);
+  el.addEventListener('pointercancel', done);
+}
+
+function sizeGroup(e, g, el) {
+  if (e.button) return;
+  e.preventDefault();
+  e.stopPropagation();
+  const sx = e.clientX, sy = e.clientY, w0 = g.w, h0 = g.h;
+  el.setPointerCapture(e.pointerId);
+  showGrid(true);
+  const move = ev => {
+    g.w = Math.max(GRID * 4, snap(w0 + (ev.clientX - sx) / zoom));
+    g.h = Math.max(GRID * 3, snap(h0 + (ev.clientY - sy) / zoom));
+    placeGroup(el, g);
+  };
+  const done = () => {
+    el.removeEventListener('pointermove', move);
+    el.removeEventListener('pointerup', done);
+    el.removeEventListener('pointercancel', done);
+    showGrid(false);
+    saveGroups();
+  };
+  el.addEventListener('pointermove', move);
+  el.addEventListener('pointerup', done);
+  el.addEventListener('pointercancel', done);
+}
+
+// a double click on the name renames it; Enter or leaving keeps the new one
+function rename(g, name) {
+  name.contentEditable = 'true';
+  name.focus();
+  getSelection().selectAllChildren(name);
+  const end = () => {
+    name.contentEditable = 'false';
+    g.name = name.textContent.trim() || 'Group';
+    name.textContent = g.name;
+    saveGroups();
+  };
+  name.addEventListener('blur', end, { once: true });
+  name.onkeydown = ev => {
+    ev.stopPropagation();
+    if (ev.key === 'Enter' || ev.key === 'Escape') { ev.preventDefault(); name.blur(); }
+  };
+}
+
+function renderGroups() {
+  const live = new Set();
+  groups.forEach(g => {
+    live.add(g.id);
+    let el = groupEls.get(g.id);
+    if (!el) {
+      el = document.createElement('div');
+      el.className = 'group';
+      el.innerHTML = `<div class="gcap"><span class="gname"></span>`
+        + `<span class="shut" title="Remove the group (its windows stay)">✕</span></div>`
+        + `<div class="grip" title="Drag to resize this group"></div>`;
+      const cap = el.querySelector('.gcap'), name = el.querySelector('.gname');
+      cap.addEventListener('pointerdown', e => {
+        if (name.isContentEditable) return e.stopPropagation();
+        if (e.target.closest('.shut')) {
+          e.preventDefault(); e.stopPropagation();
+          groups = groups.filter(v => v !== el.group);
+          saveGroups();
+          return render();
+        }
+        carryGroup(e, el.group, el);
+      });
+      cap.addEventListener('dblclick', e => {
+        if (e.target === name) rename(el.group, name);
+      });
+      el.querySelector('.grip').addEventListener('pointerdown', e => sizeGroup(e, el.group, el));
+      groupEls.set(g.id, el);
+      $('#groups').append(el);
+    }
+    el.group = g;
+    if (!el.querySelector('.gname').isContentEditable) el.querySelector('.gname').textContent = g.name;
+    placeGroup(el, g);
+  });
+  groupEls.forEach((el, id) => { if (!live.has(id)) { el.remove(); groupEls.delete(id); } });
+}
+
 function render() {
   if (!data) return;
   const match = visible(), q = $('#q').value.trim();
+  renderGroups();
   renderCanvas(match, q);
   status(match, q);
   syncLens();
@@ -2343,6 +2501,7 @@ document.addEventListener('keydown', e => {
   if (k === 'b') { e.preventDefault(); return setBare(!bare); }
   if (k === 't') { e.preventDefault(); return void newTerm(); }
   if (k === 'u') { e.preventDefault(); return askLink(); }
+  if (k === 'g') { e.preventDefault(); return newGroup(); }
   if (k === '1') { e.preventDefault(); return actualSize(); }
   if (k === 'z') { e.preventDefault(); return setLens(!lensOn); }
   if (k === 'Enter' || k === ' ') { const w = selected(); if (w) { e.preventDefault(); activate(w.id); } return; }
