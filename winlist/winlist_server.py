@@ -2297,6 +2297,24 @@ setInterval(askGitHub, 60000);
 # ---- server ---------------------------------------------------------------
 
 
+def same_page(origin, host):
+    """Whether a request that changes something came from this page.
+
+    Any site open in the browser can post to localhost, and the answer being
+    unreadable to it does not matter when the post itself starts a terminal
+    running whatever it was told. So a request from a page must come from this
+    one: same host and port, and that host a loopback name or a bare address —
+    never a domain, which could be made to point here after the page loaded.
+    """
+    if not origin:
+        return True                     # curl, and anything else without a page
+    if origin.split("//", 1)[-1].split("/")[0] != host:
+        return False
+    name = host[:host.find("]") + 1] if host.startswith("[") else host.rsplit(":", 1)[0]
+    return name in ("127.0.0.1", "localhost", "[::1]") or bool(
+        re.fullmatch(r"[\d.]+|\[[0-9a-fA-F:.]+\]", name))
+
+
 class Handler(BaseHTTPRequestHandler):
     allow_focus = True
 
@@ -2365,7 +2383,15 @@ class Handler(BaseHTTPRequestHandler):
         else:
             self._send(json.dumps({"error": "not found"}), code=404)
 
+    def _guard(self):
+        if same_page(self.headers.get("Origin"), self.headers.get("Host", "")):
+            return True
+        self._send(json.dumps({"error": "cross-origin requests are refused"}), code=403)
+        return False
+
     def do_POST(self):
+        if not self._guard():
+            return
         if self.path.startswith("/api/terminals"):
             if not PTY_ON:
                 return self._send(json.dumps({"error": "terminals are off"}), code=403)
@@ -2394,6 +2420,8 @@ class Handler(BaseHTTPRequestHandler):
         return self._send(json.dumps({"error": "not found"}), code=404)
 
     def do_DELETE(self):
+        if not self._guard():
+            return
         if not self.path.startswith("/api/terminals/"):
             return self._send(json.dumps({"error": "not found"}), code=404)
         sid = self.path[len("/api/terminals/"):].split("?")[0]
