@@ -19,6 +19,7 @@ X11 only: it reads EWMH properties via xprop/xdotool, and photographs the
 workspace you are on with xwd + ImageMagick's convert.
 """
 import argparse
+import html
 import json
 import os
 import re
@@ -591,7 +592,40 @@ def sample():
         "started": STARTED,
         "pty": {"on": PTY_ON, "port": PTY_PORT, "cell": n_desktops, "error": _pty_error},
         "look": LOOK,          # what your xterm looks like, for ours to match
+        "links": list(_links),  # sent from outside, for the page to make cards of
     }
+
+
+# Links sent from outside the page — a shell, an agent — wait here until a page
+# picks them up. Each has an id, so a page takes each one once; the last few are
+# kept for a page opened a moment later, and none survive a restart.
+_links = []
+_links_lock = threading.Lock()
+
+
+def fetch_title(url):
+    """What the page calls itself, if it will say without a login: else None."""
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 winlist"})
+        with urllib.request.urlopen(req, timeout=3) as r:
+            if "html" not in r.headers.get("Content-Type", ""):
+                return None
+            head = r.read(65536).decode(r.headers.get_content_charset() or "utf-8", "replace")
+    except (OSError, ValueError):
+        return None
+    m = re.search(r"<title[^>]*>(.*?)</title>", head, re.S | re.I)
+    return html.unescape(" ".join(m.group(1).split()))[:200] if m else None
+
+
+def send_link(url, title=None):
+    if not re.match(r"https?://[^/\s]+", url or ""):
+        return None
+    title = (title or "").strip() or fetch_title(url) or url.split("/")[2]
+    with _links_lock:
+        link = {"id": "%x" % time.time_ns(), "url": url, "title": title}
+        _links.append(link)
+        del _links[:-20]
+    return link
 
 
 def focus(wid):
@@ -1039,6 +1073,13 @@ async function poll() {
     const r = await fetch('/api/windows?screens=1');
     data = await r.json();
     data.windows.push(...links.map(linkWin));
+    // a link sent from outside becomes a card once; the server keeps offering it
+    (data.links || []).forEach(l => {
+      if (taken.includes(l.id)) return;
+      taken = [...taken, l.id].slice(-50);
+      store.set('taken', taken);
+      addLink(l.url, l.title);
+    });
     failures = 0;
     // restarted from its terminal: the page it served is the old one
     if (started !== null && data.started !== started) return location.reload();
@@ -1243,6 +1284,7 @@ function fitAll() {
 
 // ---- links: a page you mean to come back to, kept as a card ---------------
 let links = store.get('links', []);
+let taken = store.get('taken', []);    // ids of links sent from outside, already carded
 
 function linkWin(l) {
   return { id: 'link:' + l.id, link: l, title: l.title, app: new URL(l.url).host,
@@ -2263,6 +2305,16 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(json.dumps(made), code=201 if "id" in made else 400)
         if self.path.startswith("/api/focus"):
             return self.do_focus()
+        if self.path.startswith("/api/links"):
+            try:
+                n = int(self.headers.get("Content-Length", 0))
+                body = json.loads(self.rfile.read(n) or b"{}")
+            except (ValueError, json.JSONDecodeError):
+                return self._send(json.dumps({"error": "bad request"}), code=400)
+            link = send_link(body.get("url"), body.get("title"))
+            if not link:
+                return self._send(json.dumps({"error": "url must be http(s)"}), code=400)
+            return self._send(json.dumps(link), code=201)
         return self._send(json.dumps({"error": "not found"}), code=404)
 
     def do_DELETE(self):
