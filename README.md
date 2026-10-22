@@ -90,7 +90,11 @@ think about them rather than as the desktop has them. The arrangement is
 remembered in the browser (per window), "Reset layout" puts it back, the wheel
 and the slider zoom, dragging the background with the mouse carries the whole
 surface with it,
-and clicking a window still focuses it for real. The surface is placed rather
+and clicking a window still focuses it for real.
+A click on the background — not a drag — picks where the next picture, link,
+markdown file or terminal opens: it is centred on that spot, and a crosshair
+shows there for a moment. Pan or zoom the spot out of view and new ones go back
+to the middle of what you are looking at. The surface is placed rather
 than scrolled, so it has no edges: you can drag it as far as you like, and zoom
 runs free from 2% to 400%. "Fit" brings everything back into view.
 

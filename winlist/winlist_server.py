@@ -1028,6 +1028,14 @@ PAGE = r"""<!doctype html>
   #loupe .pic { position:absolute; inset:0 }
   #loupe::after { content:''; position:absolute; left:50%; top:50%; width:9px; height:9px;
                   margin:-5px 0 0 -5px; border:1px solid var(--accent); border-radius:50% }
+  /* where the next card or terminal lands: shown for a moment after a click on
+     the background picks the spot. It never takes a click */
+  #mark { position:absolute; width:0; height:0; pointer-events:none; z-index:85;
+          opacity:0; transition:opacity .4s }
+  #mark.on { opacity:1; transition:none }
+  #mark::before, #mark::after { content:''; position:absolute; background:var(--accent) }
+  #mark::before { left:-18px; top:-1px; width:36px; height:2px }
+  #mark::after { left:-1px; top:-18px; width:2px; height:36px }
   code { font-size:10.5px; background:var(--chip); padding:1px 4px; border-radius:3px }
 </style>
 <div class="wrap">
@@ -1051,7 +1059,7 @@ PAGE = r"""<!doctype html>
       <kbd>a</kbd> architecture · <kbd>?</kbd> help · <kbd>Esc</kbd> clear ·
       <kbd>Ctrl+Space</kbd> leave a terminal</span>
   </div>
-  <div class="pan" id="pan"><div class="canvas" id="canvas"><div id="groups"></div><div id="tiles"></div></div><div id="grid"></div><div id="edges"></div><div id="loupe"><div class="lens"></div></div></div>
+  <div class="pan" id="pan"><div class="canvas" id="canvas"><div id="groups"></div><div id="tiles"></div><div id="mark"></div></div><div id="grid"></div><div id="edges"></div><div id="loupe"><div class="lens"></div></div></div>
   <footer id="foot"></footer>
 </div>
 <button id="tray" class="btn" title="Show or hide the top bar (b)">▾</button>
@@ -1111,6 +1119,7 @@ PAGE = r"""<!doctype html>
       <tr><td>one finger on a terminal</td><td>scroll it</td></tr>
       <tr><td>drag a corner</td><td>resize a terminal or a card</td></tr>
       <tr><td>double-click a card</td><td>open its page</td></tr>
+      <tr><td>click the background</td><td>new cards and terminals (<kbd>p</kbd> <kbd>u</kbd> <kbd>t</kbd> <kbd>o</kbd>) open centred there</td></tr>
     </table></section>
     <section><h3>This page</h3><table>
       <tr><td><kbd>a</kbd></td><td>how it fits together</td></tr>
@@ -1530,6 +1539,7 @@ function render() {
   const match = visible(), q = $('#q').value.trim();
   renderGroups();
   renderCanvas(match, q);
+  drawMark();
   status(match, q);
   syncLens();
 }
@@ -1693,6 +1703,39 @@ function fitAll() {
   store.set('origin', origin);
 }
 
+// ---- drop point: where a new card or terminal is centred ------------------
+// A click on the background picks it; until then, or once you have panned or
+// zoomed it out of view, it is the middle of what you are looking at.
+let anchor = null;                 // [x, y] on the surface
+let markTimer = null;
+
+function dropAt(w, h) {
+  const pan = $('#pan'), W = pan.clientWidth, H = pan.clientHeight;
+  let c = [(W / 2 - origin[0]) / zoom, (H / 2 - origin[1]) / zoom];
+  if (anchor) {
+    const px = origin[0] + anchor[0] * zoom, py = origin[1] + anchor[1] * zoom;
+    if (px >= 0 && px <= W && py >= 0 && py <= H) c = anchor;
+  }
+  return [c[0] - w / 2, c[1] - h / 2];
+}
+
+function drawMark() {
+  if (!anchor) return;
+  const s = $('#mark').style;
+  s.left = anchor[0] * zoom + 'px';
+  s.top = anchor[1] * zoom + 'px';
+}
+
+function setAnchor(cx, cy) {
+  const box = $('#pan').getBoundingClientRect();
+  anchor = [(cx - box.left - origin[0]) / zoom, (cy - box.top - origin[1]) / zoom];
+  drawMark();
+  const m = $('#mark');
+  m.classList.add('on');
+  clearTimeout(markTimer);
+  markTimer = setTimeout(() => m.classList.remove('on'), 1200);
+}
+
 // ---- links: a page you mean to come back to, kept as a card ---------------
 let links = store.get('links', []);
 let taken = store.get('taken', []);    // ids of links sent from outside, already carded
@@ -1755,11 +1798,10 @@ function docCard(pic, w) {
 }
 
 function addDoc(path, name) {
-  const id = Date.now().toString(36), pan = $('#pan');
+  const id = Date.now().toString(36);
   links.push({ id, path, title: name });
   store.set('links', links);
-  layout['link:' + id] = clearSpot([(pan.clientWidth / 2 - origin[0]) / zoom - 360,
-                                    (pan.clientHeight / 2 - origin[1]) / zoom - 450], 'link:' + id);
+  layout['link:' + id] = clearSpot(dropAt(720, 900), 'link:' + id);
   store.set('layout', layout);
   if (!document.body.classList.contains('insert')) sel = 'link:' + id;
   if (data) data.windows.push(linkWin(links[links.length - 1]));
@@ -1807,11 +1849,10 @@ function imgCard(pic, w) {
 }
 
 function addImage(image, title) {
-  const id = Date.now().toString(36), pan = $('#pan');
+  const id = Date.now().toString(36);
   links.push({ id, image, title });
   store.set('links', links);
-  layout['link:' + id] = clearSpot([(pan.clientWidth / 2 - origin[0]) / zoom - 320,
-                                    (pan.clientHeight / 2 - origin[1]) / zoom - 240], 'link:' + id);
+  layout['link:' + id] = clearSpot(dropAt(640, 480), 'link:' + id);
   store.set('layout', layout);
   if (!document.body.classList.contains('insert')) sel = 'link:' + id;
   if (data) data.windows.push(linkWin(links[links.length - 1]));
@@ -1842,11 +1883,10 @@ function card(pic, w) {
 
 // dropped in the middle of what you are looking at, so you see it arrive
 function addLink(url, title) {
-  const id = Date.now().toString(36), pan = $('#pan');
+  const id = Date.now().toString(36);
   links.push({ id, url, title });
   store.set('links', links);
-  layout['link:' + id] = clearSpot([(pan.clientWidth / 2 - origin[0]) / zoom - 160,
-                                    (pan.clientHeight / 2 - origin[1]) / zoom - 38], 'link:' + id);
+  layout['link:' + id] = clearSpot(dropAt(320, 76), 'link:' + id);
   store.set('layout', layout);
   // picked if the keyboard is the page's; a terminal you are typing in keeps it
   if (!document.body.classList.contains('insert')) sel = 'link:' + id;
@@ -2319,12 +2359,10 @@ function clearSpot([x, y], exceptId) {
   return [x, y];
 }
 
-// A new terminal opens in the middle of whatever you are looking at, and the
-// view stays where it is: you zoomed in there to work there.
+// A new terminal opens at the drop point, and the view stays where it is: you
+// zoomed in there to work there.
 async function newTerm() {
-  const pan = $('#pan');
-  const at = [(pan.clientWidth / 2 - origin[0]) / zoom,
-              (pan.clientHeight / 2 - origin[1]) / zoom];
+  const at = dropAt(0, 0);
   const made = await fetch('/api/terminals', {
     method: 'POST',
     body: JSON.stringify({ cols: termCols(), rows: termRows() }),
@@ -2592,11 +2630,16 @@ $('#pan').addEventListener('pointerdown', e => {
 
 $('#pan').addEventListener('pointerdown', e => {
   if (!carries(e) || pointers.size > 1) return;   // one finger drags, two pinch
-  const pan = $('#pan');
-  let px = e.clientX, py = e.clientY;
+  const pan = $('#pan'), sx = e.clientX, sy = e.clientY;
+  let px = sx, py = sy, far = false;
   pan.classList.add('grabbing');
-  const move = ev => { shift(ev.clientX - px, ev.clientY - py); px = ev.clientX; py = ev.clientY; };
-  const done = () => {
+  const move = ev => {
+    if (Math.abs(ev.clientX - sx) + Math.abs(ev.clientY - sy) >= 5) far = true;
+    shift(ev.clientX - px, ev.clientY - py); px = ev.clientX; py = ev.clientY;
+  };
+  // a press that did not carry the surface anywhere picks the drop point
+  const done = ev => {
+    if (ev && ev.type === 'pointerup' && !far && pointers.size < 2) setAnchor(ev.clientX, ev.clientY);
     pan.classList.remove('grabbing');
     removeEventListener('pointermove', move);
     removeEventListener('pointerup', done);
