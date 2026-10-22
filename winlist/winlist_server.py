@@ -829,7 +829,9 @@ PAGE = r"""<!doctype html>
   .tile.focused { border-color:var(--accent) }
   .tile.sel { outline:10px solid var(--accent); outline-offset:5px }
   body:not(.insert) .tile.sel { outline-color:#9aa0a6 }   /* NORMAL is grey, INSERT keeps the accent */
-  .tile.link.sel { outline-color:#9aa0a6 }   /* a card takes no keys, so it is never INSERT's colour */
+  /* a card takes no keys, so it is never INSERT's colour — unless it is a
+     document you have gone into */
+  .tile.link.sel:not(:focus-within) { outline-color:#9aa0a6 }
   .tile.off { opacity:.3 }
   .cap { display:flex; align-items:center; gap:5px; padding:3px 6px; flex:none;
          border-bottom:1px solid var(--line); background:var(--panel) }
@@ -896,7 +898,11 @@ PAGE = r"""<!doctype html>
      terminal, so zooming in is how you read it */
   .pic.doc { padding:0; overflow:hidden; display:block; background:var(--panel) }
   .docwrap { position:absolute; top:0; left:0; width:100%; height:100%; overflow:auto;
-             transform-origin:0 0; box-sizing:border-box; padding:14px 18px }
+             transform-origin:0 0; box-sizing:border-box; padding:14px 18px; outline:none;
+             touch-action:pan-y }
+  /* like a terminal, a document is only a tile in NORMAL — you move it, nothing
+     inside answers. Enter or a double click goes in; Esc comes back out */
+  body:not(.insert) .docwrap, .docwrap:not(:focus-within) { pointer-events:none; overflow:hidden }
   .md { font:14px/1.55 system-ui, sans-serif; color:var(--fg) }
   .md h1, .md h2, .md h3 { line-height:1.25; margin:1.1em 0 .45em }
   .md h1 { font-size:1.6em } .md h2 { font-size:1.3em } .md h3 { font-size:1.1em }
@@ -1043,7 +1049,7 @@ PAGE = r"""<!doctype html>
     <section><h3>Making</h3><table>
       <tr><td><kbd>t</kbd></td><td>new terminal</td></tr>
       <tr><td><kbd>u</kbd></td><td>link card: type or paste a URL</td></tr>
-      <tr><td><kbd>o</kbd></td><td>open a markdown file; it follows your saves</td></tr>
+      <tr><td><kbd>o</kbd></td><td>open a markdown file; it follows your saves. <kbd>Enter</kbd> to scroll it (<kbd>jk</kbd> <kbd>du</kbd>), <kbd>Esc</kbd> back out</td></tr>
       <tr><td><kbd>g</kbd></td><td>group: drag its caption to carry the windows wholly inside</td></tr>
     </table></section>
     <section><h3>In a terminal</h3><table>
@@ -1654,13 +1660,15 @@ function docKey(w) {
 
 function docCard(pic, w) {
   const old = pic.querySelector('.docwrap'), top = old ? old.scrollTop : 0;
+  const inside = old && old.contains(document.activeElement);
   const d = docs.get(w.link.path);
   pic.className = 'pic card doc';
   pic.style.cssText = '';
-  pic.innerHTML = `<div class="docwrap"><div class="md"></div></div>`;
+  pic.innerHTML = `<div class="docwrap" tabindex="-1"><div class="md"></div></div>`;
   pic.querySelector('.md').innerHTML = !d ? '<p>Reading…</p>'
     : d.error ? `<p class="gone">${esc(w.link.path)}: ${esc(d.error)}</p>` : d.html;
   pic.querySelector('.docwrap').scrollTop = top;   // a save keeps your place
+  if (inside) pic.querySelector('.docwrap').focus({ preventScroll: true });
 }
 
 function addDoc(path, name) {
@@ -2514,7 +2522,9 @@ async function activate(id) {
   render();
   if (id.startsWith('link:')) {
     const w = data.windows.find(x => x.id === id);
-    if (w && w.link.url) window.open(w.link.url, '_blank', 'noopener');
+    const dw = w && w.link.path && tileEls.get(id) && tileEls.get(id).querySelector('.docwrap');
+    if (dw) dw.focus({ preventScroll: true });        // into the document: INSERT
+    else if (w && w.link.url) window.open(w.link.url, '_blank', 'noopener');
     return;
   }
   if (id.startsWith('web:')) {
@@ -2576,7 +2586,7 @@ function move(dx, dy) {
 // INSERT, where a terminal has them all. Which one you are in is just where
 // the keyboard is, so it is read from the focus rather than kept alongside it.
 function showMode() {
-  const typing = !!(document.activeElement && document.activeElement.closest('.termhost'));
+  const typing = !!(document.activeElement && document.activeElement.closest('.termhost, .docwrap'));
   $('#mode').textContent = editing ? editing.toUpperCase() : typing ? 'INSERT' : 'NORMAL';
   $('#mode').classList.toggle('insert', typing && !editing);
   document.body.classList.toggle('insert', typing);
@@ -2627,6 +2637,13 @@ showMode();
 
 document.addEventListener('keydown', e => {
   if (e.target.tagName === 'TEXTAREA') return;   // a terminal has the keyboard
+  const doc = e.target.closest && e.target.closest('.docwrap');
+  if (doc) {                         // a document has it: it scrolls, Esc leaves
+    if (e.key === 'Escape' || (e.code === 'Space' && e.ctrlKey)) { e.preventDefault(); doc.blur(); return; }
+    const by = { j: 40, k: -40, d: doc.clientHeight / 2, u: -doc.clientHeight / 2 }[e.key];
+    if (by && !e.ctrlKey && !e.altKey && !e.metaKey) { e.preventDefault(); doc.scrollBy(0, by); }
+    return;                          // arrows, PgUp/PgDn and Space scroll on their own
+  }
   if (e.target.tagName === 'INPUT') {
     if (e.key === 'Escape') { e.target.value = ''; e.target.blur(); sel = null; render(); }
     return;
