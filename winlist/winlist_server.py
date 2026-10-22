@@ -682,12 +682,45 @@ def read_doc(path, since=None):
         return None, e.strerror or "cannot read it"
 
 
-def send_link(url, title=None):
-    if not re.match(r"https?://[^/\s]+", url or ""):
-        return None
-    title = (title or "").strip() or fetch_title(url) or url.split("/")[2]
+# Pictures go on the surface the same way: a file on disk is handed out by
+# path, only to this page and only if it is an image; one on the web is not
+# fetched here at all, the page shows it from where it is.
+IMG_TYPES = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+             ".gif": "image/gif", ".webp": "image/webp", ".svg": "image/svg+xml",
+             ".bmp": "image/bmp", ".avif": "image/avif"}
+
+
+def image_file(path):
+    path = os.path.abspath(os.path.expanduser(path or ""))
+    kind = IMG_TYPES.get(os.path.splitext(path)[1].lower())
+    if not kind:
+        return None, None, "only " + ", ".join(sorted(IMG_TYPES)) + " images"
+    if not os.path.isfile(path) or os.path.getsize(path) > 30 << 20:
+        return None, None, "not a file, or over 30 MB"
+    return path, kind, None
+
+
+def send_link(url=None, title=None, path=None, image=None):
+    """A card for the page to pick up: a web page (url), a markdown file (path)
+    or a picture (image: a path or an http(s) URL). None, and why, if it won't do."""
+    title = (title or "").strip()
+    if image:
+        if not re.match(r"https?://[^/\s]+", image):
+            image, _, err = image_file(image)
+            if err:
+                return None, err
+        card = {"image": image, "title": title or image.rstrip("/").split("/")[-1]}
+    elif path:
+        doc, err = read_doc(path)
+        if err:
+            return None, err
+        card = {"path": doc["path"], "title": title or doc["name"]}
+    elif re.match(r"https?://[^/\s]+", url or ""):
+        card = {"url": url, "title": title or fetch_title(url) or url.split("/")[2]}
+    else:
+        return None, "give a url, a path to a markdown file, or an image"
     with _links_lock:
-        link = {"id": "%x" % time.time_ns(), "url": url, "title": title}
+        link = dict(card, id="%x" % time.time_ns())
         _links.append(link)
         del _links[:-20]
         try:
@@ -697,7 +730,7 @@ def send_link(url, title=None):
             os.replace(LINKS_FILE + ".tmp", LINKS_FILE)
         except OSError:
             pass                        # still sent, just not kept past a restart
-    return link
+    return link, None
 
 
 def focus(wid):
@@ -916,6 +949,12 @@ PAGE = r"""<!doctype html>
   .md table { border-collapse:collapse } .md td, .md th { border:1px solid var(--line); padding:3px 8px }
   .md a { color:var(--accent) } .md img { max-width:100% }
   .md .gone { color:var(--accent) }
+  /* a picture fills its tile without being cut or stretched */
+  .pic.img { padding:0; display:flex; align-items:center; justify-content:center;
+             background:#111; overflow:hidden }
+  .pic.img img { max-width:100%; max-height:100%; object-fit:contain; pointer-events:none;
+                 -webkit-user-drag:none }
+  .pic.img .gone { color:#ddd; font-size:11px; padding:8px; text-align:center }
   /* GitHub's own colours for where an issue or PR stands */
   .card .gh { display:inline-block; padding:0 6px; margin-right:6px; border-radius:8px;
               color:#fff; font-size:10px; line-height:15px; vertical-align:1px }
@@ -1004,7 +1043,7 @@ PAGE = r"""<!doctype html>
     <span class="mode" id="mode"></span>
     <span class="keys"><kbd>↑↓←→</kbd>/<kbd>hjkl</kbd> pick · <kbd>Enter</kbd> focus ·
       <kbd>/</kbd> filter · <kbd>b</kbd> top bar · <kbd>t</kbd> terminal ·
-      <kbd>g</kbd> group · <kbd>o</kbd> markdown · <kbd>1</kbd> 1:1 · <kbd>z</kbd> loupe ·
+      <kbd>g</kbd> group · <kbd>o</kbd> markdown · <kbd>p</kbd> picture · <kbd>1</kbd> 1:1 · <kbd>z</kbd> loupe ·
       <kbd>m</kbd> move · <kbd>r</kbd> resize (<kbd>hjkl</kbd> step, <kbd>Enter</kbd> done) ·
       <kbd>a</kbd> architecture · <kbd>?</kbd> help · <kbd>Esc</kbd> clear ·
       <kbd>Ctrl+Space</kbd> leave a terminal</span>
@@ -1017,6 +1056,12 @@ PAGE = r"""<!doctype html>
   <form method="dialog" class="linkform">
     <input id="linkurl" type="text" placeholder="Paste or type a URL" autocomplete="off" spellcheck="false">
     <button class="btn" value="add">Add card</button>
+  </form>
+</dialog>
+<dialog id="imgbox">
+  <form method="dialog" class="linkform">
+    <input id="imgsrc" type="text" placeholder="Path to an image, or an image URL" autocomplete="off" spellcheck="false">
+    <button class="btn" value="add">Show</button>
   </form>
 </dialog>
 <dialog id="docbox">
@@ -1049,6 +1094,7 @@ PAGE = r"""<!doctype html>
     <section><h3>Making</h3><table>
       <tr><td><kbd>t</kbd></td><td>new terminal</td></tr>
       <tr><td><kbd>u</kbd></td><td>link card: type or paste a URL</td></tr>
+      <tr><td><kbd>p</kbd></td><td>picture: an image file or image URL; double-click opens it full size</td></tr>
       <tr><td><kbd>o</kbd></td><td>open a markdown file; it follows your saves. <kbd>Enter</kbd> to scroll it (<kbd>jk</kbd> <kbd>du</kbd>), <kbd>Esc</kbd> back out</td></tr>
       <tr><td><kbd>g</kbd></td><td>group: drag its caption to carry the windows wholly inside</td></tr>
     </table></section>
@@ -1182,7 +1228,33 @@ linkbox.addEventListener('close', async () => {
     if (!r.ok) return;
     taken = [...taken, l.id].slice(-50);       // made here, so the poll leaves it be
     store.set('taken', taken);
-    addLink(l.url, l.title);
+    takeCard(l);
+  } catch (e) {}
+});
+// whatever kind of card the server sent: a page, a document or a picture
+const takeCard = l => l.image ? addImage(l.image, l.title)
+  : l.path ? addDoc(l.path, l.title) : addLink(l.url, l.title);
+
+// p asks for a picture: a file on this machine or an image on the web
+const imgbox = $('#imgbox');
+function askImage(msg) {
+  if (imgbox.open) return;
+  $('#imgsrc').value = '';
+  $('#imgsrc').placeholder = msg || 'Path to an image, or an image URL';
+  imgbox.returnValue = '';
+  imgbox.showModal();
+  $('#imgsrc').focus();
+}
+imgbox.addEventListener('close', async () => {
+  const image = $('#imgsrc').value.trim();
+  if (imgbox.returnValue !== 'add' || !image) return;
+  try {
+    const r = await fetch('/api/links', { method: 'POST', body: JSON.stringify({ image }) });
+    const l = await r.json();
+    if (!r.ok) return askImage('Could not open it: ' + (l.error || 'unknown error'));
+    taken = [...taken, l.id].slice(-50);
+    store.set('taken', taken);
+    takeCard(l);
   } catch (e) {}
 });
 // o asks for a markdown file; the server checks it is one before it is shown
@@ -1269,7 +1341,7 @@ async function poll() {
       if (taken.includes(l.id)) return;
       taken = [...taken, l.id].slice(-50);
       store.set('taken', taken);
-      addLink(l.url, l.title);
+      takeCard(l);
     });
     forgetGone();
     failures = 0;
@@ -1623,8 +1695,9 @@ let taken = store.get('taken', []);    // ids of links sent from outside, alread
 
 function linkWin(l) {
   return { id: 'link:' + l.id, link: l, title: l.title,
-           app: l.path ? 'Markdown' : new URL(l.url).host,
-           w: l.w || (l.path ? 720 : 320), h: l.h || (l.path ? 900 : 64),
+           app: l.image ? 'Image' : l.path ? 'Markdown' : new URL(l.url).host,
+           w: l.w || (l.image ? 640 : l.path ? 720 : 320),
+           h: l.h || (l.image ? 480 : l.path ? 900 : 64),
            x: 0, y: 0, z: 1e9, desktop: null };
 }
 
@@ -1707,7 +1780,42 @@ async function askGitHub() {
   render();
 }
 
+const imgSrc = l => /^https?:/i.test(l.image) ? l.image : '/api/image?path=' + encodeURIComponent(l.image);
+
+function imgCard(pic, w) {
+  pic.className = 'pic card img';
+  pic.style.cssText = '';
+  pic.innerHTML = '<img alt="">';
+  const img = pic.querySelector('img');
+  img.onerror = () => { pic.innerHTML = `<div class="gone">${esc(w.link.image)}: cannot be shown</div>`; };
+  // first sight of a picture sizes its tile to it, at most a screen across
+  img.onload = () => {
+    const l = w.link;
+    if (l.w || !img.naturalWidth) return;
+    const k = Math.min(1, 960 / img.naturalWidth, 720 / img.naturalHeight);
+    l.w = Math.max(GRID * 3, snap(img.naturalWidth * k));
+    l.h = Math.max(GRID * 2, snap(img.naturalHeight * k + 20));
+    store.set('links', links);
+    w.w = l.w; w.h = l.h;
+    render();
+  };
+  img.src = imgSrc(w.link);
+}
+
+function addImage(image, title) {
+  const id = Date.now().toString(36), pan = $('#pan');
+  links.push({ id, image, title });
+  store.set('links', links);
+  layout['link:' + id] = clearSpot([(pan.clientWidth / 2 - origin[0]) / zoom - 320,
+                                    (pan.clientHeight / 2 - origin[1]) / zoom - 240], 'link:' + id);
+  store.set('layout', layout);
+  if (!document.body.classList.contains('insert')) sel = 'link:' + id;
+  if (data) data.windows.push(linkWin(links[links.length - 1]));
+  render();
+}
+
 function card(pic, w) {
+  if (w.link.image) return imgCard(pic, w);
   if (w.link.path) return docCard(pic, w);
   const u = new URL(w.link.url);
   pic.className = 'pic card';
@@ -2311,8 +2419,9 @@ function renderCanvas(match, q) {
       el.querySelector('.dot').style.background = colorOf(w.app);
       el.querySelector('.t2').textContent = w.title;
       if (w.link) {
-        el.title = w.link.url || w.link.path;
-        const gh = ghOf(w), key = w.link.path ? docKey(w) : w.link.url + (gh ? ' ' + gh.state : '');
+        el.title = w.link.url || w.link.path || w.link.image;
+        const gh = ghOf(w), key = w.link.image ? w.link.image
+          : w.link.path ? docKey(w) : w.link.url + (gh ? ' ' + gh.state : '');
         if (gh) el.querySelector('.dot').style.background = ghColor(gh);
         const pic = el.children[1];          // the grip comes after it
         if (pic.dataset.key !== key) {
@@ -2374,7 +2483,8 @@ function syncLens() {
     el.win = w;
     if (w.term) return;
     if (w.link) {
-      const gh = ghOf(w), key = w.link.path ? docKey(w) : w.link.url + (gh ? ' ' + gh.state : '');
+      const gh = ghOf(w), key = w.link.image ? w.link.image
+        : w.link.path ? docKey(w) : w.link.url + (gh ? ' ' + gh.state : '');
       if (el.key !== key) { el.key = key; card(el.firstChild, w); }
       return;
     }
@@ -2544,6 +2654,7 @@ async function activate(id) {
     const dw = w && w.link.path && tileEls.get(id) && tileEls.get(id).querySelector('.docwrap');
     if (dw) dw.focus({ preventScroll: true });        // into the document: INSERT
     else if (w && w.link.url) window.open(w.link.url, '_blank', 'noopener');
+    else if (w && w.link.image) window.open(imgSrc(w.link), '_blank', 'noopener');
     return;
   }
   if (id.startsWith('web:')) {
@@ -2696,6 +2807,7 @@ document.addEventListener('keydown', e => {
   if (k === 't') { e.preventDefault(); return void newTerm(); }
   if (k === 'u') { e.preventDefault(); return askLink(); }
   if (k === 'o') { e.preventDefault(); return askDoc(); }
+  if (k === 'p') { e.preventDefault(); return askImage(); }
   if (k === 'g') { e.preventDefault(); return newGroup(); }
   if (k === '1') { e.preventDefault(); return actualSize(); }
   if (k === 'z') { e.preventDefault(); return setLens(!lensOn); }
@@ -2804,6 +2916,26 @@ class Handler(BaseHTTPRequestHandler):
             q = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
             doc, err = read_doc(q.get("path", [""])[0], q.get("since", [None])[0])
             self._send(json.dumps(doc or {"error": err}), code=200 if doc else 404)
+        elif self.path.startswith("/api/image?"):
+            if not same_page(None, self.headers.get("Host", ""), named=True):
+                return self._send(json.dumps({"error": "refused"}), code=403)
+            q = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
+            path, kind, err = image_file(q.get("path", [""])[0])
+            if err:
+                return self._send(json.dumps({"error": err}), code=404)
+            try:
+                with open(path, "rb") as f:
+                    body = f.read()
+            except OSError as e:
+                return self._send(json.dumps({"error": e.strerror}), code=404)
+            # an SVG is a document that can run script if opened as a page
+            self.send_response(200)
+            self.send_header("Content-Type", kind)
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; sandbox")
+            self.send_header("Cache-Control", "no-cache")
+            self.end_headers()
+            self.wfile.write(body)
         elif self.path.startswith("/api/ghstate?"):
             q = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
             self._send(json.dumps(gh_state(q.get("url", [""])[0])))
@@ -2845,9 +2977,10 @@ class Handler(BaseHTTPRequestHandler):
                 body = json.loads(self.rfile.read(n) or b"{}")
             except (ValueError, json.JSONDecodeError):
                 return self._send(json.dumps({"error": "bad request"}), code=400)
-            link = send_link(body.get("url"), body.get("title"))
+            link, err = send_link(body.get("url"), body.get("title"),
+                                  body.get("path"), body.get("image"))
             if not link:
-                return self._send(json.dumps({"error": "url must be http(s)"}), code=400)
+                return self._send(json.dumps({"error": err}), code=400)
             return self._send(json.dumps(link), code=201)
         return self._send(json.dumps({"error": "not found"}), code=404)
 
