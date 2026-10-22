@@ -807,8 +807,7 @@ PAGE = r"""<!doctype html>
   /* the grid exists only while a window is being moved or resized; it is drawn
      over the frame, not in the canvas, so it can run on past every edge */
   #grid { position:absolute; inset:0; pointer-events:none; display:none; z-index:80;
-          background-image:linear-gradient(to right, rgba(217,163,0,.35) 1px, transparent 1px),
-                           linear-gradient(to bottom, rgba(217,163,0,.35) 1px, transparent 1px) }
+          background-image:radial-gradient(circle, rgba(217,163,0,.8) 1.2px, transparent 1.6px) }
   #grid.on { display:block }
   /* small quiet triangles on the frame's edge, pointing at windows out of view */
   .edge { position:absolute; width:8px; height:8px; margin:-4px 0 0 -4px; pointer-events:none;
@@ -1289,7 +1288,8 @@ function showGrid(on) {
   if (!on) return;
   const step = GRID * zoom;
   g.style.backgroundSize = `${step}px ${step}px`;
-  g.style.backgroundPosition = `${origin[0]}px ${origin[1]}px`;
+  // a dot sits in the middle of its cell, so shift half a cell to put it on the line
+  g.style.backgroundPosition = `${origin[0] - step / 2}px ${origin[1] - step / 2}px`;
 }
 const snap = v => Math.round(v / GRID) * GRID;
 // one grid line on in a direction; from a spot between lines, the next one that way
