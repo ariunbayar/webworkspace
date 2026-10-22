@@ -849,6 +849,10 @@ function drag(e, w, el) {
       if (had) layout[w.id] = had; else delete layout[w.id];
       place(el, w);
     }
+    if (moved && settle) {           // let go: its size settles on the grid too
+      fitGrid(w, el);
+      place(el, w);
+    }
     if (moved) saveLayout();
     if (!settle) return;
     // a click on a terminal in NORMAL only picks it: Enter is what types into it
@@ -1651,7 +1655,7 @@ function endEdit() {
   if (editBack) activate(editBack);
   editBack = null;
 }
-// Moved on the grid, a tile takes the nearest size on it too, so its far
+// Moved on the grid, by key or by drag, a tile takes the nearest size on it too, so its far
 // edges line up with the next tile's as well as its corner: a card exactly, a
 // terminal to the character, a photograph by its width, keeping its shape.
 function fitGrid(w, el) {

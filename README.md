@@ -138,8 +138,8 @@ moving or resizing, and dragging with the mouse snaps to it too.
 (or `hjkl`) move the picked tile one grid cell, Shift with them sizes it, and
 Enter or Esc (or Super+Enter again) finishes. A terminal sizes by its
 characters, a card by the grid, and a photo is scaled, keeping its shape.
-Moving from the keyboard (`m` or Super+Enter) also snaps a tile's size to the
-nearest grid step, so its far edges line up as well as its corner.
+Moving a tile, from the keyboard (`m` or Super+Enter) or by dragging it, also
+snaps its size to the nearest grid step, so its far edges line up as well as its corner.
 Typing in a terminal, Super+Enter takes that one and hands the keyboard back after.
 In NORMAL mode the mouse only moves and resizes: it never reaches a terminal (no
 selecting, clicks or wheel-scrolling), and a click only picks it. `Enter` types into it.
