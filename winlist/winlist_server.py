@@ -43,6 +43,11 @@ STARTED = time.time()   # tells a restarted server from the one it replaced (exe
 # ---- shelling out ---------------------------------------------------------
 
 
+def say(msg):
+    """A line on the terminal, stamped with when it was said."""
+    print(time.strftime("%Y-%m-%d %H:%M:%S"), msg, flush=True)
+
+
 def sh(*args, timeout=5):
     try:
         return subprocess.run(args, capture_output=True, text=True, timeout=timeout).stdout
@@ -1093,19 +1098,20 @@ def main():
     except OSError as e:
         # the common case: launched a second time while one is already serving
         if args.open:
-            print(f"winlist is already serving {url} — {show_page(url, args.port)}")
+            say(f"winlist is already serving {url} — {show_page(url, args.port)}")
             return
-        sys.exit(f"cannot listen on {args.host}:{args.port} ({e}) — "
+        say(f"cannot listen on {args.host}:{args.port} ({e}) — "
                  f"another winlist is probably already running")
+        sys.exit(1)
     if SHOTS_ON:
         threading.Thread(target=keep_shots, daemon=True).start()
     if args.open:
         threading.Thread(target=show_page, args=(url, args.port), daemon=True).start()
 
     how = start_terminals(PTY_PORT) if PTY_ON else None
-    print(f"winlist → {url}  (r to restart, Ctrl-C to stop)")
+    say(f"winlist → {url}  (r to restart, Ctrl-C to stop)")
     if PTY_ON:
-        print("terminals → :%d, %s" % (PTY_PORT, how or "not running: " + _pty_error))
+        say("terminals → :%d, %s" % (PTY_PORT, how or "not running: " + _pty_error))
 
     # being killed is the ordinary way a server ends, so SIGTERM comes in by the
     # same door as Ctrl-C
@@ -1116,7 +1122,8 @@ def main():
     try:
         srv.serve_forever()
     except KeyboardInterrupt:
-        print("\nbye")
+        print()
+        say("bye")
     finally:
         cooked()
 
