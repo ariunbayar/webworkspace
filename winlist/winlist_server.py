@@ -756,6 +756,7 @@ PAGE = r"""<!doctype html>
   .tile.focused { border-color:var(--accent) }
   .tile.sel { outline:10px solid var(--accent); outline-offset:5px }
   body:not(.insert) .tile.sel { outline-color:#9aa0a6 }   /* NORMAL is grey, INSERT keeps the accent */
+  .tile.link.sel { outline-color:#9aa0a6 }   /* a card takes no keys, so it is never INSERT's colour */
   .tile.off { opacity:.3 }
   .cap { display:flex; align-items:center; gap:5px; padding:3px 6px; flex:none;
          border-bottom:1px solid var(--line); background:var(--panel) }
@@ -1311,7 +1312,8 @@ function addLink(url, title) {
   layout['link:' + id] = clearSpot([(pan.clientWidth / 2 - origin[0]) / zoom - 160,
                                     (pan.clientHeight / 2 - origin[1]) / zoom - 32], 'link:' + id);
   store.set('layout', layout);
-  sel = 'link:' + id;
+  // picked if the keyboard is the page's; a terminal you are typing in keeps it
+  if (!document.body.classList.contains('insert')) sel = 'link:' + id;
   if (data) data.windows.push(linkWin(links[links.length - 1]));
   render();
 }
@@ -1426,7 +1428,8 @@ function drag(e, w, el) {
     if (!settle) return;
     // a click on a terminal in NORMAL only picks it: Enter is what types into it
     const typing = document.body.classList.contains('insert');
-    if (moved || (w.term && !typing)) { sel = w.id; render(); } else activate(w.id);
+    // a card only picks on a click: opening a page is a double click's worth
+    if (moved || w.link || (w.term && !typing)) { sel = w.id; render(); } else activate(w.id);
   };
   const up = ev => {
     try { el.releasePointerCapture(ev.pointerId); } catch (err) {}
@@ -1825,11 +1828,14 @@ function renderCanvas(match, q) {
         }
         drag(e, win, el);
       });
+      if (w.link) el.addEventListener('dblclick', e => {
+        if (!e.target.closest('.shut, .grip')) activate(w.id);
+      });
       tileEls.set(w.id, el);
       $('#tiles').append(el);
     }
     el.win = w;                       // the drag handler always wants the fresh one
-    el.className = 'tile' + (w.term ? ' term' : '') + (w.focused ? ' focused' : '')
+    el.className = 'tile' + (w.term ? ' term' : '') + (w.link ? ' link' : '') + (w.focused ? ' focused' : '')
       + (match(w) ? '' : ' off') + (w.id === sel ? ' sel' : '');
     if (w.term) {
       el.title = `${w.title} · pid ${w.pid}`;
