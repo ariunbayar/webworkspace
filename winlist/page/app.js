@@ -5,14 +5,20 @@ const PALETTE = ["#2f7d8c","#a8642b","#7a5cd6","#3f7d3f","#94566f","#736b5e"];
 const colorOf = a => COLORS[a] || (COLORS[a] = PALETTE[Object.keys(COLORS).length % PALETTE.length]);
 const $ = s => document.querySelector(s);
 const esc = s => s.replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const utf8 = new TextEncoder();
+// INSERT is wherever the keyboard is: a terminal or a document has it
+const inInsert = () => document.body.classList.contains('insert');
+// ids for things made here; two made in the same millisecond still differ
+let idCount = 0;
+const newId = () => Date.now().toString(36) + (idCount++ % 36).toString(36);
 
 // The arrangement lives here, not on the desktop: dragging a window on the
 // virtual screen moves the tile and nothing else. Kept per window id, so a
 // window we have not seen before falls back to where it really is.
 const store = {
   get(k, fb) { try { return JSON.parse(localStorage.getItem('winlist.' + k)) ?? fb; }
-               catch (e) { return fb; } },
-  set(k, v) { try { localStorage.setItem('winlist.' + k, JSON.stringify(v)); } catch (e) {} },
+               catch { return fb; } },
+  set(k, v) { try { localStorage.setItem('winlist.' + k, JSON.stringify(v)); } catch {} },
 };
 
 let data = null, failures = 0, sel = null;
@@ -21,6 +27,19 @@ let bare = store.get('bare', true);        // top bar folded away, the surface t
 let layout = store.get('layout', {});      // window id -> [x, y] on the virtual screen
 let zoom = store.get('zoom', 0);           // 0 until we have measured a fit
 let origin = store.get('origin', [0, 0]);  // where the surface sits in the frame
+const saveLayout = () => store.set('layout', layout);
+
+// A drag's three listeners, put on together; what comes back takes them off.
+function follow(target, move, end) {
+  target.addEventListener('pointermove', move);
+  target.addEventListener('pointerup', end);
+  target.addEventListener('pointercancel', end);
+  return () => {
+    target.removeEventListener('pointermove', move);
+    target.removeEventListener('pointerup', end);
+    target.removeEventListener('pointercancel', end);
+  };
+}
 const CAP_H = 28;                          // screen px: a tile's caption, as .cap sets it
 const GRID = 40;                           // virtual px: what moving and resizing snap to
 const GUTTER = 140;                        // virtual px between one workspace and the next
@@ -65,10 +84,9 @@ linkbox.addEventListener('close', async () => {
     const r = await fetch('/api/links', { method: 'POST', body: JSON.stringify({ url }) });
     const l = await r.json();
     if (!r.ok) return;
-    taken = [...taken, l.id].slice(-50);       // made here, so the poll leaves it be
-    store.set('taken', taken);
+    markTaken(l.id);                           // made here, so the poll leaves it be
     takeCard(l);
-  } catch (e) {}
+  } catch {}
 });
 // whatever kind of card the server sent: a page, a document or a picture
 const takeCard = l => l.image ? addImage(l.image, l.title)
@@ -91,10 +109,9 @@ imgbox.addEventListener('close', async () => {
     const r = await fetch('/api/links', { method: 'POST', body: JSON.stringify({ image }) });
     const l = await r.json();
     if (!r.ok) return askImage('Could not open it: ' + (l.error || 'unknown error'));
-    taken = [...taken, l.id].slice(-50);
-    store.set('taken', taken);
+    markTaken(l.id);
     takeCard(l);
-  } catch (e) {}
+  } catch {}
 });
 // o asks for a markdown file; the server checks it is one before it is shown
 const docbox = $('#docbox');
@@ -113,7 +130,7 @@ docbox.addEventListener('close', async () => {
     const d = await r.json();
     if (!r.ok) return alertDoc(d.error);
     addDoc(d.path, d.name);
-  } catch (e) {}
+  } catch {}
 });
 function alertDoc(msg) {            // said where you were typing, not in a modal
   askDoc();
@@ -145,7 +162,7 @@ function actualSize() {
 $('#actual').onclick = actualSize;
 $('#reset').onclick = () => {
   layout = {};
-  store.set('layout', layout);
+  saveLayout();
   render();
 };
 addEventListener('resize', render);
@@ -166,20 +183,22 @@ function forgetGone() {
     missing.set(id, n);
     if (n >= 30) { delete layout[id]; missing.delete(id); changed = true; }
   });
-  if (changed) store.set('layout', layout);
+  if (changed) saveLayout();
 }
 
 async function poll() {
   try {
     // asking for screens is what keeps the grabber awake
     const r = await fetch('/api/windows?screens=1');
-    data = await r.json();
+    const got = await r.json();
+    // an error answer is no picture of the desktop: keep the last good one
+    if (!r.ok || !Array.isArray(got.windows)) throw new Error(got.error || r.status);
+    data = got;
     data.windows.push(...links.map(linkWin));
     // a link sent from outside becomes a card once; the server keeps offering it
     (data.links || []).forEach(l => {
       if (taken.includes(l.id)) return;
-      taken = [...taken, l.id].slice(-50);
-      store.set('taken', taken);
+      markTaken(l.id);
       takeCard(l);
     });
     forgetGone();
@@ -187,7 +206,7 @@ async function poll() {
     // restarted from its terminal: the page it served is the old one
     if (started !== null && data.started !== started) return location.reload();
     started = data.started;
-  } catch (e) { failures++; }
+  } catch { failures++; }
   render();
 }
 
@@ -217,10 +236,9 @@ let groups = store.get('groups', []);   // [{id, name, x, y, w, h}] in surface p
 const groupEls = new Map();
 
 function newGroup() {
-  const pan = $('#pan'), w = 1600, h = 1000;
-  const [x, y] = clearSpot([(pan.clientWidth / 2 - origin[0]) / zoom - w / 2,
-                            (pan.clientHeight / 2 - origin[1]) / zoom - h / 2]);
-  groups.push({ id: Date.now().toString(36), name: 'Group', x, y, w, h });
+  const w = 1600, h = 1000, [cx, cy] = viewCenter();
+  const [x, y] = clearSpot([cx - w / 2, cy - h / 2]);
+  groups.push({ id: newId(), name: 'Group', x, y, w, h });
   store.set('groups', groups);
   render();
 }
@@ -262,9 +280,7 @@ function carryGroup(e, g, el) {
     });
   };
   const done = undo => {
-    el.removeEventListener('pointermove', move);
-    el.removeEventListener('pointerup', done);
-    el.removeEventListener('pointercancel', done);
+    off();
     el.classList.remove('dragging');
     showGrid(false);
     letGo = null;
@@ -273,13 +289,11 @@ function carryGroup(e, g, el) {
       riders.forEach(([w, , had]) => { if (had) layout[w.id] = had; else delete layout[w.id]; });
     }
     saveGroups();
-    store.set('layout', layout);
+    saveLayout();
     render();
   };
   letGo = () => done(true);
-  el.addEventListener('pointermove', move);
-  el.addEventListener('pointerup', done);
-  el.addEventListener('pointercancel', done);
+  const off = follow(el, move, done);
 }
 
 function sizeGroup(e, g, el) {
@@ -294,16 +308,11 @@ function sizeGroup(e, g, el) {
     g.h = Math.max(GRID * 3, snap(h0 + (ev.clientY - sy) / zoom));
     placeGroup(el, g);
   };
-  const done = () => {
-    el.removeEventListener('pointermove', move);
-    el.removeEventListener('pointerup', done);
-    el.removeEventListener('pointercancel', done);
+  const off = follow(el, move, () => {
+    off();
     showGrid(false);
     saveGroups();
-  };
-  el.addEventListener('pointermove', move);
-  el.addEventListener('pointerup', done);
-  el.addEventListener('pointercancel', done);
+  });
 }
 
 // a double click on the name renames it; Enter or leaving keeps the new one
@@ -364,7 +373,7 @@ function render() {
   if (!data) return;
   const match = visible(), q = $('#q').value.trim();
   renderGroups();
-  renderCanvas(match, q);
+  renderCanvas(match);
   drawMark();
   status(match, q);
   syncLens();
@@ -448,6 +457,12 @@ function bounds() {
 }
 
 const clamp = z => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, z));
+
+// the point on the surface at the middle of the frame
+function viewCenter() {
+  const pan = $('#pan');
+  return [(pan.clientWidth / 2 - origin[0]) / zoom, (pan.clientHeight / 2 - origin[1]) / zoom];
+}
 
 function shift(dx, dy) {          // slide the whole surface, no edges to run into
   origin = [origin[0] + dx, origin[1] + dy];
@@ -537,7 +552,7 @@ let markTimer = null;
 
 function dropAt(w, h) {
   const pan = $('#pan'), W = pan.clientWidth, H = pan.clientHeight;
-  let c = [(W / 2 - origin[0]) / zoom, (H / 2 - origin[1]) / zoom];
+  let c = viewCenter();
   if (anchor) {
     const px = origin[0] + anchor[0] * zoom, py = origin[1] + anchor[1] * zoom;
     if (px >= 0 && px <= W && py >= 0 && py <= H) c = anchor;
@@ -565,6 +580,10 @@ function setAnchor(cx, cy) {
 // ---- links: a page you mean to come back to, kept as a card ---------------
 let links = store.get('links', []);
 let taken = store.get('taken', []);    // ids of links sent from outside, already carded
+function markTaken(id) {
+  taken = [...taken, id].slice(-50);
+  store.set('taken', taken);
+}
 
 function linkWin(l) {
   return { id: 'link:' + l.id, link: l, title: l.title,
@@ -600,7 +619,7 @@ async function readDocs() {
         docs.set(l.path, { mtime: d.mtime, html: md.parse(d.text) });
         changed = true;
       }
-    } catch (e) {}
+    } catch {}
   }
   if (changed) render();
 }
@@ -623,16 +642,7 @@ function docCard(pic, w) {
   if (inside) pic.querySelector('.docwrap').focus({ preventScroll: true });
 }
 
-function addDoc(path, name) {
-  const id = Date.now().toString(36);
-  links.push({ id, path, title: name });
-  store.set('links', links);
-  layout['link:' + id] = clearSpot(dropAt(720, 900), 'link:' + id);
-  store.set('layout', layout);
-  if (!document.body.classList.contains('insert')) sel = 'link:' + id;
-  if (data) data.windows.push(linkWin(links[links.length - 1]));
-  readDocs();
-}
+const addDoc = (path, name) => { addCard({ path, title: name }); readDocs(); };
 
 // a closed issue was finished, so it is purple; a closed PR was given up, so red
 const ghColor = gh => ({ open: '#1f883d', merged: '#8250df', 'not planned': '#59636e',
@@ -647,9 +657,16 @@ async function askGitHub() {
       const r = await fetch('/api/ghstate?url=' + encodeURIComponent(l.url));
       const st = await r.json();
       if (st) ghStates.set(l.url, st);
-    } catch (e) {}
+    } catch {}
   }
   render();
+}
+
+// what a card shows; it is drawn again only when this changes
+function cardKey(w) {
+  const gh = ghOf(w);
+  return w.link.image ? w.link.image
+    : w.link.path ? docKey(w) : w.link.url + (gh ? ' ' + gh.state : '');
 }
 
 const imgSrc = l => /^https?:/i.test(l.image) ? l.image : '/api/image?path=' + encodeURIComponent(l.image);
@@ -674,16 +691,7 @@ function imgCard(pic, w) {
   img.src = imgSrc(w.link);
 }
 
-function addImage(image, title) {
-  const id = Date.now().toString(36);
-  links.push({ id, image, title });
-  store.set('links', links);
-  layout['link:' + id] = clearSpot(dropAt(640, 480), 'link:' + id);
-  store.set('layout', layout);
-  if (!document.body.classList.contains('insert')) sel = 'link:' + id;
-  if (data) data.windows.push(linkWin(links[links.length - 1]));
-  render();
-}
+const addImage = (image, title) => { addCard({ image, title }); render(); };
 
 function card(pic, w) {
   if (w.link.image) return imgCard(pic, w);
@@ -707,24 +715,25 @@ function card(pic, w) {
   }
 }
 
-// dropped in the middle of what you are looking at, so you see it arrive
-function addLink(url, title) {
-  const id = Date.now().toString(36);
-  links.push({ id, url, title });
+const addLink = (url, title) => { addCard({ url, title }); render(); };
+
+// dropped at the drop point, in view, so you see it arrive
+function addCard(fields) {
+  const l = { id: newId(), ...fields }, w = linkWin(l);
+  links.push(l);
   store.set('links', links);
-  layout['link:' + id] = clearSpot(dropAt(320, 76), 'link:' + id);
-  store.set('layout', layout);
+  layout[w.id] = clearSpot(dropAt(w.w, w.h), w.id);
+  saveLayout();
   // picked if the keyboard is the page's; a terminal you are typing in keeps it
-  if (!document.body.classList.contains('insert')) sel = 'link:' + id;
-  if (data) data.windows.push(linkWin(links[links.length - 1]));
-  render();
+  if (!inInsert()) sel = w.id;
+  if (data) data.windows.push(w);
 }
 
 function closeLink(id) {
   links = links.filter(l => 'link:' + l.id !== id);
   store.set('links', links);
   delete layout[id];
-  store.set('layout', layout);
+  saveLayout();
   if (data) data.windows = data.windows.filter(w => w.id !== id);
   if (sel === id) sel = null;
   render();
@@ -818,15 +827,13 @@ function drag(e, w, el) {
       // moving an element in the document drops its pointer capture, and the
       // drag then only lasts while the pointer happens to stay over the tile —
       // which for a terminal, grabbed by a thin title bar, is no time at all
-      try { el.setPointerCapture(ev.pointerId); } catch (err) {}
+      try { el.setPointerCapture(ev.pointerId); } catch {}
     }
     layout[w.id] = [snap(from[0] + dx / zoom), snap(from[1] + dy / zoom)];
     place(el, w);
   };
   const done = settle => {
-    el.removeEventListener('pointermove', move);
-    el.removeEventListener('pointerup', up);
-    el.removeEventListener('pointercancel', up);
+    off();
     el.classList.remove('dragging');
     showGrid(false);
     letGo = null;
@@ -836,21 +843,19 @@ function drag(e, w, el) {
       if (had) layout[w.id] = had; else delete layout[w.id];
       place(el, w);
     }
-    if (moved) store.set('layout', layout);
+    if (moved) saveLayout();
     if (!settle) return;
     // a click on a terminal in NORMAL only picks it: Enter is what types into it
-    const typing = document.body.classList.contains('insert');
+    const typing = inInsert();
     // a card only picks on a click: opening a page is a double click's worth
     if (moved || w.link || (w.term && !typing)) { sel = w.id; render(); } else activate(w.id);
   };
   const up = ev => {
-    try { el.releasePointerCapture(ev.pointerId); } catch (err) {}
+    try { el.releasePointerCapture(ev.pointerId); } catch {}
     done(true);
   };
   letGo = () => done(false);       // put back if a pinch begins
-  el.addEventListener('pointermove', move);
-  el.addEventListener('pointerup', up);
-  el.addEventListener('pointercancel', up);
+  const off = follow(el, move, up);
 }
 
 // ---- terminals -----------------------------------------------------------
@@ -927,7 +932,7 @@ function mount(w) {
   // what you type goes straight down the socket; nothing is echoed locally,
   // because the far end is what decides what a keystroke looks like
   term.onData(d => {
-    if (t.ws && t.ws.readyState === 1) t.ws.send(new TextEncoder().encode(d));
+    if (t.ws && t.ws.readyState === 1) t.ws.send(utf8.encode(d));
   });
   // xterm.js sends a bare CR for Shift+Enter, same as Enter. Send ESC CR
   // instead, which is what Claude Code and readline take as "newline, don't
@@ -947,7 +952,7 @@ function mount(w) {
       return false;
     }
     if (e.key !== 'Enter' || !e.shiftKey || e.ctrlKey || e.altKey || e.metaKey) return true;
-    if (e.type === 'keydown' && t.ws && t.ws.readyState === 1) t.ws.send(new TextEncoder().encode('\x1b\r'));
+    if (e.type === 'keydown' && t.ws && t.ws.readyState === 1) t.ws.send(utf8.encode('\x1b\r'));
     e.preventDefault();
     return false;
   });
@@ -1015,7 +1020,7 @@ function dressTerm(el, w) {
     // the keyboard arriving here by any route (a click, a script) makes this
     // the picked window, so the outline never stays behind on the last one
     host.addEventListener('focusin', () => {
-      if (sel !== 'web:' + id && document.body.classList.contains('insert')) activate('web:' + id);
+      if (sel !== 'web:' + id && inInsert()) activate('web:' + id);
     });
     // xterm measures a character by laying one out, so it has to do that at
     // its own size: the surface scale goes on afterwards, never before
@@ -1037,16 +1042,12 @@ function dressTerm(el, w) {
       };
       const done = ev => {
         if (ev && ev.pointerId !== e.pointerId) return;
-        removeEventListener('pointermove', move);
-        removeEventListener('pointerup', done);
-        removeEventListener('pointercancel', done);
+        off();
         if (letGo === done) letGo = null;
       };
       if (letGo) letGo();
       letGo = done;
-      addEventListener('pointermove', move);
-      addEventListener('pointerup', done);
-      addEventListener('pointercancel', done);
+      const off = follow(window, move, done);
     });
     measure(t);
     const grip = document.createElement('div');
@@ -1111,7 +1112,7 @@ function resizeTo(w, el, t, edge) {
   // an unmoved terminal sits wherever the others' sizes leave room, so resizing
   // one would carry its neighbours off (and a reload would not put them back):
   // pin it where it is the first time it changes size
-  if (!layout[w.id]) { layout[w.id] = [x, y]; store.set('layout', layout); }
+  if (!layout[w.id]) { layout[w.id] = [x, y]; saveLayout(); }
   const cols = Math.max(20, Math.round((edge[0] - x - t.pad[0]) / t.cell[0]));
   const rows = Math.max(5, Math.round((edge[1] - y - t.pad[1]) / t.cell[1]));
   if (cols === t.term.cols && rows === t.term.rows) return false;
@@ -1148,19 +1149,14 @@ function grab(e, w, el) {
     const edge = [snap(x + w0 + (ev.clientX - sx) / zoom), snap(y + h0 + (ev.clientY - sy) / zoom)];
     if (resizeTo(w, el, t, edge)) show();
   };
-  const done = ev => {
-    try { el.releasePointerCapture(ev.pointerId); } catch (err) {}
-    el.removeEventListener('pointermove', move);
-    el.removeEventListener('pointerup', done);
-    el.removeEventListener('pointercancel', done);
+  const off = follow(el, move, ev => {
+    try { el.releasePointerCapture(ev.pointerId); } catch {}
+    off();
     tag.remove();
     showGrid(false);
     measure(t);                      // what it settled at, measured not assumed
     poll();
-  };
-  el.addEventListener('pointermove', move);
-  el.addEventListener('pointerup', done);
-  el.addEventListener('pointercancel', done);
+  });
 }
 
 // A card is resized the same way, with no characters to count: the far corner
@@ -1171,7 +1167,7 @@ function grabLink(e, w, el) {
   e.stopPropagation();
   const sx = e.clientX, sy = e.clientY, w0 = w.w, h0 = w.h;
   const [x, y] = seatOf(w);
-  if (!layout[w.id]) { layout[w.id] = [x, y]; store.set('layout', layout); }
+  if (!layout[w.id]) { layout[w.id] = [x, y]; saveLayout(); }
   showGrid(true);
   el.setPointerCapture(e.pointerId);
   const move = ev => {
@@ -1179,18 +1175,13 @@ function grabLink(e, w, el) {
     w.h = Math.max(60, snap(h0 + (ev.clientY - sy) / zoom));
     place(el, w);
   };
-  const done = ev => {
-    try { el.releasePointerCapture(ev.pointerId); } catch (err) {}
-    el.removeEventListener('pointermove', move);
-    el.removeEventListener('pointerup', done);
-    el.removeEventListener('pointercancel', done);
+  const off = follow(el, move, ev => {
+    try { el.releasePointerCapture(ev.pointerId); } catch {}
+    off();
     showGrid(false);
     const l = links.find(v => 'link:' + v.id === w.id);
     if (l) { l.w = w.w; l.h = w.h; store.set('links', links); }
-  };
-  el.addEventListener('pointermove', move);
-  el.addEventListener('pointerup', done);
-  el.addEventListener('pointercancel', done);
+  });
 }
 
 // A new tile that lands on another's corner hides it, and you cannot tell
@@ -1227,14 +1218,14 @@ async function newTerm() {
   if (!zoom) {
     await poll();
     const v = data.windows.find(v => v.id === 'web:' + made.id);
-    if (v) { layout[v.id] = clearSpot(seatOf(v), v.id); store.set('layout', layout); }
+    if (v) { layout[v.id] = clearSpot(seatOf(v), v.id); saveLayout(); }
     return pickIt();
   }
   await poll();                  // its size is only known once it is listed
   const w = data.windows.find(v => v.id === 'web:' + made.id);
   if (!w) return;
   layout[w.id] = clearSpot([at[0] - w.w / 2, at[1] - w.h / 2], w.id);
-  store.set('layout', layout);
+  saveLayout();
   pickIt();
 }
 $('#newterm').onclick = newTerm;
@@ -1246,7 +1237,7 @@ async function closeTerm(id) {
   poll();
 }
 
-function renderCanvas(match, q) {
+function renderCanvas(match) {
   if (!zoom) fitAll();                 // the first time only: after that the view is yours
   $('#zoom').value = Math.round(Math.sqrt(zoom / MAX_ZOOM) * 100);
   $('#canvas').style.transform = `translate(${origin[0]}px,${origin[1]}px)`;
@@ -1282,13 +1273,13 @@ function renderCanvas(match, q) {
           // a terminal is for typing into, so only its caption is a handle;
           // a photograph has nothing to click, so all of it is
           // — except in NORMAL, where the mouse moves windows and never types
-          if (document.body.classList.contains('insert') && !e.target.closest('.cap')) return;
+          if (inInsert() && !e.target.closest('.cap')) return;
         } else if (win.link && e.target.closest('.grip')) {
           return grabLink(e, win, el);
         } else if (win.link && e.target.closest('.shut')) {
           e.preventDefault();
           return closeLink(win.id);
-        } else if (document.body.classList.contains('insert')) {
+        } else if (inInsert()) {
           return;                // in INSERT a photograph is just more surface: it pans
         }
         drag(e, win, el);
@@ -1311,8 +1302,7 @@ function renderCanvas(match, q) {
       el.querySelector('.t2').textContent = w.title;
       if (w.link) {
         el.title = w.link.url || w.link.path || w.link.image;
-        const gh = ghOf(w), key = w.link.image ? w.link.image
-          : w.link.path ? docKey(w) : w.link.url + (gh ? ' ' + gh.state : '');
+        const gh = ghOf(w), key = cardKey(w);
         if (gh) el.querySelector('.dot').style.background = ghColor(gh);
         const pic = el.children[1];          // the grip comes after it
         if (pic.dataset.key !== key) {
@@ -1374,8 +1364,7 @@ function syncLens() {
     el.win = w;
     if (w.term) return;
     if (w.link) {
-      const gh = ghOf(w), key = w.link.image ? w.link.image
-        : w.link.path ? docKey(w) : w.link.url + (gh ? ' ' + gh.state : '');
+      const key = cardKey(w);
       if (el.key !== key) { el.key = key; card(el.firstChild, w); }
       return;
     }
@@ -1444,7 +1433,7 @@ $('#pan').addEventListener('wheel', e => {
   // it is a terminal rather than a tile: the wheel belongs to it. Zoomed out
   // far enough that nobody could read it, it is a tile again and the wheel
   // goes back to meaning zoom.
-  if (zoom > 0.5 && e.target.closest('.termhost') && document.body.classList.contains('insert')) return;
+  if (zoom > 0.5 && e.target.closest('.termhost') && inInsert()) return;
   if (zoom > 0.3 && e.target.closest('.docwrap')) return;      // a document scrolls
   e.preventDefault();
   zoomAbout(zoom * Math.exp(-e.deltaY * 0.0015), e.clientX, e.clientY);
@@ -1459,7 +1448,7 @@ $('#pan').addEventListener('wheel', e => {
 // the other terminals keep their clicks, and a photograph is only surface.
 function carries(e) {
   const tile = e.target.closest('.tile');
-  if (!tile || !document.body.classList.contains('insert')) return !tile;
+  if (!tile || !inInsert()) return !tile;
   return !tile.classList.contains('term') && tile !== document.activeElement.closest('.tile');
 }
 
@@ -1468,7 +1457,7 @@ function carries(e) {
 // window is picked or dragged. Its mousedown is held back, so a terminal you
 // pressed on cannot take the keyboard straight back.
 $('#pan').addEventListener('pointerdown', e => {
-  if (!document.body.classList.contains('insert')) return;
+  if (!inInsert()) return;
   const tile = e.target.closest('.tile');
   const here = document.activeElement || document.body;
   if (tile && tile === here.closest('.tile')) return;
@@ -1490,15 +1479,11 @@ $('#pan').addEventListener('pointerdown', e => {
   const done = ev => {
     if (ev && ev.type === 'pointerup' && !far && pointers.size < 2) setAnchor(ev.clientX, ev.clientY);
     pan.classList.remove('grabbing');
-    removeEventListener('pointermove', move);
-    removeEventListener('pointerup', done);
-    removeEventListener('pointercancel', done);
+    off();
     letGo = null;
   };
   letGo = done;
-  addEventListener('pointermove', move);
-  addEventListener('pointerup', done);
-  addEventListener('pointercancel', done);
+  const off = follow(window, move, done);
 });
 
 // two fingers pinch to zoom and slide to pan, the pair working as one gesture
@@ -1560,7 +1545,7 @@ async function activate(id) {
     return;
   }
   try { await fetch('/api/focus', { method: 'POST', body: JSON.stringify({ id }) }); }
-  catch (e) {}
+  catch {}
   poll();
 }
 
@@ -1634,7 +1619,7 @@ function edit(how) {
 function endEdit() {
   editing = null;
   showGrid(false);
-  store.set('layout', layout);
+  saveLayout();
   showMode();
   poll();
 }
