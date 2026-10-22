@@ -104,6 +104,14 @@
   .cap .shut:hover { opacity:1; background:var(--accent); color:#fff }
   .tile.gone .cap .note { color:var(--accent); opacity:1 }
   .cap .note { flex:none; font-size:11px; opacity:.75 }
+  /* the app in words beside the title; it gives way first when the tile is narrow */
+  .tile { container-type:inline-size }
+  .cap .app { flex:0 1 auto; max-width:40%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+              font-size:11.5px; font-weight:600; opacity:.8 }
+  .cap .app:empty, .cap .ord:empty { display:none }
+  .cap .ord { flex:none; font-size:11px; opacity:.6 }
+  @container (max-width:170px) { .cap .app { display:none } }
+  .gcount { margin-left:6px; opacity:.6; font-weight:400 }
   .cap .prof { flex:none; font-size:11px; opacity:.55; cursor:pointer; padding:0 4px; border-radius:3px }
   .cap .prof:empty { display:none }
   .cap .prof:hover { opacity:1; background:var(--line) }
@@ -217,6 +225,26 @@
   #grid { position:absolute; inset:0; pointer-events:none; display:none; z-index:80;
           background-image:radial-gradient(circle, rgba(217,163,0,.8) 1.2px, transparent 1.6px) }
   #grid.on { display:block }
+  /* a word about what just happened, gone by itself; and the keys of the mode
+     you are in, for as long as you are in it */
+  #toast, #legend { position:fixed; left:50%; transform:translateX(-50%); z-index:97;
+           padding:6px 12px; border-radius:6px; font-size:12px; pointer-events:none;
+           background:#262626; color:#eee; box-shadow:0 4px 16px rgba(0,0,0,.35);
+           max-width:calc(100vw - 32px) }
+  #toast { bottom:52px; opacity:0; transition:opacity .3s }
+  #toast.on { opacity:1; transition:none }
+  #legend { bottom:14px; display:none }
+  #legend.on { display:block }
+  #legend kbd, #toast kbd { color:#fff }
+  #nomatch { position:absolute; left:50%; top:40%; transform:translate(-50%,-50%); z-index:84;
+             display:none; padding:10px 16px; border-radius:8px; background:var(--panel);
+             border:1px solid var(--line); color:var(--dim); pointer-events:none }
+  #nomatch.on { display:block }
+  #banner { position:absolute; left:0; right:0; top:0; z-index:92; display:none; padding:7px 12px;
+            background:var(--accent); color:#fff; font-size:12px }
+  #banner.on { display:block }
+  #banner code { background:rgba(0,0,0,.2); color:#fff }
+  #zpct { font-size:11px; color:var(--dim); min-width:3.2em; text-align:right }
   /* small quiet triangles on the frame's edge, pointing at windows out of view */
   .edge { position:absolute; width:8px; height:8px; margin:-4px 0 0 -4px; pointer-events:none;
           z-index:70; background:#e0453a; opacity:.75;

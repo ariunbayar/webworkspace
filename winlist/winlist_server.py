@@ -139,6 +139,13 @@ def children(pid, depth=4):
     return found
 
 
+def pretty_class(cls):
+    """A WM_CLASS nobody named, made readable: org.gnome.Nautilus is Nautilus,
+    jetbrains-idea is Jetbrains Idea."""
+    last = (cls or "").rsplit(".", 1)[-1].replace("-", " ").replace("_", " ").strip()
+    return " ".join(p[:1].upper() + p[1:] for p in last.split()) or "Unknown"
+
+
 def resolve_app(cls, pid, ttl=8):
     cached = _app_cache.get(pid)
     now = time.time()
@@ -146,7 +153,7 @@ def resolve_app(cls, pid, ttl=8):
         return cached[1]
 
     key = cls.lower()
-    app = PRETTY.get(key, cls or "Unknown")
+    app = PRETTY.get(key) or PRETTY.get(key.rsplit(".", 1)[-1]) or pretty_class(cls)
     comm = sh("ps", "-p", str(pid), "-o", "comm=").strip() if pid else ""
     # font-cozette & friends: an xterm launched with -class, still a terminal
     if key in TERMINAL_CLASSES or comm in TERMINAL_CLASSES or key.startswith("font-"):

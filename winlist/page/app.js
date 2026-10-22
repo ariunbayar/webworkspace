@@ -2,7 +2,11 @@ const COLORS = { "Google Chrome":"#4285f4", "Claude Code":"#c96442", "Vim":"#019
   "Neovim":"#019833", "Viber":"#7360f2", "Firefox":"#ff7139", "memmon":"#7a5cd6",
   "Terminal":"#5a5852", "VS Code":"#0078d4", "Files":"#77767b", "Slack":"#4a154b" };
 const PALETTE = ["#2f7d8c","#a8642b","#7a5cd6","#3f7d3f","#94566f","#736b5e"];
-const colorOf = a => COLORS[a] || (COLORS[a] = PALETTE[Object.keys(COLORS).length % PALETTE.length]);
+// an app not named above gets a colour from its name, so it keeps it across reloads
+const colorOf = a => COLORS[a] || (COLORS[a] = PALETTE[[...String(a)].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7) % PALETTE.length]);
+const SHELL_NAMES = new Set(['bash', 'sh', 'zsh', 'fish', 'dash', 'tmux', 'screen']);
+const baseName = p => String(p).split(/[?#]/)[0].replace(/\/+$/, '').split('/').pop() || String(p);
+const shortPath = p => String(p || '').replace(/^\/home\/[^/]+/, '~').replace(/^(~\/|\/)(?:[^/]+\/){2,}([^/]+\/[^/]+)$/, '$1…/$2');
 const $ = s => document.querySelector(s);
 const esc = s => s.replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const utf8 = new TextEncoder();
@@ -28,6 +32,14 @@ let layout = store.get('layout', {});      // window id -> [x, y] on the virtual
 let zoom = store.get('zoom', 0);           // 0 until we have measured a fit
 let origin = store.get('origin', [0, 0]);  // where the surface sits in the frame
 const saveLayout = () => store.set('layout', layout);
+let toastTimer = 0;
+function toast(html, ms = 2600) {
+  const t = $('#toast');
+  t.innerHTML = html;
+  t.classList.add('on');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('on'), ms);
+}
 
 // A drag's three listeners, put on together; what comes back takes them off.
 function follow(target, move, end) {
@@ -101,6 +113,7 @@ function askImage(msg) {
   if (imgbox.open) return;
   $('#imgsrc').value = '';
   $('#imgsrc').placeholder = msg || 'Path to an image, or an image URL';
+  if (msg) toast(esc(msg), 4000);     // a placeholder is faint, and gone at the first key
   imgbox.returnValue = '';
   imgbox.showModal();
   $('#imgsrc').focus();
@@ -139,6 +152,7 @@ function alertDoc(msg) {            // said where you were typing, not in a moda
   askDoc();
   $('#docpath').value = '';
   $('#docpath').placeholder = 'Could not open it: ' + (msg || 'unknown error');
+  toast('Could not open it: ' + esc(msg || 'unknown error'), 4000);
 }
 const helpbox = $('#helpbox');
 const showHelp = () => { if (!helpbox.open) helpbox.showModal(); };
@@ -163,7 +177,19 @@ function actualSize() {
         Math.round(box.top + origin[1]) - box.top - origin[1]);
 }
 $('#actual').onclick = actualSize;
+$('#fit').onclick = () => { fitAll(); render(); };
+// the whole arrangement goes, so it asks once more: a second click within 3s
+let resetArmed = 0;
 $('#reset').onclick = () => {
+  const b = $('#reset');
+  if (!resetArmed) {
+    b.textContent = 'Click again to reset';
+    resetArmed = setTimeout(() => { resetArmed = 0; b.textContent = 'Reset layout'; }, 3000);
+    return;
+  }
+  clearTimeout(resetArmed);
+  resetArmed = 0;
+  b.textContent = 'Reset layout';
   layout = {};
   scales = {};
   saveLayout();
@@ -216,9 +242,18 @@ async function poll() {
   render();
 }
 
+// every word has to be somewhere in what the tile is: its title, app, the
+// program and folder of a terminal, a card's address, its workspace as ws2
+function haystack(w) {
+  const t = w.term && terms.get(w.term.session);
+  return [w.title, w.app, w.cls, t && t.title, w.term && w.term.running, w.term && w.term.cwd,
+          w.link && (w.link.url || w.link.path || w.link.image),
+          w.desktop !== null && w.desktop !== undefined ? 'ws' + (w.desktop + 1) : ''
+         ].filter(Boolean).join(' ').toLowerCase();
+}
 function visible() {
-  const q = $('#q').value.trim().toLowerCase();
-  return w => !q || (w.title + " " + w.app).toLowerCase().includes(q);
+  const words = $('#q').value.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  return w => !words.length || words.every(q => haystack(w).includes(q));
 }
 
 function onWorkspace(i) { return data.windows.filter(w => w.desktop === i); }
@@ -244,9 +279,16 @@ const groupEls = new Map();
 function newGroup() {
   const w = 1600, h = 1000, [cx, cy] = viewCenter();
   const [x, y] = clearSpot([cx - w / 2, cy - h / 2]);
-  groups.push({ id: newId(), name: 'Group', x, y, w, h });
+  // numbered, and named straight away: a group called Group says nothing
+  const used = new Set(groups.map(g => g.name));
+  let n = 1;
+  while (used.has(n === 1 ? 'Group' : 'Group ' + n)) n++;
+  const g = { id: newId(), name: n === 1 ? 'Group' : 'Group ' + n, x, y, w, h };
+  groups.push(g);
   store.set('groups', groups);
   render();
+  const el = groupEls.get(g.id);
+  if (el) rename(g, el.querySelector('.gname'));
 }
 
 function saveGroups() { store.set('groups', groups); }
@@ -347,7 +389,7 @@ function renderGroups() {
     if (!el) {
       el = document.createElement('div');
       el.className = 'group';
-      el.innerHTML = `<div class="gcap"><span class="gname"></span>`
+      el.innerHTML = `<div class="gcap"><span class="gname" title="Double-click to rename"></span><span class="gcount"></span>`
         + `<span class="shut" title="Remove the group (its windows stay)">✕</span></div>`
         + `<div class="grip" title="Drag to resize this group"></div>`;
       const cap = el.querySelector('.gcap'), name = el.querySelector('.gname');
@@ -370,13 +412,24 @@ function renderGroups() {
     }
     el.group = g;
     if (!el.querySelector('.gname').isContentEditable) el.querySelector('.gname').textContent = g.name;
+    const n = data ? members(g).length : 0;
+    el.querySelector('.gcount').textContent = n ? '· ' + n : '';
     placeGroup(el, g);
   });
   groupEls.forEach((el, id) => { if (!live.has(id)) { el.remove(); groupEls.delete(id); } });
 }
 
+// said over the surface, where it is seen, not only in the bar that is folded
+// away — and before the first answer too, when there is nothing else to show
+function showTrouble() {
+  const trouble = failures >= 2 ? `Lost the server — retrying. Is it running? <code>python3 winlist/winlist_server.py</code>`
+    : data && data.error ? esc(data.error) : '';
+  $('#banner').innerHTML = trouble;
+  $('#banner').classList.toggle('on', !!trouble);
+}
+
 function render() {
-  if (!data) return;
+  if (!data) return showTrouble();
   const match = visible(), q = $('#q').value.trim();
   renderGroups();
   renderCanvas(match);
@@ -389,9 +442,13 @@ function status(match, q) {
   const hits = data.windows.filter(w => !w.link && match(w));
   const ours = data.windows.filter(w => w.term).length;
   const desks = new Set(data.windows.filter(w => !w.term).map(w => w.desktop)).size;
+  const shown = data.windows.filter(match).length;
+  $('#nomatch').classList.toggle('on', !!q && !shown);
+  if (q && !shown) $('#nomatch').innerHTML = `Nothing matches “${esc(q)}” — <kbd>Esc</kbd> clears`;
   $('#stat').textContent = `${hits.length - ours}${q ? " of " + (data.windows.length - links.length - ours) : ""} windows · `
     + (ours ? `${ours} terminal${ours > 1 ? 's' : ''} of our own · ` : '')
     + `${data.grid.cols}×${data.grid.rows} workspaces · ${desks} in use`;
+  showTrouble();
   $('#ts').innerHTML = failures ? `<span class="stale">disconnected — retrying</span>`
     : `updated ${data.captured}`;
   $('#foot').innerHTML = `Every window on one surface, seeded from where it `
@@ -591,9 +648,22 @@ function markTaken(id) {
   store.set('taken', taken);
 }
 
+// a card with no name of its own is called what it points at: the file's name,
+// or the site and the last part of the address
+function cardTitle(l) {
+  if (l.title) return l.title;
+  if (l.path || l.image) return baseName(l.path || l.image);
+  try {
+    const u = new URL(l.url), last = baseName(u.pathname);
+    return u.host.replace(/^www\./, '') + (u.pathname.length > 1 ? '/' + last : '');
+  } catch { return l.url || ''; }
+}
+function cardHost(url) {
+  try { return new URL(url).host.replace(/^www\./, ''); } catch { return 'Link'; }
+}
 function linkWin(l) {
-  return { id: 'link:' + l.id, link: l, title: l.title,
-           app: l.image ? 'Image' : l.path ? 'Markdown' : new URL(l.url).host,
+  return { id: 'link:' + l.id, link: l, title: cardTitle(l),
+           app: l.image ? 'Image' : l.path ? 'Markdown' : cardHost(l.url),
            w: l.w || (l.image ? 640 : l.path ? 720 : 320),
            h: l.h || (l.image ? 480 : l.path ? 900 : 76),
            x: 0, y: 0, z: 1e9, desktop: null };
@@ -757,7 +827,7 @@ function dress(pic, w) {
     pic.className = 'pic none';
     pic.style.cssText = `background:${colorOf(w.app)}`;
     pic.textContent = buried ? 'was behind another window'
-      : data.shots_on ? 'not photographed yet' : '';
+      : data.shots_on ? `not photographed yet — visit workspace ${w.desktop + 1} to fill it in` : '';
     return;
   }
   pic.className = 'pic';
@@ -1028,7 +1098,7 @@ let mouseScreen = null;
 function dressTerm(el, w) {
   const t = mount(w), id = w.term.session;
   if (!t.wrap) {
-    el.innerHTML = `<div class="cap"><span class="dot"></span><span class="t2"></span>` +
+    el.innerHTML = `<div class="cap"><span class="dot"></span><span class="app"></span><span class="t2"></span>` +
                    `<span class="note"></span>` +
                    `<span class="prof" title="Switch font (Ctrl+Alt+F)"></span>` +
                    `<span class="shut" title="Close">✕</span></div>` +
@@ -1084,9 +1154,16 @@ function dressTerm(el, w) {
   const cap = t.cap;
   cap.querySelector('.dot').style.background = colorOf(w.app);
   cap.querySelector('.prof').textContent = (profiles()[t.prof] || {}).name || '';
-  cap.querySelector('.t2').textContent = t.title || w.term.title || w.term.running || w.title;
-  cap.querySelector('.note').textContent = w.term.alive
-    ? (w.term.cwd || '')
+  const title = t.title || w.term.title || w.term.running || w.title;
+  cap.querySelector('.t2').textContent = title;
+  // what is running, unless the title already says so: a shell says nothing
+  const run = w.term.running || '';
+  cap.querySelector('.app').textContent = run && !SHELL_NAMES.has(run)
+    && !title.toLowerCase().includes(run.toLowerCase()) ? run : '';
+  const note = cap.querySelector('.note');
+  note.title = w.term.cwd || '';
+  note.textContent = w.term.alive
+    ? shortPath(w.term.cwd)
     : 'exited ' + (w.term.exit === null ? '?' : w.term.exit);
   el.classList.toggle('gone', !w.term.alive);
   // a running session is reconnected whenever its socket has dropped; one that
@@ -1263,17 +1340,29 @@ async function closeTerm(id) {
 function renderCanvas(match) {
   if (!zoom) fitAll();                 // the first time only: after that the view is yours
   $('#zoom').value = Math.round(Math.sqrt(zoom / MAX_ZOOM) * 100);
+  $('#zpct').textContent = Math.round(zoom * 100) + '%';
   $('#canvas').style.transform = `translate(${origin[0]}px,${origin[1]}px)`;
   markEdges();
 
   const live = new Set();
+  // windows that would read the same are numbered, in id order so a number
+  // stays with its window from one poll to the next
+  const same = new Map(), twins = new Map();
+  data.windows.forEach(w => {
+    if (w.term) return;
+    const k = w.app + '\n' + w.title;
+    same.set(k, [...(same.get(k) || []), w.id]);
+  });
+  same.forEach(ids => {
+    if (ids.length > 1) ids.sort().forEach((id, i) => twins.set(id, '#' + (i + 1)));
+  });
   data.windows.slice().sort((a, b) => a.z - b.z).forEach(w => {
     live.add(w.id);
     let el = tileEls.get(w.id);
     if (!el) {
       el = document.createElement('div');
       if (!w.term) {
-        el.innerHTML = `<div class="cap"><span class="dot"></span><span class="t2"></span>`
+        el.innerHTML = `<div class="cap"><span class="dot"></span><span class="app"></span><span class="t2"></span><span class="ord"></span>`
           + (w.link ? `<span class="shut" title="Remove">✕</span>` : '') + `</div>`;
         el.append(document.createElement('div'));
         if (w.link) {
@@ -1323,12 +1412,17 @@ function renderCanvas(match) {
     el.className = 'tile' + (w.term ? ' term' : '') + (w.link ? ' link' : '') + (w.focused ? ' focused' : '')
       + (match(w) ? '' : ' off') + (w.id === sel ? ' sel' : '');
     if (w.term) {
-      el.title = `${w.title} · pid ${w.pid}`;
+      el.title = [w.term.running, w.term.cwd, w.title].filter(Boolean).join(' — ') + ` · pid ${w.pid}`;
       dressTerm(el, w);
     } else {
       el.title = `${w.app} — ${w.title} · workspace ${w.desktop + 1}`;
       el.querySelector('.dot').style.background = colorOf(w.app);
       el.querySelector('.t2').textContent = w.title;
+      // the app is named in words, not only by the dot's colour — unless the
+      // title says it already, or it is a card, whose title is what it is
+      el.querySelector('.app').textContent = !w.link && w.app
+        && !w.title.toLowerCase().startsWith(w.app.toLowerCase()) ? w.app : '';
+      el.querySelector('.ord').textContent = twins.get(w.id) || '';
       if (w.link) {
         el.title = w.link.url || w.link.path || w.link.image;
         const gh = ghOf(w), key = cardKey(w);
@@ -1573,8 +1667,13 @@ async function activate(id) {
     if (t) t.term.focus();
     return;
   }
-  try { await fetch('/api/focus', { method: 'POST', body: JSON.stringify({ id }) }); }
-  catch {}
+  try {
+    const r = await fetch('/api/focus', { method: 'POST', body: JSON.stringify({ id }) });
+    const a = await r.json();
+    const w = data.windows.find(x => x.id === id);
+    if (!a.ok) toast(`Could not focus it: ${esc(a.msg || a.error || String(r.status))}`);
+    else if (w && w.desktop !== data.current) toast(`Switched to workspace ${w.desktop + 1}`, 1500);
+  } catch { toast('Could not reach the server to focus it'); }
   poll();
 }
 
@@ -1589,7 +1688,11 @@ function reveal() {
   const w = data.windows.find(x => x.id === sel);
   const pan = $('#pan');
   if (!w || !pan.clientWidth) return;
-  const [x, y] = seatOf(w);                       // bring the pick to the middle
+  const [x, y] = seatOf(w);
+  // already in view: leave the view alone, it is where you put it
+  const l = origin[0] + x * zoom, t = origin[1] + y * zoom;
+  if (l >= 0 && t >= 0 && l + w.w * zoom <= pan.clientWidth && t + w.h * zoom <= pan.clientHeight) return;
+  // otherwise bring the pick to the middle
   origin = [pan.clientWidth / 2 - (x + w.w / 2) * zoom,
             pan.clientHeight / 2 - (y + w.h / 2) * zoom];
   store.set('origin', origin);
@@ -1602,8 +1705,22 @@ function move(dx, dy) {
   const pick = data.windows.filter(match);
   if (!pick.length) return;
   const cur = selected();
-  if (!cur) { sel = pick[0].id; return (render(), reveal()); }
+  // the first pick is the window you were last in, if it is one of these
+  if (!cur) { sel = (pick.find(w => w.focused) || pick[0]).id; return (render(), reveal()); }
 
+  if (dx && !dy) {                       // left and right: the nearest tile that way, as seen
+    const mid = v => { const [x, y] = seatOf(v); return [x + v.w / 2, y + v.h / 2]; };
+    const [cx, cy] = mid(cur);
+    let best = null, score = Infinity;
+    pick.forEach(v => {
+      if (v.id === cur.id) return;
+      const [x, y] = mid(v), ahead = (x - cx) * dx;
+      if (ahead <= 1) return;
+      const sc = ahead + 2 * Math.abs(y - cy);   // straight across beats nearer but off to the side
+      if (sc < score) { score = sc; best = v; }
+    });
+    if (best) { sel = best.id; return (render(), reveal()); }
+  }
   if (dy && !dx) {                       // within a workspace, then on to the next one
     const here = ordered(cur.desktop).filter(match);
     const at = here.findIndex(w => w.id === cur.id);
@@ -1632,6 +1749,11 @@ function showMode() {
   document.body.classList.toggle('insert', typing);
   $('#mode').classList.toggle('grid', !!editing);
   document.body.classList.toggle('tiling', editing === 'tile');
+  // the keys of the mode you are in, on screen while you are in it
+  const legend = editing ? '<kbd>←↑↓→</kbd> move a cell · <kbd>Shift</kbd>+arrows size · <kbd>Enter</kbd> / <kbd>Esc</kbd> done'
+    : typing ? '<kbd>Ctrl+Space</kbd> back to the surface · <kbd>Super+Enter</kbd> move/size this one' : '';
+  $('#legend').innerHTML = legend;
+  $('#legend').classList.toggle('on', !!legend);
 }
 
 // Moving and sizing from the keyboard is a mode of its own inside NORMAL,
@@ -1739,7 +1861,9 @@ document.addEventListener('keydown', e => {
     const w = (e.target.closest && e.target.closest('.tile') || {}).win || selected();
     e.preventDefault();
     if (editing) return endEdit();
-    return w ? startTile(w) : undefined;
+    const v = w || data && data.windows.find(x => x.focused && visible()(x));
+    if (v) return startTile(v);
+    return toast('Pick a window first: <kbd>↑↓←→</kbd>, then <kbd>Super+Enter</kbd>');
   }
   if (e.target.tagName === 'TEXTAREA') return;   // a terminal has the keyboard
   const doc = e.target.closest && e.target.closest('.docwrap');
@@ -1751,6 +1875,11 @@ document.addEventListener('keydown', e => {
   }
   if (e.target.tagName === 'INPUT') {
     if (e.key === 'Escape') { e.target.value = ''; e.target.blur(); sel = null; render(); }
+    if (e.key === 'Enter' && e.target.id === 'q') {     // to the first match, keys on the surface
+      const first = data && data.windows.find(visible());
+      e.target.blur();
+      if (first) { sel = first.id; render(); reveal(); }
+    }
     return;
   }
   const k = e.key;
@@ -1784,6 +1913,7 @@ document.addEventListener('keydown', e => {
   if (k === 'p') { e.preventDefault(); return askImage(); }
   if (k === 'g') { e.preventDefault(); return newGroup(); }
   if (k === '1') { e.preventDefault(); return actualSize(); }
+  if (k === '0') { e.preventDefault(); fitAll(); return render(); }
   if (k === 'z') { e.preventDefault(); return setLens(!lensOn); }
   if (k === 'Enter' || k === ' ') { const w = selected(); if (w) { e.preventDefault(); activate(w.id); } return; }
   const moves = { ArrowUp: [0, -1], k: [0, -1], ArrowDown: [0, 1], j: [0, 1],
