@@ -854,7 +854,7 @@ PAGE = r"""<!doctype html>
   #grid.on { display:block }
   /* small quiet triangles on the frame's edge, pointing at windows out of view */
   .edge { position:absolute; width:8px; height:8px; margin:-4px 0 0 -4px; pointer-events:none;
-          z-index:70; background:var(--dim); opacity:.4;
+          z-index:70; background:#e0453a; opacity:.75;
           clip-path:polygon(0 0, 100% 50%, 0 100%) }
   /* a window onto the surface at actual size, whatever the zoom: what is under
      the pointer, one virtual pixel to one screen pixel. It never takes a click */
