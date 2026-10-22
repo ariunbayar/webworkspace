@@ -931,6 +931,7 @@ PAGE = r"""<!doctype html>
       <tr><td>drag the background</td><td>pan, or slide two fingers</td></tr>
       <tr><td>one finger on a terminal</td><td>scroll it</td></tr>
       <tr><td>drag a corner</td><td>resize a terminal or a card</td></tr>
+      <tr><td>double-click a card</td><td>open its page</td></tr>
     </table></section>
     <section><h3>This page</h3><table>
       <tr><td><kbd>a</kbd></td><td>how it fits together</td></tr>
