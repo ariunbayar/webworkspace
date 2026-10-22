@@ -23,11 +23,18 @@
       <kbd>/</kbd> filter · <kbd>b</kbd> top bar · <kbd>t</kbd> terminal ·
       <kbd>g</kbd> group · <kbd>o</kbd> markdown · <kbd>p</kbd> picture · <kbd>1</kbd> 1:1 · <kbd>z</kbd> loupe ·
       <kbd>m</kbd> move · <kbd>r</kbd> resize (<kbd>hjkl</kbd> step, <kbd>Enter</kbd> done) ·
+      <kbd>Super+Enter</kbd> tile ·
       <kbd>a</kbd> architecture · <kbd>?</kbd> help · <kbd>Esc</kbd> clear ·
       <kbd>Ctrl+Space</kbd> leave a terminal</span>
   </div>
-  <div class="pan" id="pan"><div class="canvas" id="canvas"><div id="groups"></div><div id="tiles"></div><div id="mark"></div></div><div id="grid"></div><div id="edges"></div><div id="loupe"><div class="lens"></div></div></div>
+  <div class="pan" id="pan"><div class="canvas" id="canvas"><div id="groups"></div><div id="tiles"></div><div id="mark"></div></div><div id="grid"></div><div id="ghost"></div><div id="edges"></div><div id="loupe"><div class="lens"></div></div></div>
   <footer id="foot"></footer>
+</div>
+<div id="tiler" hidden>
+  <div class="thead"><span class="dot"></span><span class="tname"></span></div>
+  <div class="tcells"></div>
+  <div class="tsizes"></div>
+  <div class="thint"><kbd>←↑↓→</kbd> move · <kbd>Shift</kbd> size · <kbd>Space</kbd> grid · <kbd>Enter</kbd> place · <kbd>Esc</kbd> cancel</div>
 </div>
 <button id="tray" class="btn" title="Show or hide the top bar (b)">▾</button>
 <dialog id="linkbox">
@@ -68,6 +75,7 @@
       <tr><td><kbd>r</kbd></td><td>resize the picked terminal</td></tr>
       <tr><td><kbd>hjkl</kbd></td><td>step one grid cell, while moving or resizing</td></tr>
       <tr><td><kbd>Enter</kbd> <kbd>Esc</kbd></td><td>done moving or resizing</td></tr>
+      <tr><td><kbd>Super+Enter</kbd></td><td>tile the picked window (or the terminal you are typing in) on a grid over the view, as gTile does: <kbd>←↑↓→</kbd> move, <kbd>Shift</kbd>+arrows size, <kbd>Space</kbd> next grid, <kbd>Enter</kbd> place, or drag across the cells</td></tr>
     </table></section>
     <section><h3>Making</h3><table>
       <tr><td><kbd>t</kbd></td><td>new terminal</td></tr>

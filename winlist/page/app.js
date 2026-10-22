@@ -162,7 +162,9 @@ function actualSize() {
 $('#actual').onclick = actualSize;
 $('#reset').onclick = () => {
   layout = {};
+  scales = {};
   saveLayout();
+  store.set('scales', scales);
   render();
 };
 addEventListener('resize', render);
@@ -181,9 +183,9 @@ function forgetGone() {
     if (here.has(id) || (ptyDown && id.startsWith('web:'))) return missing.delete(id);
     const n = (missing.get(id) || 0) + 1;
     missing.set(id, n);
-    if (n >= 30) { delete layout[id]; missing.delete(id); changed = true; }
+    if (n >= 30) { delete layout[id]; delete scales[id]; missing.delete(id); changed = true; }
   });
-  if (changed) saveLayout();
+  if (changed) { saveLayout(); store.set('scales', scales); }
 }
 
 async function poll() {
@@ -194,6 +196,7 @@ async function poll() {
     // an error answer is no picture of the desktop: keep the last good one
     if (!r.ok || !Array.isArray(got.windows)) throw new Error(got.error || r.status);
     data = got;
+    data.windows.forEach(w => { if (scales[w.id]) { w.w *= scales[w.id]; w.h *= scales[w.id]; } });
     data.windows.push(...links.map(linkWin));
     // a link sent from outside becomes a card once; the server keeps offering it
     (data.links || []).forEach(l => {
@@ -957,6 +960,8 @@ function mount(w) {
       e.preventDefault();
       return false;
     }
+    // Super+Enter is the page's: it tiles this terminal, see tileKey
+    if (tileKey(e)) return false;
     if (e.key !== 'Enter' || !e.shiftKey || e.ctrlKey || e.altKey || e.metaKey) return true;
     if (e.type === 'keydown' && t.ws && t.ws.readyState === 1) t.ws.send(utf8.encode('\x1b\r'));
     e.preventDefault();
@@ -1658,11 +1663,209 @@ function nudge(dx, dy) {
     if (resizeTo(w, el, t, edge)) break;
   }
 }
+// ---- tiling: gTile's grid, laid over what is in view ----------------------
+// Super+Enter puts a grid over the frame — the part of the surface you are
+// looking at, the way gTile's is over the screen — and places the picked tile
+// in the cells you choose: arrows move the choice, Shift+arrows grow or shrink
+// it from its far edge, Enter puts the tile there. A terminal takes as many
+// characters as fit, a card takes the cells' size, and a photograph is scaled
+// to fit inside them, since stretching it would make it a different picture.
+const GRIDS = [[8, 6], [6, 4], [4, 4]];
+const GAP = 6;                             // screen px left clear around a placed tile
+let tiling = null;                         // {id, back, r: [col, row, cols, rows]}
+let gridAt = Math.min(GRIDS.length - 1, store.get('tilegrid', 0));
+let scales = store.get('scales', {});      // window id -> how much its photo is scaled
+const tiler = $('#tiler'), ghost = $('#ghost');
+
+// the cells a tile covers now; the middle of the grid when it is out of view
+function cellsOf(w) {
+  const [C, R] = GRIDS[gridAt], pan = $('#pan'), W = pan.clientWidth, H = pan.clientHeight;
+  const [x, y] = seatOf(w);
+  const l = origin[0] + x * zoom, t = origin[1] + y * zoom;
+  const r = l + w.w * zoom, b = t + w.h * zoom;
+  if (r <= 0 || b <= 0 || l >= W || t >= H) {
+    return [Math.floor(C / 4), Math.floor(R / 4), Math.ceil(C / 2), Math.ceil(R / 2)];
+  }
+  const c0 = Math.min(C - 1, Math.max(0, Math.round(l / W * C)));
+  const r0 = Math.min(R - 1, Math.max(0, Math.round(t / H * R)));
+  const c1 = Math.min(C, Math.max(c0 + 1, Math.round(r / W * C)));
+  const r1 = Math.min(R, Math.max(r0 + 1, Math.round(b / H * R)));
+  return [c0, r0, c1 - c0, r1 - r0];
+}
+
+// the cells, in screen px within the frame
+function cellBox([c, r, cs, rs]) {
+  const [C, R] = GRIDS[gridAt], pan = $('#pan');
+  const cw = pan.clientWidth / C, ch = pan.clientHeight / R;
+  return [c * cw + GAP / 2, r * ch + GAP / 2, cs * cw - GAP, rs * ch - GAP];
+}
+
+function drawTiler() {
+  const [C, R] = GRIDS[gridAt], [c, r, cs, rs] = tiling.r, pan = $('#pan');
+  const cells = tiler.querySelector('.tcells');
+  cells.style.gridTemplateColumns = `repeat(${C}, 1fr)`;
+  cells.style.setProperty('--ar', pan.clientWidth / Math.max(1, pan.clientHeight));
+  if (cells.children.length !== C * R) {
+    cells.replaceChildren(...Array.from({ length: C * R }, (_, i) => {
+      const d = document.createElement('div');
+      d.dataset.c = i % C;
+      d.dataset.r = Math.floor(i / C);
+      return d;
+    }));
+  }
+  [...cells.children].forEach(d => {
+    const x = +d.dataset.c, y = +d.dataset.r;
+    d.classList.toggle('on', x >= c && x < c + cs && y >= r && y < r + rs);
+  });
+  tiler.querySelectorAll('.tsizes button').forEach((b, i) => b.classList.toggle('on', i === gridAt));
+  const [x, y, w, h] = cellBox(tiling.r);
+  Object.assign(ghost.style, { left: x + 'px', top: y + 'px', width: w + 'px', height: h + 'px' });
+}
+
+function openTiler(id) {
+  const w = data && data.windows.find(v => v.id === id);
+  if (!w) return;
+  // typed into when asked: the keyboard comes back to it once the tile is placed
+  const back = document.activeElement && document.activeElement.closest('.termhost, .docwrap');
+  if (back) back.closest('.docwrap') ? back.blur() : terms.get(id.slice(4))?.term.blur();
+  sel = id;
+  tiling = { id, back: !!back, r: cellsOf(w) };
+  tiler.querySelector('.dot').style.background = colorOf(w.app);
+  tiler.querySelector('.tname').textContent = w.title || w.app;
+  tiler.hidden = false;
+  ghost.classList.add('on');
+  render();
+  drawTiler();
+}
+
+function closeTiler() {
+  const was = tiling;
+  tiling = null;
+  tiler.hidden = true;
+  ghost.classList.remove('on');
+  if (was && was.back) activate(was.id);
+}
+
+function nextGrid() {
+  // the choice keeps its place on the view, in the new grid's cells
+  const [C, R] = GRIDS[gridAt], [c, r, cs, rs] = tiling.r;
+  gridAt = (gridAt + 1) % GRIDS.length;
+  store.set('tilegrid', gridAt);
+  const [C2, R2] = GRIDS[gridAt];
+  const c0 = Math.min(C2 - 1, Math.round(c / C * C2)), r0 = Math.min(R2 - 1, Math.round(r / R * R2));
+  tiling.r = [c0, r0, Math.min(C2 - c0, Math.max(1, Math.round(cs / C * C2))),
+              Math.min(R2 - r0, Math.max(1, Math.round(rs / R * R2)))];
+  drawTiler();
+}
+
+function stepTiler(dx, dy, grow) {
+  const [C, R] = GRIDS[gridAt];
+  let [c, r, cs, rs] = tiling.r;
+  if (grow) {                      // the far edge moves, as gTile's Shift+arrows do
+    cs = Math.min(C - c, Math.max(1, cs + dx));
+    rs = Math.min(R - r, Math.max(1, rs + dy));
+  } else {
+    c = Math.min(C - cs, Math.max(0, c + dx));
+    r = Math.min(R - rs, Math.max(0, r + dy));
+  }
+  tiling.r = [c, r, cs, rs];
+  drawTiler();
+}
+
+function placeTile() {
+  const w = data.windows.find(v => v.id === tiling.id), el = w && tileEls.get(w.id);
+  if (!el) return closeTiler();
+  const [px, py, pw, ph] = cellBox(tiling.r);
+  const x = (px - origin[0]) / zoom, y = (py - origin[1]) / zoom, cw = pw / zoom, ch = ph / zoom;
+  const t = w.term && terms.get(w.term.session);
+  if (t) {
+    layout[w.id] = [x, y];
+    // as many characters as fit: half a character short, so resizeTo's
+    // rounding comes out under the cells rather than over them
+    if (t.cell && w.term.alive) {
+      resizeTo(w, el, t, [x + cw - t.cell[0] / 2, y + ch - t.cell[1] / 2]);
+      measure(t);
+    }
+  } else if (w.link) {
+    w.w = Math.max(90, cw);
+    w.h = Math.max(60, ch);
+    layout[w.id] = [x, y];
+    const l = links.find(v => 'link:' + v.id === w.id);
+    if (l) { l.w = w.w; l.h = w.h; store.set('links', links); }
+  } else {
+    // the window's own size, scaled to fit and centred in the cells
+    const s0 = scales[w.id] || 1, bw = w.w / s0, bh = w.h / s0;
+    const s = Math.min(cw / bw, ch / bh);
+    w.w = bw * s;
+    w.h = bh * s;
+    if (Math.abs(s - 1) < 0.001) delete scales[w.id]; else scales[w.id] = s;
+    store.set('scales', scales);
+    layout[w.id] = [x + (cw - w.w) / 2, y + (ch - w.h) / 2];
+  }
+  $('#tiles').append(el);            // placed is brought to the front, as a drag does
+  saveLayout();
+  closeTiler();
+  render();
+}
+
+GRIDS.forEach(([C, R], i) => {
+  const b = document.createElement('button');
+  b.textContent = `${C}x${R}`;
+  b.onclick = () => { if (!tiling) return; gridAt = (i + GRIDS.length - 1) % GRIDS.length; nextGrid(); };
+  tiler.querySelector('.tsizes').append(b);
+});
+// drag across the cells, as in gTile: the tile goes where you let go
+tiler.querySelector('.tcells').addEventListener('pointerdown', e => {
+  const d = e.target.closest('.tcells > div');
+  if (!d || !tiling || e.button) return;
+  e.preventDefault();
+  const at = d => [+d.dataset.c, +d.dataset.r], [c0, r0] = at(d);
+  const pick = d => {
+    if (!d || !d.dataset.c) return;
+    const [c1, r1] = at(d);
+    tiling.r = [Math.min(c0, c1), Math.min(r0, r1), Math.abs(c1 - c0) + 1, Math.abs(r1 - r0) + 1];
+    drawTiler();
+  };
+  pick(d);
+  const under = ev => document.elementFromPoint(ev.clientX, ev.clientY)?.closest('.tcells > div');
+  const off = follow(document, ev => pick(under(ev)), ev => {
+    off();
+    pick(under(ev));
+    if (tiling) placeTile();
+  });
+});
+addEventListener('resize', () => { if (tiling) drawTiler(); });
+// a click anywhere else lets the grid go, as gTile's does
+document.addEventListener('pointerdown', e => {
+  if (tiling && !e.target.closest('#tiler')) closeTiler();
+}, true);
+
+// the keys while the grid is up
+function tilerKey(e) {
+  if (e.ctrlKey || e.altKey) return;        // the browser's own, as ever
+  const k = e.key;
+  e.preventDefault();
+  e.stopPropagation();
+  if (k === 'Escape' || (k === 'Enter' && e.metaKey)) return closeTiler();
+  if (k === 'Enter') return placeTile();
+  if (k === ' ' || k === 'Tab') return nextGrid();
+  const step = { ArrowUp: [0, -1], k: [0, -1], ArrowDown: [0, 1], j: [0, 1],
+                 ArrowLeft: [-1, 0], h: [-1, 0], ArrowRight: [1, 0], l: [1, 0] }[k.length === 1 ? k.toLowerCase() : k];
+  if (step) stepTiler(...step, e.shiftKey);
+}
+const tileKey = e => e.key === 'Enter' && e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey;
+
 document.addEventListener('focusin', showMode);
 document.addEventListener('focusout', () => setTimeout(showMode));
 showMode();
 
 document.addEventListener('keydown', e => {
+  if (tiling) return tilerKey(e);
+  if (tileKey(e)) {                  // the tile you are in, or the one picked
+    const w = (e.target.closest && e.target.closest('.tile') || {}).win || selected();
+    e.preventDefault();
+    return w && !editing ? openTiler(w.id) : undefined;
+  }
   if (e.target.tagName === 'TEXTAREA') return;   // a terminal has the keyboard
   const doc = e.target.closest && e.target.closest('.docwrap');
   if (doc) {                         // a document has it: it scrolls, Esc leaves
