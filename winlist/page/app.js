@@ -850,6 +850,7 @@ function drag(e, w, el) {
       place(el, w);
     }
     if (moved && settle) {           // let go: its size settles on the grid too
+      track('drag', { kind: kindOf(w.id) });
       fitGrid(w, el);
       place(el, w);
     }
@@ -1799,3 +1800,85 @@ askGitHub();
 setInterval(askGitHub, 60000);
 readDocs();
 setInterval(readDocs, 2000);
+
+// ---- usage: what the page is used for, to tell whether a change helped ------
+// Names and counts only: which action, on what kind of tile, in which mode —
+// never a title, a URL, or anything typed into a terminal. Batched, and sent
+// when the page is let go of, to /api/usage; usage_report.py reads it back.
+const usage = [], session = newId();
+const kindOf = id => !id ? 'none' : id.startsWith('web:') ? 'term'
+  : id.startsWith('link:') ? 'card' : 'window';
+function track(ev, props) {
+  usage.push({ ev, t: Date.now(), s: session, ...props });
+  if (usage.length >= 200) sendUsage();
+}
+function sendUsage(leaving) {
+  if (!usage.length) return;
+  const body = JSON.stringify(usage.splice(0));
+  if (leaving && navigator.sendBeacon) navigator.sendBeacon('/api/usage', body);
+  else fetch('/api/usage', { method: 'POST', body, keepalive: true }).catch(() => {});
+}
+setInterval(sendUsage, 30000);
+addEventListener('pagehide', () => { track('close'); sendUsage(true); });
+track('open', { vw: innerWidth, vh: innerHeight, bare, zoom: Math.round(zoom * 100) });
+
+// the page's own keys, as the page has them: in a terminal or a box only the
+// few that belong to the page are counted, never what is typed
+document.addEventListener('keydown', e => {
+  const typing = e.target.tagName === 'TEXTAREA' || e.target.tagName === 'INPUT'
+    || !!(e.target.closest && e.target.closest('.docwrap'));
+  const mods = (e.ctrlKey ? 'C-' : '') + (e.altKey ? 'A-' : '') + (e.metaKey ? 'S-' : '')
+    + (e.shiftKey && e.key.length > 1 ? 's-' : '');
+  const page = tileKey(e) || (e.code === 'Space' && e.ctrlKey) || (e.code === 'KeyF' && e.ctrlKey && e.altKey);
+  if (typing && !page) return;
+  if (!typing && (e.ctrlKey || e.altKey) && !page) return;      // the browser's
+  if (['Shift', 'Control', 'Alt', 'Meta'].includes(e.key)) return;
+  track('key', { k: mods + (e.key === ' ' ? 'Space' : e.key), mode: editing || (typing ? 'insert' : 'normal') });
+}, true);
+
+// each of these is a thing done, counted where it is done, whichever way it came
+// (props may answer null: not one of yours, as the first fit is the page's own)
+const counted = (ev, f, props) => function (...a) {
+  const p = props ? props(...a) : {};
+  if (p) track(ev, p);
+  return f.apply(this, a);
+};
+activate = counted('activate', activate, id => ({ kind: kindOf(id) }));
+newTerm = counted('term.new', newTerm);
+closeTerm = counted('term.close', closeTerm);
+addCard = counted('card.add', addCard, f => ({ kind: f.image ? 'image' : f.path ? 'doc' : 'url' }));
+closeLink = counted('card.close', closeLink);
+newGroup = counted('group.new', newGroup);
+fitAll = counted('fit', fitAll, () => zoom ? {} : null);
+actualSize = counted('actual', actualSize);
+setLens = counted('lens', setLens, v => ({ on: !!v }));
+setBare = counted('bare', setBare, v => ({ on: !!v }));
+swapFace = counted('face', swapFace);
+const nudged = { n: 0, grow: 0, at: 0 };
+nudge = (f => function (dx, dy, grow) {      // counted into the tile.end it belongs to
+  nudged.n++;
+  if (grow) nudged.grow++;
+  return f.apply(this, arguments);
+})(nudge);
+startTile = counted('tile.start', startTile, w => {
+  Object.assign(nudged, { n: 0, grow: 0, at: Date.now() });
+  return { kind: kindOf(w.id), from: inInsert() ? 'insert' : 'normal' };
+});
+endEdit = counted('tile.end', endEdit, () => ({ steps: nudged.n, grow: nudged.grow,
+  ms: nudged.at ? Date.now() - nudged.at : 0 }));
+// a zoom is a gesture, not each wheel notch: counted once it comes to rest
+let zoomRest = 0;
+zoomAbout = (f => function (...a) {
+  clearTimeout(zoomRest);
+  zoomRest = setTimeout(() => track('zoom', { z: Math.round(zoom * 100) }), 800);
+  return f.apply(this, a);
+})(zoomAbout);
+let filterRest = 0;
+$('#q').addEventListener('input', () => {
+  clearTimeout(filterRest);
+  filterRest = setTimeout(() => track('filter', { len: $('#q').value.length }), 1000);
+});
+[[helpbox, 'help'], [archbox, 'arch']].forEach(([box, ev]) => new MutationObserver(() => {
+  if (box.open) track(ev);
+}).observe(box, { attributes: true, attributeFilter: ['open'] }));
+$('#reset').addEventListener('click', () => track('reset'));

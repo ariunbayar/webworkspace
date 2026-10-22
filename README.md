@@ -148,6 +148,13 @@ the screen, `--port N` to change the port.
 
 X11 only (uses `xprop`/`xdotool`, plus `xwd` and `convert` for the photos).
 
+What the page is used for is logged, so a change can be judged by whether it
+changed how it is used: action names, the kind of tile and the mode, one line
+each, in `~/.local/state/winlist/usage.jsonl` — never a title, a URL or
+anything typed. `python3 winlist/usage_report.py` reads it back per day;
+`--split YYYY-MM-DD` compares the rates before and from a date, `--days N`
+keeps to the last N days.
+
 Terminals
 ---
 

@@ -657,6 +657,40 @@ def _load_links():
 _links = _load_links()
 
 
+# What the page is used for, one line per thing done, so a change to it can be
+# judged by whether it changed how it is used. Names and counts only — never a
+# title, a URL or anything typed. `usage_report.py` reads it back.
+USAGE_FILE = os.path.join(os.path.dirname(LINKS_FILE), "usage.jsonl")
+USAGE_MAX = 20 * 1024 * 1024        # past this it stops growing rather than fill the disk
+_usage_lock = threading.Lock()
+
+
+def log_usage(events):
+    if not isinstance(events, list):
+        return 0
+    lines = []
+    for e in events[:500]:
+        if not isinstance(e, dict) or not isinstance(e.get("ev"), str) or len(e["ev"]) > 40:
+            continue
+        line = json.dumps({k: v for k, v in e.items()
+                           if isinstance(k, str) and isinstance(v, (str, int, float, bool))
+                           and len(str(v)) <= 60}, separators=(",", ":"))
+        if len(line) <= 400:
+            lines.append(line)
+    if not lines:
+        return 0
+    with _usage_lock:
+        try:
+            os.makedirs(os.path.dirname(USAGE_FILE), exist_ok=True)
+            if os.path.exists(USAGE_FILE) and os.path.getsize(USAGE_FILE) > USAGE_MAX:
+                return 0
+            with open(USAGE_FILE, "a") as f:
+                f.write("\n".join(lines) + "\n")
+        except OSError:
+            return 0
+    return len(lines)
+
+
 def fetch_title(url):
     """What the page calls itself, if it will say without a login: else None."""
     try:
@@ -988,6 +1022,13 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(json.dumps(made), code=201 if "id" in made else 400)
         if self.path.startswith("/api/focus"):
             return self.do_focus()
+        if self.path.startswith("/api/usage"):
+            try:
+                n = int(self.headers.get("Content-Length", 0))
+                body = json.loads(self.rfile.read(min(n, 256 * 1024)) or b"[]")
+            except (ValueError, json.JSONDecodeError):
+                return self._send(json.dumps({"error": "bad request"}), code=400)
+            return self._send(json.dumps({"kept": log_usage(body)}))
         if self.path.startswith("/api/links"):
             try:
                 n = int(self.headers.get("Content-Length", 0))
