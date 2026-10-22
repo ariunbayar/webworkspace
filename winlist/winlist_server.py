@@ -599,9 +599,22 @@ def sample():
 
 # Links sent from outside the page — a shell, an agent — wait here until a page
 # picks them up. Each has an id, so a page takes each one once; the last few are
-# kept for a page opened a moment later, and none survive a restart.
-_links = []
+# kept for a page opened later — on disk, so a restart does not lose one that
+# no page has picked up yet.
+LINKS_FILE = os.path.join(os.environ.get("XDG_STATE_HOME") or os.path.expanduser("~/.local/state"),
+                          "winlist", "links.json")
 _links_lock = threading.Lock()
+
+
+def _load_links():
+    try:
+        with open(LINKS_FILE) as f:
+            return [l for l in json.load(f) if isinstance(l, dict) and "id" in l][-20:]
+    except (OSError, ValueError):
+        return []
+
+
+_links = _load_links()
 
 
 def fetch_title(url):
@@ -654,6 +667,13 @@ def send_link(url, title=None):
         link = {"id": "%x" % time.time_ns(), "url": url, "title": title}
         _links.append(link)
         del _links[:-20]
+        try:
+            os.makedirs(os.path.dirname(LINKS_FILE), exist_ok=True)
+            with open(LINKS_FILE + ".tmp", "w") as f:
+                json.dump(_links, f)
+            os.replace(LINKS_FILE + ".tmp", LINKS_FILE)
+        except OSError:
+            pass                        # still sent, just not kept past a restart
     return link
 
 
@@ -865,6 +885,10 @@ PAGE = r"""<!doctype html>
   .archbody pre { margin:0; white-space:pre; font-size:11.5px; line-height:1;
                   font-family:"DejaVu Sans Mono","Liberation Mono","Noto Sans Mono",monospace }
   .archbody p { color:var(--dim); font-size:11px; margin:11px 0 0; max-width:64ch }
+  .linkform { display:flex; gap:8px; padding:12px; width:min(90vw,520px) }
+  .linkform input { flex:1; min-width:0; font:inherit; font-size:13px; padding:6px 9px;
+                    border:1px solid var(--line); border-radius:6px; background:var(--bg, var(--panel));
+                    color:var(--fg) }
   /* every key on one card, so the bar's short list is not the only record */
   .helpbody { columns:2 260px; column-gap:26px }
   .helpbody section { break-inside:avoid; margin:0 0 12px }
@@ -929,6 +953,12 @@ PAGE = r"""<!doctype html>
   <footer id="foot"></footer>
 </div>
 <button id="tray" class="btn" title="Show or hide the top bar (b)">▾</button>
+<dialog id="linkbox">
+  <form method="dialog" class="linkform">
+    <input id="linkurl" type="text" placeholder="Paste or type a URL" autocomplete="off" spellcheck="false">
+    <button class="btn" value="add">Add card</button>
+  </form>
+</dialog>
 <dialog id="helpbox">
   <div class="archhead">
     <h2>Keys</h2><span class="grow"></span>
@@ -952,7 +982,7 @@ PAGE = r"""<!doctype html>
     </table></section>
     <section><h3>Making</h3><table>
       <tr><td><kbd>t</kbd></td><td>new terminal</td></tr>
-      <tr><td><kbd>u</kbd></td><td>sample link card</td></tr>
+      <tr><td><kbd>u</kbd></td><td>link card: type or paste a URL</td></tr>
     </table></section>
     <section><h3>In a terminal</h3><table>
       <tr><td><kbd>Ctrl+Space</kbd></td><td>hand the keyboard back to the page</td></tr>
@@ -1066,6 +1096,28 @@ const showArch = () => { if (!archbox.open) archbox.showModal(); };
 $('#arch').onclick = showArch;
 $('#archclose').onclick = () => archbox.close();
 // the bar only has room for the common keys; ? lists them all
+// u asks for a URL; the server finds the page's title, as for one sent by curl
+const linkbox = $('#linkbox');
+function askLink() {
+  if (linkbox.open) return;
+  $('#linkurl').value = '';
+  linkbox.returnValue = '';          // else Esc would reuse the last Add
+  linkbox.showModal();
+  $('#linkurl').focus();
+}
+linkbox.addEventListener('close', async () => {
+  let url = $('#linkurl').value.trim();
+  if (linkbox.returnValue !== 'add' || !url) return;
+  if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
+  try {
+    const r = await fetch('/api/links', { method: 'POST', body: JSON.stringify({ url }) });
+    const l = await r.json();
+    if (!r.ok) return;
+    taken = [...taken, l.id].slice(-50);       // made here, so the poll leaves it be
+    store.set('taken', taken);
+    addLink(l.url, l.title);
+  } catch (e) {}
+});
 const helpbox = $('#helpbox');
 const showHelp = () => { if (!helpbox.open) helpbox.showModal(); };
 $('#helpclose').onclick = () => helpbox.close();
@@ -1101,6 +1153,24 @@ $('#reset').onclick = () => {
 addEventListener('resize', render);
 $('#q').addEventListener('input', () => { sel = null; render(); });
 
+// A window that has closed leaves its place behind in the layout. It is let go
+// once it has been missing for a minute of polls — not on the first, since a
+// window can blink out while it is being remapped — and a terminal's place is
+// kept while the terminal server is not answering, when they all look gone.
+const missing = new Map();        // window id -> polls it has been absent for
+function forgetGone() {
+  const here = new Set(data.windows.map(w => w.id));
+  const ptyDown = !data.pty || !data.pty.on || data.pty.error;
+  let changed = false;
+  Object.keys(layout).forEach(id => {
+    if (here.has(id) || (ptyDown && id.startsWith('web:'))) return missing.delete(id);
+    const n = (missing.get(id) || 0) + 1;
+    missing.set(id, n);
+    if (n >= 30) { delete layout[id]; missing.delete(id); changed = true; }
+  });
+  if (changed) store.set('layout', layout);
+}
+
 async function poll() {
   try {
     // asking for screens is what keeps the grabber awake
@@ -1114,6 +1184,7 @@ async function poll() {
       store.set('taken', taken);
       addLink(l.url, l.title);
     });
+    forgetGone();
     failures = 0;
     // restarted from its terminal: the page it served is the old one
     if (started !== null && data.started !== started) return location.reload();
@@ -2271,10 +2342,7 @@ document.addEventListener('keydown', e => {
   if (k === 'm' || k === 'r') { e.preventDefault(); return edit(k === 'm' ? 'move' : 'resize'); }
   if (k === 'b') { e.preventDefault(); return setBare(!bare); }
   if (k === 't') { e.preventDefault(); return void newTerm(); }
-  if (k === 'u') {                     // a sample card, until there is a way to give one a URL
-    e.preventDefault();
-    return addLink('https://github.com/ariunbayar/webworkspace', 'ariunbayar/webworkspace: a web workspace');
-  }
+  if (k === 'u') { e.preventDefault(); return askLink(); }
   if (k === '1') { e.preventDefault(); return actualSize(); }
   if (k === 'z') { e.preventDefault(); return setLens(!lensOn); }
   if (k === 'Enter' || k === ' ') { const w = selected(); if (w) { e.preventDefault(); activate(w.id); } return; }
