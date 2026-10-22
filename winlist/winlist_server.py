@@ -1629,6 +1629,20 @@ function grabLink(e, w, el) {
   el.addEventListener('pointercancel', done);
 }
 
+// A new tile that lands on another's corner hides it, and you cannot tell
+// anything opened: step it down and right, as a desktop does, until its corner
+// is clear. Only new tiles go through this, never ones that are already placed.
+function clearSpot([x, y], exceptId) {
+  const taken = () => data.windows.some(v => {
+    if (v.id === exceptId) return false;
+    const [a, b] = seatOf(v);
+    return Math.abs(a - x) < GRID && Math.abs(b - y) < GRID;
+  });
+  x = snap(x); y = snap(y);
+  for (let n = 0; n < 100 && taken(); n++) { x += 2 * GRID; y += 2 * GRID; }
+  return [x, y];
+}
+
 // A new terminal opens in the middle of whatever you are looking at, and the
 // view stays where it is: you zoomed in there to work there.
 async function newTerm() {
@@ -1648,12 +1662,17 @@ async function newTerm() {
     if (el) $('#tiles').append(el);
     render();
   };
-  if (!zoom) { hold(true); await poll(); return pickIt(); }
+  if (!zoom) {
+    hold(true); await poll();
+    const v = data.windows.find(v => v.id === 'web:' + made.id);
+    if (v) { layout[v.id] = clearSpot(seatOf(v), v.id); store.set('layout', layout); }
+    return pickIt();
+  }
   hold(false);                   // a refit now would carry the view off to it
   await poll();                  // its size is only known once it is listed
   const w = data.windows.find(v => v.id === 'web:' + made.id);
   if (!w) return;
-  layout[w.id] = [Math.round(at[0] - w.w / 2), Math.round(at[1] - w.h / 2)];
+  layout[w.id] = clearSpot([at[0] - w.w / 2, at[1] - w.h / 2], w.id);
   store.set('layout', layout);
   pickIt();
 }
