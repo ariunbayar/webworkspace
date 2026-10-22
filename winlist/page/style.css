@@ -235,7 +235,7 @@
   #toast.on { opacity:1; transition:none }
   #legend { bottom:14px; display:none }
   #legend.on { display:block }
-  #legend kbd, #toast kbd { color:#fff }
+  #legend kbd, #toast kbd { color:#fff; background:#3a3a3a; border-color:#555 }
   #nomatch { position:absolute; left:50%; top:40%; transform:translate(-50%,-50%); z-index:84;
              display:none; padding:10px 16px; border-radius:8px; background:var(--panel);
              border:1px solid var(--line); color:var(--dim); pointer-events:none }
