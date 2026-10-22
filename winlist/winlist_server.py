@@ -838,6 +838,7 @@ PAGE = r"""<!doctype html>
         border-radius:3px; padding:0 4px; background:var(--panel) }
 
   .dot { width:7px; height:7px; border-radius:2px; flex:none }
+  .cap .dot { width:9px; height:9px }
   .t2 { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:12px }
 
   /* the virtual screen: every window on one surface, arranged however you like */
@@ -866,9 +867,11 @@ PAGE = r"""<!doctype html>
      document you have gone into */
   .tile.link.sel:not(:focus-within) { outline-color:#9aa0a6 }
   .tile.off { opacity:.3 }
-  .cap { display:flex; align-items:center; gap:5px; padding:3px 6px; flex:none;
-         border-bottom:1px solid var(--line); background:var(--panel) }
-  .cap .t2 { font-size:11px }
+  /* a fixed height, so a tile's caption is something to aim a finger at and
+     the scaled part under it knows exactly how much room it has (CAP_H) */
+  .cap { display:flex; align-items:center; gap:7px; padding:0 9px; flex:none; height:28px;
+         box-sizing:border-box; border-bottom:1px solid var(--line); background:var(--panel) }
+  .cap .t2 { font-size:12.5px }
   .pic { position:relative; flex:1; min-height:0; background-repeat:no-repeat;
          background-origin:border-box }
   .pic.none { display:flex; align-items:center; justify-content:center; color:#fff;
@@ -894,10 +897,10 @@ PAGE = r"""<!doctype html>
   /* a session that has ended keeps its last words, and says so */
   .tile.gone { opacity:.62 }
   .cap .shut { flex:none; cursor:pointer; opacity:.55; padding:0 3px;
-               font-size:12px; line-height:1; border-radius:3px }
+               font-size:14px; line-height:1; border-radius:3px }
   .cap .shut:hover { opacity:1; background:var(--accent); color:#fff }
   .tile.gone .cap .note { color:var(--accent); opacity:1 }
-  .cap .note { flex:none; font-size:10px; opacity:.75 }
+  .cap .note { flex:none; font-size:11px; opacity:.75 }
   /* a corner to pull: a terminal and a link are the only tiles with a size of
      their own to change, since the rest are pictures of windows somebody else
      is sizing */
@@ -911,8 +914,8 @@ PAGE = r"""<!doctype html>
      whatever lies wholly inside goes with it */
   .group { position:absolute; border:1px dashed var(--dim); border-radius:8px;
            background:rgba(128,128,128,.07) }
-  .group .gcap { display:flex; align-items:center; gap:6px; padding:3px 8px; cursor:grab;
-                 font-size:11px; color:var(--dim); border-bottom:1px dashed var(--line);
+  .group .gcap { display:flex; align-items:center; gap:6px; padding:0 10px; height:28px;
+                 box-sizing:border-box; cursor:grab; font-size:12.5px; color:var(--dim); border-bottom:1px dashed var(--line);
                  touch-action:none; user-select:none }
   .group.dragging .gcap { cursor:grabbing }
   .group .gname { flex:1; min-width:0; white-space:nowrap; overflow:hidden;
@@ -1183,6 +1186,7 @@ let bare = store.get('bare', true);        // top bar folded away, the surface t
 let layout = store.get('layout', {});      // window id -> [x, y] on the virtual screen
 let zoom = store.get('zoom', 0);           // 0 until we have measured a fit
 let origin = store.get('origin', [0, 0]);  // where the surface sits in the frame
+const CAP_H = 28;                          // screen px: a tile's caption, as .cap sets it
 const GRID = 40;                           // virtual px: what moving and resizing snap to
 const GUTTER = 140;                        // virtual px between one workspace and the next
 
@@ -1697,7 +1701,7 @@ function linkWin(l) {
   return { id: 'link:' + l.id, link: l, title: l.title,
            app: l.image ? 'Image' : l.path ? 'Markdown' : new URL(l.url).host,
            w: l.w || (l.image ? 640 : l.path ? 720 : 320),
-           h: l.h || (l.image ? 480 : l.path ? 900 : 64),
+           h: l.h || (l.image ? 480 : l.path ? 900 : 76),
            x: 0, y: 0, z: 1e9, desktop: null };
 }
 
@@ -1794,7 +1798,7 @@ function imgCard(pic, w) {
     if (l.w || !img.naturalWidth) return;
     const k = Math.min(1, 960 / img.naturalWidth, 720 / img.naturalHeight);
     l.w = Math.max(GRID * 3, snap(img.naturalWidth * k));
-    l.h = Math.max(GRID * 2, snap(img.naturalHeight * k + 20));
+    l.h = Math.max(GRID * 2, snap(img.naturalHeight * k + CAP_H));
     store.set('links', links);
     w.w = l.w; w.h = l.h;
     render();
@@ -1842,7 +1846,7 @@ function addLink(url, title) {
   links.push({ id, url, title });
   store.set('links', links);
   layout['link:' + id] = clearSpot([(pan.clientWidth / 2 - origin[0]) / zoom - 160,
-                                    (pan.clientHeight / 2 - origin[1]) / zoom - 32], 'link:' + id);
+                                    (pan.clientHeight / 2 - origin[1]) / zoom - 38], 'link:' + id);
   store.set('layout', layout);
   // picked if the keyboard is the page's; a terminal you are typing in keeps it
   if (!document.body.classList.contains('insert')) sel = 'link:' + id;
@@ -1908,9 +1912,9 @@ function place(el, w) {
   el.style.width = Math.max(90, w.w * zoom) + 'px';
   el.style.height = Math.max(60, w.h * zoom) + 'px';
   const dw = w.link && w.link.path && el.querySelector('.docwrap');
-  if (dw) {                          // the caption, ~20px, stays at screen size
+  if (dw) {                          // the caption stays at screen size
     dw.style.width = w.w + 'px';
-    dw.style.height = Math.max(0, Math.max(60, w.h * zoom) - 20) / zoom + 'px';
+    dw.style.height = Math.max(0, Math.max(60, w.h * zoom) - CAP_H) / zoom + 'px';
     dw.style.transform = `scale(${zoom})`;
   }
 }
