@@ -6,7 +6,7 @@ const PALETTE = ["#2f7d8c","#a8642b","#7a5cd6","#3f7d3f","#94566f","#736b5e"];
 const colorOf = a => COLORS[a] || (COLORS[a] = PALETTE[[...String(a)].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7) % PALETTE.length]);
 const SHELL_NAMES = new Set(['bash', 'sh', 'zsh', 'fish', 'dash', 'tmux', 'screen']);
 const baseName = p => String(p).split(/[?#]/)[0].replace(/\/+$/, '').split('/').pop() || String(p);
-const shortPath = p => String(p || '').replace(/^\/home\/[^/]+/, '~').replace(/^(~?\/?)(?:[^/]+\/){2,}([^/]+\/[^/]+)$/, '$1…/$2');
+const shortPath = p => String(p || '').replace(/^\/home\/[^/]+/, '~').replace(/^(~\/|\/)(?:[^/]+\/){2,}([^/]+\/[^/]+)$/, '$1…/$2');
 const $ = s => document.querySelector(s);
 const esc = s => s.replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const utf8 = new TextEncoder();
