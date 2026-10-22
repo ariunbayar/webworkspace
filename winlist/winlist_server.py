@@ -290,6 +290,20 @@ ANSI = ["black", "red", "green", "yellow", "blue", "magenta", "cyan", "white",
 LOOK = {}          # read once at startup; nothing here changes while we run
 
 
+def web_face(face):
+    """The face to hand the browser for an X face.
+
+    A bitmap face like Cozette is drawn by Chrome only at its own pixel size
+    and never under a transform, and a terminal tile is always scaled with the
+    surface — so it comes out blank. Its outline twin (CozetteVector) scales,
+    so that is used instead when it is installed. Without fc-list, as given.
+    """
+    if not face or sh("fc-list", face + ":scalable=true", "family").strip():
+        return face
+    twin = face + "Vector"
+    return twin if sh("fc-list", twin + ":scalable=true", "family").strip() else face
+
+
 def xterm_look():
     """Read the default XTerm resources, as far as a browser can honour them."""
     lines = sh("xrdb", "-query").splitlines()
@@ -318,7 +332,7 @@ def xterm_look():
     if theme:
         look["theme"] = theme
     if res.get("facename"):
-        look["font"] = res["facename"]
+        look["font"] = web_face(res["facename"])
     for key, name, cast in (("facesize", "size", float), ("savelines", "scrollback", int)):
         try:
             look[name] = cast(res[key])
@@ -332,7 +346,7 @@ def xterm_look():
     # The faces a terminal can be switched between: the default first, named
     # after its own face, then each `font-*` profile under its own name
     if look.get("font"):
-        profiles = [{"name": look["font"].split()[0].lower(), "font": look["font"],
+        profiles = [{"name": res["facename"].split()[0].lower(), "font": look["font"],
                      "size": look.get("size")}]
         for name, r in sorted(named.items()):
             if not r.get("facename"):
@@ -341,7 +355,8 @@ def xterm_look():
                 size = px(float(r["facesize"]))
             except (KeyError, ValueError):
                 size = look.get("size")
-            profiles.append({"name": name.removeprefix("font-"), "font": r["facename"], "size": size})
+            profiles.append({"name": name.removeprefix("font-"), "font": web_face(r["facename"]),
+                             "size": size})
         if len(profiles) > 1:
             look["profiles"] = profiles
     if "cursorblink" in res:
