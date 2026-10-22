@@ -1332,11 +1332,11 @@ function members(g) {
 }
 
 function carryGroup(e, g, el) {
-  if (e.button) return;
+  if (e.button || pointers.size > 1) return;   // a second finger means pinch
   e.preventDefault();
   e.stopPropagation();                  // the caption is not the surface: no pan
   const sx = e.clientX, sy = e.clientY, gx = g.x, gy = g.y;
-  const riders = members(g).map(w => [w, seatOf(w)]);
+  const riders = members(g).map(w => [w, seatOf(w), layout[w.id]]);
   el.classList.add('dragging');
   el.setPointerCapture(e.pointerId);
   showGrid(true);
@@ -1350,23 +1350,29 @@ function carryGroup(e, g, el) {
       if (t) place(t, w);
     });
   };
-  const done = () => {
+  const done = undo => {
     el.removeEventListener('pointermove', move);
     el.removeEventListener('pointerup', done);
     el.removeEventListener('pointercancel', done);
     el.classList.remove('dragging');
     showGrid(false);
+    letGo = null;
+    if (undo === true) {             // a pinch began: the group and its windows go back
+      g.x = gx; g.y = gy;
+      riders.forEach(([w, , had]) => { if (had) layout[w.id] = had; else delete layout[w.id]; });
+    }
     saveGroups();
     store.set('layout', layout);
     render();
   };
+  letGo = () => done(true);
   el.addEventListener('pointermove', move);
   el.addEventListener('pointerup', done);
   el.addEventListener('pointercancel', done);
 }
 
 function sizeGroup(e, g, el) {
-  if (e.button) return;
+  if (e.button || pointers.size > 1) return;   // a second finger means pinch
   e.preventDefault();
   e.stopPropagation();
   const sx = e.clientX, sy = e.clientY, w0 = g.w, h0 = g.h;
@@ -1818,9 +1824,9 @@ const stepTo = (v, dir) => dir > 0 ? (Math.floor(v / GRID) + 1) * GRID
                                    : (Math.ceil(v / GRID) - 1) * GRID;
 
 function drag(e, w, el) {
-  if (e.button) return;
+  if (e.button || pointers.size > 1) return;   // a second finger means pinch
   e.preventDefault();
-  const from = seatOf(w), sx = e.clientX, sy = e.clientY;
+  const from = seatOf(w), had = layout[w.id], sx = e.clientX, sy = e.clientY;
   let moved = false;
   el.setPointerCapture(e.pointerId);
   const move = ev => {
@@ -1846,8 +1852,12 @@ function drag(e, w, el) {
     el.classList.remove('dragging');
     showGrid(false);
     letGo = null;
-    // a tile the pinch interrupted keeps the ground it covered, so what is on
-    // screen and what is remembered never disagree
+    // a tile the pinch interrupted goes back where it was: the first finger
+    // landing on it was the start of a zoom, not a move
+    if (moved && !settle) {
+      if (had) layout[w.id] = had; else delete layout[w.id];
+      place(el, w);
+    }
     if (moved) store.set('layout', layout);
     if (!settle) return;
     // a click on a terminal in NORMAL only picks it: Enter is what types into it
@@ -1859,7 +1869,7 @@ function drag(e, w, el) {
     try { el.releasePointerCapture(ev.pointerId); } catch (err) {}
     done(true);
   };
-  letGo = () => done(false);       // dropped where it stands if a pinch begins
+  letGo = () => done(false);       // put back if a pinch begins
   el.addEventListener('pointermove', move);
   el.addEventListener('pointerup', up);
   el.addEventListener('pointercancel', up);
@@ -2117,7 +2127,7 @@ function resizeTo(w, el, t, edge) {
 }
 
 function grab(e, w, el) {
-  if (e.button) return;
+  if (e.button || pointers.size > 1) return;   // a second finger means pinch
   e.preventDefault();
   e.stopPropagation();
   const t = terms.get(w.term.session);
@@ -2156,7 +2166,7 @@ function grab(e, w, el) {
 // A card is resized the same way, with no characters to count: the far corner
 // lands on the nearest grid line, and the size is kept with the link.
 function grabLink(e, w, el) {
-  if (e.button) return;
+  if (e.button || pointers.size > 1) return;   // a second finger means pinch
   e.preventDefault();
   e.stopPropagation();
   const sx = e.clientX, sy = e.clientY, w0 = w.w, h0 = w.h;
