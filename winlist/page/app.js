@@ -113,6 +113,7 @@ function askImage(msg) {
   if (imgbox.open) return;
   $('#imgsrc').value = '';
   $('#imgsrc').placeholder = msg || 'Path to an image, or an image URL';
+  if (msg) toast(esc(msg), 4000);     // a placeholder is faint, and gone at the first key
   imgbox.returnValue = '';
   imgbox.showModal();
   $('#imgsrc').focus();
@@ -151,6 +152,7 @@ function alertDoc(msg) {            // said where you were typing, not in a moda
   askDoc();
   $('#docpath').value = '';
   $('#docpath').placeholder = 'Could not open it: ' + (msg || 'unknown error');
+  toast('Could not open it: ' + esc(msg || 'unknown error'), 4000);
 }
 const helpbox = $('#helpbox');
 const showHelp = () => { if (!helpbox.open) helpbox.showModal(); };
@@ -820,7 +822,7 @@ function dress(pic, w) {
     pic.className = 'pic none';
     pic.style.cssText = `background:${colorOf(w.app)}`;
     pic.textContent = buried ? 'was behind another window'
-      : data.shots_on ? 'not photographed yet' : '';
+      : data.shots_on ? `not photographed yet — visit workspace ${w.desktop + 1} to fill it in` : '';
     return;
   }
   pic.className = 'pic';
