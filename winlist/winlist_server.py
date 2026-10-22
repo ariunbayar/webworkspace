@@ -32,6 +32,7 @@ import threading
 import time
 import tty
 import urllib.error
+import urllib.parse
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -617,6 +618,34 @@ def fetch_title(url):
     return html.unescape(" ".join(m.group(1).split()))[:200] if m else None
 
 
+# A GitHub issue or PR card says whether it is still open, so a finished one
+# can be thrown away. gh does the asking, so private repos answer too; each
+# answer is kept a minute, which is as often as the page asks.
+_gh = {}
+
+
+def gh_state(url):
+    m = re.match(r"https://github\.com/([^/]+)/([^/]+)/(pull|issues)/(\d+)", url or "")
+    if not m:
+        return None
+    hit = _gh.get(url)
+    if hit and time.time() - hit[0] < 60:
+        return hit[1]
+    owner, repo, _, n = m.groups()
+    try:
+        out = subprocess.run(
+            ["gh", "api", "repos/%s/%s/issues/%s" % (owner, repo, n),
+             "--jq", "[.state, .state_reason, .pull_request != null, .pull_request.merged_at]"],
+            capture_output=True, text=True, timeout=8)
+        st, reason, pr, merged = json.loads(out.stdout)
+        state = ("merged" if merged else "not planned" if reason == "not_planned" else st)
+        answer = {"state": state, "pr": pr}
+    except (OSError, subprocess.TimeoutExpired, ValueError, TypeError):
+        answer = None
+    _gh[url] = (time.time(), answer)
+    return answer
+
+
 def send_link(url, title=None):
     if not re.match(r"https?://[^/\s]+", url or ""):
         return None
@@ -806,6 +835,9 @@ PAGE = r"""<!doctype html>
   .card .ttl { display:flex; align-items:center; gap:7px; font-size:13px; color:var(--fg);
                white-space:nowrap; overflow:hidden; text-overflow:ellipsis }
   .card .ttl img { width:16px; height:16px; flex:none }
+  /* GitHub's own colours for where an issue or PR stands */
+  .card .gh { display:inline-block; padding:0 6px; margin-right:6px; border-radius:8px;
+              color:#fff; font-size:10px; line-height:15px; vertical-align:1px }
   .card .url { font-size:11px; color:var(--dim); white-space:nowrap; overflow:hidden;
                text-overflow:ellipsis }
   .termsize { position:absolute; right:6px; bottom:6px; padding:1px 5px; border-radius:3px;
@@ -1293,6 +1325,24 @@ function linkWin(l) {
            w: l.w || 320, h: l.h || 64, x: 0, y: 0, z: 1e9, desktop: null };
 }
 
+// a closed issue was finished, so it is purple; a closed PR was given up, so red
+const ghColor = gh => ({ open: '#1f883d', merged: '#8250df', 'not planned': '#59636e',
+                         closed: gh.pr ? '#cf222e' : '#8250df' })[gh.state] || '#59636e';
+const ghStates = new Map();        // card url -> {state, pr}, asked of the server
+const ghOf = w => ghStates.get(w.link.url);
+
+async function askGitHub() {
+  for (const l of links) {
+    if (!/^https:\/\/github\.com\/[^/]+\/[^/]+\/(pull|issues)\/\d+/.test(l.url)) continue;
+    try {
+      const r = await fetch('/api/ghstate?url=' + encodeURIComponent(l.url));
+      const st = await r.json();
+      if (st) ghStates.set(l.url, st);
+    } catch (e) {}
+  }
+  render();
+}
+
 function card(pic, w) {
   const u = new URL(w.link.url);
   pic.className = 'pic card';
@@ -1303,6 +1353,14 @@ function card(pic, w) {
   img.src = u.origin + '/favicon.ico';
   pic.querySelector('.ttl span').textContent = w.title;
   pic.querySelector('.url').textContent = u.host + u.pathname;
+  const gh = ghOf(w);
+  if (gh) {
+    const b = document.createElement('span');
+    b.className = 'gh';
+    b.textContent = gh.state;
+    b.style.background = ghColor(gh);
+    pic.querySelector('.url').prepend(b);
+  }
 }
 
 // dropped in the middle of what you are looking at, so you see it arrive
@@ -1847,10 +1905,12 @@ function renderCanvas(match, q) {
       el.querySelector('.t2').textContent = w.title;
       if (w.link) {
         el.title = w.link.url;
+        const gh = ghOf(w), key = w.link.url + (gh ? ' ' + gh.state : '');
+        if (gh) el.querySelector('.dot').style.background = ghColor(gh);
         const pic = el.children[1];          // the grip comes after it
-        if (pic.dataset.url !== w.link.url) {
+        if (pic.dataset.key !== key) {
           card(pic, w);
-          pic.dataset.url = w.link.url;
+          pic.dataset.key = key;
         }
       } else dress(el.lastElementChild, w);
     }
@@ -1906,7 +1966,11 @@ function syncLens() {
       + (w.term ? ';background:#12110d' : '') + (match(w) ? '' : ';opacity:.3');
     el.win = w;
     if (w.term) return;
-    if (w.link) { if (!el.key) { el.key = 'link'; card(el.firstChild, w); } return; }
+    if (w.link) {
+      const gh = ghOf(w), key = w.link.url + (gh ? ' ' + gh.state : '');
+      if (el.key !== key) { el.key = key; card(el.firstChild, w); }
+      return;
+    }
     // a photograph only needs cutting again when the cut changes
     const key = shotUrl(w.desktop) + JSON.stringify([w.crop, w.over, w.seen, w.w, w.h]);
     if (el.key !== key) { el.key = key; dress(el.firstChild, w); }
@@ -2224,6 +2288,8 @@ setLens(lensOn);
 render();
 poll();
 setInterval(poll, 2000);
+askGitHub();
+setInterval(askGitHub, 60000);
 </script>
 """
 
@@ -2288,6 +2354,9 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(json.dumps({"error": "no photo of that workspace yet"}), code=404)
             # the url carries the capture time, so a given one never changes
             self._send(data, "image/jpeg", cache="private, max-age=300")
+        elif self.path.startswith("/api/ghstate?"):
+            q = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
+            self._send(json.dumps(gh_state(q.get("url", [""])[0])))
         elif self.path in ("/", "/index.html"):
             port = self.server.server_address[1]
             page = (PAGE.replace("__TITLE__", page_title(port))
