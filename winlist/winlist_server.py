@@ -947,7 +947,6 @@ PAGE = r"""<!doctype html>
     <input type="search" id="q" placeholder="Filter title or app…">
     <span class="ctl" id="ctl">
       <input type="range" id="zoom" min="2" max="100" step="1" title="Zoom">
-      <button id="fit" class="btn">Fit</button>
       <button id="actual" class="btn" title="Actual size: terminals at their own pixels, sharpest text (1)">1:1</button>
       <button id="lens" class="btn" aria-pressed="false" title="Show what is under the pointer at actual size (z)">Loupe</button>
       <button id="reset" class="btn">Reset layout</button>
@@ -1083,7 +1082,6 @@ let bare = store.get('bare', true);        // top bar folded away, the surface t
 let layout = store.get('layout', {});      // window id -> [x, y] on the virtual screen
 let zoom = store.get('zoom', 0);           // 0 until we have measured a fit
 let origin = store.get('origin', [0, 0]);  // where the surface sits in the frame
-let fitting = store.get('fitting', true);  // keep fitting until you take the wheel
 const GRID = 40;                           // virtual px: what moving and resizing snap to
 const GUTTER = 140;                        // virtual px between one workspace and the next
 
@@ -1140,7 +1138,6 @@ $('#helpclose').onclick = () => helpbox.close();
 $('#zoom').addEventListener('input', () => {
   setZoom(MAX_ZOOM * Math.pow($('#zoom').value / 100, 2));
 });
-$('#fit').onclick = () => { hold(true); fitAll(); render(); };
 // 1:1 is the one zoom where a terminal is not scaled at all, so its text lands
 // on whole pixels; held about the picked tile, or the middle with none picked
 function actualSize() {
@@ -1159,11 +1156,8 @@ $('#actual').onclick = actualSize;
 $('#reset').onclick = () => {
   layout = {};
   store.set('layout', layout);
-  hold(true);
   render();
 };
-// the canvas keeps fitting the window — through a resize, through going
-// the top bar in or out — until you either work the slider or start arranging tiles
 addEventListener('resize', render);
 $('#q').addEventListener('input', () => { sel = null; render(); });
 
@@ -1285,7 +1279,6 @@ function carryGroup(e, g, el) {
     showGrid(false);
     saveGroups();
     store.set('layout', layout);
-    hold(false);
     render();
   };
   el.addEventListener('pointermove', move);
@@ -1457,11 +1450,6 @@ function bounds() {
   return isFinite(x0) ? [x0, y0, x1, y1] : [0, 0, 1, 1];
 }
 
-function hold(auto) {
-  fitting = auto;
-  store.set('fitting', auto);
-}
-
 const clamp = z => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, z));
 
 function shift(dx, dy) {          // slide the whole surface, no edges to run into
@@ -1525,7 +1513,6 @@ function zoomAbout(next, cx, cy) {
   zoom = next;
   store.set('zoom', zoom);
   store.set('origin', origin);
-  hold(false);
   render();
 }
 
@@ -1712,7 +1699,7 @@ function drag(e, w, el) {
     letGo = null;
     // a tile the pinch interrupted keeps the ground it covered, so what is on
     // screen and what is remembered never disagree
-    if (moved) { store.set('layout', layout); hold(false); }
+    if (moved) store.set('layout', layout);
     if (!settle) return;
     // a click on a terminal in NORMAL only picks it: Enter is what types into it
     const typing = document.body.classList.contains('insert');
@@ -2010,7 +1997,6 @@ function grab(e, w, el) {
     tag.remove();
     showGrid(false);
     measure(t);                      // what it settled at, measured not assumed
-    hold(false);
     poll();
   };
   el.addEventListener('pointermove', move);
@@ -2082,12 +2068,11 @@ async function newTerm() {
     render();
   };
   if (!zoom) {
-    hold(true); await poll();
+    await poll();
     const v = data.windows.find(v => v.id === 'web:' + made.id);
     if (v) { layout[v.id] = clearSpot(seatOf(v), v.id); store.set('layout', layout); }
     return pickIt();
   }
-  hold(false);                   // a refit now would carry the view off to it
   await poll();                  // its size is only known once it is listed
   const w = data.windows.find(v => v.id === 'web:' + made.id);
   if (!w) return;
@@ -2105,7 +2090,7 @@ async function closeTerm(id) {
 }
 
 function renderCanvas(match, q) {
-  if (fitting || !zoom) fitAll();
+  if (!zoom) fitAll();                 // the first time only: after that the view is yours
   $('#zoom').value = Math.round(Math.sqrt(zoom / MAX_ZOOM) * 100);
   $('#canvas').style.transform = `translate(${origin[0]}px,${origin[1]}px)`;
   markEdges();
@@ -2332,7 +2317,6 @@ $('#pan').addEventListener('pointerdown', e => {
     removeEventListener('pointermove', move);
     removeEventListener('pointerup', done);
     removeEventListener('pointercancel', done);
-    hold(false);                 // you have said where you want to be looking
     letGo = null;
   };
   letGo = done;
@@ -2416,7 +2400,6 @@ function reveal() {
   origin = [pan.clientWidth / 2 - (x + w.w / 2) * zoom,
             pan.clientHeight / 2 - (y + w.h / 2) * zoom];
   store.set('origin', origin);
-  hold(false);
   $('#canvas').style.transform = `translate(${origin[0]}px,${origin[1]}px)`;
   markEdges();
 }
@@ -2473,7 +2456,6 @@ function endEdit() {
   editing = null;
   showGrid(false);
   store.set('layout', layout);
-  hold(false);
   showMode();
   poll();
 }
