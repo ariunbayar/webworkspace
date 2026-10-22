@@ -134,6 +134,14 @@ leaves the full window).
 `m` moves the picked window and `r` resizes it (terminals only): `hjkl` or the
 arrows step one grid cell, `Enter` or `Esc` finishes. The grid shows only while
 moving or resizing, and dragging with the mouse snaps to it too.
+**Super+Enter** tiles the picked window the way gTile does, on the surface
+rather than the desktop: a grid is laid over what is in view, the arrow keys
+(or `hjkl`) move the choice of cells, Shift with them grows or shrinks it from
+its far edge, Space steps through 8x6, 6x4 and 4x4, and Enter puts the tile
+there — or drag across the little grid with the mouse. A terminal takes as many
+characters as fit, a card takes the cells' size, and a photo is scaled to fit
+inside them. Typing in a terminal, Super+Enter tiles that one and hands the
+keyboard back after. Esc, or Super+Enter again, leaves it as it was.
 In NORMAL mode the mouse only moves and resizes: it never reaches a terminal (no
 selecting, clicks or wheel-scrolling), and a click only picks it. `Enter` types into it.
 Run in a terminal, press `r` there to restart the server (instead of Ctrl-C and running
