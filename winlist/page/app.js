@@ -882,8 +882,8 @@ const SYMBOLS = ',"PowerlineSymbols","Symbols Nerd Font",ui-monospace,monospace'
 const termFont = (face = look().font) => (face ? `"${face}",` : '') + FALLBACK_FONT + SYMBOLS;
 // the faces in ~/.Xresources a terminal can switch between, default first
 const profiles = () => look().profiles || [];
-// the face each terminal was switched to, by name, so a reload or a restart of
-// either server puts it back; the session outlives the page, and so does this
+// the face each terminal was switched to, by name, so a reload of the page or
+// a restart of this server puts it back: the session outlives both, in pty_server
 const faces = store.get('faces', {});   // session id -> profile name
 const FALLBACK_THEME = { background: '#12110d', foreground: '#e9e7df', cursor: '#e0875c',
   black: '#2a2820', red: '#d76b5a', green: '#7fa84f', yellow: '#d0a33c',
