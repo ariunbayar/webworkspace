@@ -2462,10 +2462,19 @@ function carries(e) {
   return !tile.classList.contains('term') && tile !== document.activeElement.closest('.tile');
 }
 
-// a press would take the keyboard away from the terminal, so it is not let
-$('#pan').addEventListener('mousedown', e => {
-  if (document.body.classList.contains('insert') && carries(e)) e.preventDefault();
-});
+// A press anywhere but the window you are typing into lets go of the keyboard,
+// back to NORMAL, and then counts as a NORMAL press: the background pans, a
+// window is picked or dragged. Its mousedown is held back, so a terminal you
+// pressed on cannot take the keyboard straight back.
+$('#pan').addEventListener('pointerdown', e => {
+  if (!document.body.classList.contains('insert')) return;
+  const tile = e.target.closest('.tile');
+  const here = document.activeElement || document.body;
+  if (tile && tile === here.closest('.tile')) return;
+  e.preventDefault();
+  here.blur();
+  showMode();                        // now, not after focusout's tick: the tile's
+}, true);                            // own handler below has to see NORMAL
 
 $('#pan').addEventListener('pointerdown', e => {
   if (!carries(e) || pointers.size > 1) return;   // one finger drags, two pinch
