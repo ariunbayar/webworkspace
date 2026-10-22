@@ -32,6 +32,14 @@ let layout = store.get('layout', {});      // window id -> [x, y] on the virtual
 let zoom = store.get('zoom', 0);           // 0 until we have measured a fit
 let origin = store.get('origin', [0, 0]);  // where the surface sits in the frame
 const saveLayout = () => store.set('layout', layout);
+let toastTimer = 0;
+function toast(html, ms = 2600) {
+  const t = $('#toast');
+  t.innerHTML = html;
+  t.classList.add('on');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('on'), ms);
+}
 
 // A drag's three listeners, put on together; what comes back takes them off.
 function follow(target, move, end) {
@@ -167,7 +175,19 @@ function actualSize() {
         Math.round(box.top + origin[1]) - box.top - origin[1]);
 }
 $('#actual').onclick = actualSize;
+$('#fit').onclick = () => { fitAll(); render(); };
+// the whole arrangement goes, so it asks once more: a second click within 3s
+let resetArmed = 0;
 $('#reset').onclick = () => {
+  const b = $('#reset');
+  if (!resetArmed) {
+    b.textContent = 'Click again to reset';
+    resetArmed = setTimeout(() => { resetArmed = 0; b.textContent = 'Reset layout'; }, 3000);
+    return;
+  }
+  clearTimeout(resetArmed);
+  resetArmed = 0;
+  b.textContent = 'Reset layout';
   layout = {};
   scales = {};
   saveLayout();
@@ -220,9 +240,18 @@ async function poll() {
   render();
 }
 
+// every word has to be somewhere in what the tile is: its title, app, the
+// program and folder of a terminal, a card's address, its workspace as ws2
+function haystack(w) {
+  const t = w.term && terms.get(w.term.session);
+  return [w.title, w.app, w.cls, t && t.title, w.term && w.term.running, w.term && w.term.cwd,
+          w.link && (w.link.url || w.link.path || w.link.image),
+          w.desktop !== null && w.desktop !== undefined ? 'ws' + (w.desktop + 1) : ''
+         ].filter(Boolean).join(' ').toLowerCase();
+}
 function visible() {
-  const q = $('#q').value.trim().toLowerCase();
-  return w => !q || (w.title + " " + w.app).toLowerCase().includes(q);
+  const words = $('#q').value.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  return w => !words.length || words.every(q => haystack(w).includes(q));
 }
 
 function onWorkspace(i) { return data.windows.filter(w => w.desktop === i); }
@@ -402,9 +431,17 @@ function status(match, q) {
   const hits = data.windows.filter(w => !w.link && match(w));
   const ours = data.windows.filter(w => w.term).length;
   const desks = new Set(data.windows.filter(w => !w.term).map(w => w.desktop)).size;
+  const shown = data.windows.filter(match).length;
+  $('#nomatch').classList.toggle('on', !!q && !shown);
+  if (q && !shown) $('#nomatch').innerHTML = `Nothing matches “${esc(q)}” — <kbd>Esc</kbd> clears`;
   $('#stat').textContent = `${hits.length - ours}${q ? " of " + (data.windows.length - links.length - ours) : ""} windows · `
     + (ours ? `${ours} terminal${ours > 1 ? 's' : ''} of our own · ` : '')
     + `${data.grid.cols}×${data.grid.rows} workspaces · ${desks} in use`;
+  // said over the surface, where it is seen, not only in the bar that is folded away
+  const trouble = failures >= 2 ? `Lost the server — retrying. Is it running? <code>python3 winlist/winlist_server.py</code>`
+    : data.error ? esc(data.error) : '';
+  $('#banner').innerHTML = trouble;
+  $('#banner').classList.toggle('on', !!trouble);
   $('#ts').innerHTML = failures ? `<span class="stale">disconnected — retrying</span>`
     : `updated ${data.captured}`;
   $('#foot').innerHTML = `Every window on one surface, seeded from where it `
@@ -1296,6 +1333,7 @@ async function closeTerm(id) {
 function renderCanvas(match) {
   if (!zoom) fitAll();                 // the first time only: after that the view is yours
   $('#zoom').value = Math.round(Math.sqrt(zoom / MAX_ZOOM) * 100);
+  $('#zpct').textContent = Math.round(zoom * 100) + '%';
   $('#canvas').style.transform = `translate(${origin[0]}px,${origin[1]}px)`;
   markEdges();
 
@@ -1622,8 +1660,13 @@ async function activate(id) {
     if (t) t.term.focus();
     return;
   }
-  try { await fetch('/api/focus', { method: 'POST', body: JSON.stringify({ id }) }); }
-  catch {}
+  try {
+    const r = await fetch('/api/focus', { method: 'POST', body: JSON.stringify({ id }) });
+    const a = await r.json();
+    const w = data.windows.find(x => x.id === id);
+    if (!a.ok) toast(`Could not focus it: ${esc(a.msg || a.error || String(r.status))}`);
+    else if (w && w.desktop !== data.current) toast(`Switched to workspace ${w.desktop + 1}`, 1500);
+  } catch { toast('Could not reach the server to focus it'); }
   poll();
 }
 
@@ -1638,7 +1681,11 @@ function reveal() {
   const w = data.windows.find(x => x.id === sel);
   const pan = $('#pan');
   if (!w || !pan.clientWidth) return;
-  const [x, y] = seatOf(w);                       // bring the pick to the middle
+  const [x, y] = seatOf(w);
+  // already in view: leave the view alone, it is where you put it
+  const l = origin[0] + x * zoom, t = origin[1] + y * zoom;
+  if (l >= 0 && t >= 0 && l + w.w * zoom <= pan.clientWidth && t + w.h * zoom <= pan.clientHeight) return;
+  // otherwise bring the pick to the middle
   origin = [pan.clientWidth / 2 - (x + w.w / 2) * zoom,
             pan.clientHeight / 2 - (y + w.h / 2) * zoom];
   store.set('origin', origin);
@@ -1651,7 +1698,8 @@ function move(dx, dy) {
   const pick = data.windows.filter(match);
   if (!pick.length) return;
   const cur = selected();
-  if (!cur) { sel = pick[0].id; return (render(), reveal()); }
+  // the first pick is the window you were last in, if it is one of these
+  if (!cur) { sel = (pick.find(w => w.focused) || pick[0]).id; return (render(), reveal()); }
 
   if (dy && !dx) {                       // within a workspace, then on to the next one
     const here = ordered(cur.desktop).filter(match);
@@ -1681,6 +1729,11 @@ function showMode() {
   document.body.classList.toggle('insert', typing);
   $('#mode').classList.toggle('grid', !!editing);
   document.body.classList.toggle('tiling', editing === 'tile');
+  // the keys of the mode you are in, on screen while you are in it
+  const legend = editing ? '<kbd>←↑↓→</kbd> move a cell · <kbd>Shift</kbd>+arrows size · <kbd>Enter</kbd> / <kbd>Esc</kbd> done'
+    : typing ? '<kbd>Ctrl+Space</kbd> back to the surface · <kbd>Super+Enter</kbd> move/size this one' : '';
+  $('#legend').innerHTML = legend;
+  $('#legend').classList.toggle('on', !!legend);
 }
 
 // Moving and sizing from the keyboard is a mode of its own inside NORMAL,
@@ -1788,7 +1841,9 @@ document.addEventListener('keydown', e => {
     const w = (e.target.closest && e.target.closest('.tile') || {}).win || selected();
     e.preventDefault();
     if (editing) return endEdit();
-    return w ? startTile(w) : undefined;
+    const v = w || data && data.windows.find(x => x.focused && visible()(x));
+    if (v) return startTile(v);
+    return toast('Pick a window first: <kbd>↑↓←→</kbd>, then <kbd>Super+Enter</kbd>');
   }
   if (e.target.tagName === 'TEXTAREA') return;   // a terminal has the keyboard
   const doc = e.target.closest && e.target.closest('.docwrap');
@@ -1800,6 +1855,11 @@ document.addEventListener('keydown', e => {
   }
   if (e.target.tagName === 'INPUT') {
     if (e.key === 'Escape') { e.target.value = ''; e.target.blur(); sel = null; render(); }
+    if (e.key === 'Enter' && e.target.id === 'q') {     // to the first match, keys on the surface
+      const first = data && data.windows.find(visible());
+      e.target.blur();
+      if (first) { sel = first.id; render(); reveal(); }
+    }
     return;
   }
   const k = e.key;
@@ -1833,6 +1893,7 @@ document.addEventListener('keydown', e => {
   if (k === 'p') { e.preventDefault(); return askImage(); }
   if (k === 'g') { e.preventDefault(); return newGroup(); }
   if (k === '1') { e.preventDefault(); return actualSize(); }
+  if (k === '0') { e.preventDefault(); fitAll(); return render(); }
   if (k === 'z') { e.preventDefault(); return setLens(!lensOn); }
   if (k === 'Enter' || k === ' ') { const w = selected(); if (w) { e.preventDefault(); activate(w.id); } return; }
   const moves = { ArrowUp: [0, -1], k: [0, -1], ArrowDown: [0, 1], j: [0, 1],

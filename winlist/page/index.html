@@ -9,24 +9,23 @@
   <h1>Open windows</h1>
   <div class="sub"><b id="stat">loading…</b> · <span id="ts"></span></div>
   <div class="bar">
-    <input type="search" id="q" placeholder="Filter title or app…">
+    <input type="search" id="q" placeholder="Filter: title, app, program, folder, ws2 … ( / )">
     <span class="ctl" id="ctl">
-      <input type="range" id="zoom" min="2" max="100" step="1" title="Zoom">
+      <input type="range" id="zoom" min="2" max="100" step="1" title="Zoom"><span id="zpct" title="Zoom; 0 fits everything in view"></span>
+      <button id="fit" class="btn" title="Fit everything in view (0)">Fit</button>
       <button id="actual" class="btn" title="Actual size: terminals at their own pixels, sharpest text (1)">1:1</button>
       <button id="lens" class="btn" aria-pressed="false" title="Show what is under the pointer at actual size (z)">Loupe</button>
-      <button id="reset" class="btn">Reset layout</button>
+      <button id="reset" class="btn" title="Put every tile back where the desktop has it (asks once more)">Reset layout</button>
       <button id="newterm" class="btn" title="Start a terminal on this surface (t)">New terminal</button>
       <button id="arch" class="btn" title="How this fits together (a)">Architecture</button>
     </span>
-    <span class="mode" id="mode"></span>
-    <span class="keys"><kbd>↑↓←→</kbd>/<kbd>hjkl</kbd> pick · <kbd>Enter</kbd> focus ·
-      <kbd>/</kbd> filter · <kbd>b</kbd> top bar · <kbd>t</kbd> terminal ·
-      <kbd>g</kbd> group · <kbd>o</kbd> markdown · <kbd>p</kbd> picture · <kbd>1</kbd> 1:1 · <kbd>z</kbd> loupe ·
-      <kbd>Super+Enter</kbd> move/size (<kbd>hjkl</kbd> step, <kbd>Shift</kbd> size, <kbd>Enter</kbd> done) ·
-      <kbd>a</kbd> architecture · <kbd>?</kbd> help · <kbd>Esc</kbd> clear ·
-      <kbd>Ctrl+Space</kbd> leave a terminal</span>
+    <span class="mode" id="mode" title="NORMAL: keys move about the surface · INSERT: typing into a terminal or document · TILE: moving and sizing (Super+Enter)"></span>
+    <span class="keys"><kbd>↑↓←→</kbd> pick · <kbd>Enter</kbd> focus · <kbd>/</kbd> filter ·
+      <kbd>Super+Enter</kbd> move/size · <kbd>t</kbd> terminal · <kbd>0</kbd> fit ·
+      <kbd>Ctrl+Space</kbd> leave a terminal · <kbd>?</kbd> all keys</span>
   </div>
-  <div class="pan" id="pan"><div class="canvas" id="canvas"><div id="groups"></div><div id="tiles"></div><div id="mark"></div></div><div id="grid"></div><div id="edges"></div><div id="loupe"><div class="lens"></div></div></div>
+  <div class="pan" id="pan"><div class="canvas" id="canvas"><div id="groups"></div><div id="tiles"></div><div id="mark"></div></div><div id="grid"></div><div id="edges"></div><div id="loupe"><div class="lens"></div></div><div id="nomatch"></div><div id="banner"></div></div>
+<div id="legend"></div><div id="toast"></div>
   <footer id="foot"></footer>
 </div>
 <button id="tray" class="btn" title="Show or hide the top bar (b)">▾</button>
@@ -60,6 +59,7 @@
       <tr><td><kbd>/</kbd></td><td>filter by title or app</td></tr>
       <tr><td><kbd>Esc</kbd></td><td>clear the filter and the pick, then fold the top bar</td></tr>
       <tr><td><kbd>1</kbd></td><td>actual size about the picked window</td></tr>
+      <tr><td><kbd>0</kbd></td><td>fit everything in view</td></tr>
       <tr><td><kbd>z</kbd></td><td>loupe on or off</td></tr>
       <tr><td><kbd>b</kbd></td><td>top bar in or out</td></tr>
     </table></section>
