@@ -755,14 +755,24 @@ PAGE = r"""<!doctype html>
   .cap .shut:hover { opacity:1; background:var(--accent); color:#fff }
   .tile.gone .cap .note { color:var(--accent); opacity:1 }
   .cap .note { flex:none; font-size:10px; opacity:.75 }
-  /* a corner to pull: the terminal is the only tile with a size of its own to
-     change, since the rest are pictures of windows somebody else is sizing */
+  /* a corner to pull: a terminal and a link are the only tiles with a size of
+     their own to change, since the rest are pictures of windows somebody else
+     is sizing */
   .grip { position:absolute; right:0; bottom:0; width:14px; height:14px;
           cursor:nwse-resize; opacity:.45;
           background:linear-gradient(135deg, transparent 45%, #b9b5a8 45% 55%,
                      transparent 55% 70%, #b9b5a8 70% 80%, transparent 80%) }
   .grip:hover { opacity:.95 }
   .tile.gone .grip { display:none }
+  /* a link is kept as the least that still says what it was: the site's icon,
+     the page's title and where it lives. Opening it is a click away */
+  .pic.card { display:flex; flex-direction:column; justify-content:center; gap:3px;
+              padding:6px 10px; background:var(--panel); min-width:0 }
+  .card .ttl { display:flex; align-items:center; gap:7px; font-size:13px; color:var(--fg);
+               white-space:nowrap; overflow:hidden; text-overflow:ellipsis }
+  .card .ttl img { width:16px; height:16px; flex:none }
+  .card .url { font-size:11px; color:var(--dim); white-space:nowrap; overflow:hidden;
+               text-overflow:ellipsis }
   .termsize { position:absolute; right:6px; bottom:6px; padding:1px 5px; border-radius:3px;
               background:rgba(0,0,0,.72); color:#e9e7df; font:11px ui-monospace,monospace;
               pointer-events:none }
@@ -797,8 +807,7 @@ PAGE = r"""<!doctype html>
   /* the grid exists only while a window is being moved or resized; it is drawn
      over the frame, not in the canvas, so it can run on past every edge */
   #grid { position:absolute; inset:0; pointer-events:none; display:none; z-index:80;
-          background-image:linear-gradient(to right, rgba(217,163,0,.35) 1px, transparent 1px),
-                           linear-gradient(to bottom, rgba(217,163,0,.35) 1px, transparent 1px) }
+          background-image:radial-gradient(circle, rgba(217,163,0,.8) 1.2px, transparent 1.6px) }
   #grid.on { display:block }
   /* small quiet triangles on the frame's edge, pointing at windows out of view */
   .edge { position:absolute; width:8px; height:8px; margin:-4px 0 0 -4px; pointer-events:none;
@@ -976,6 +985,7 @@ async function poll() {
     // asking for screens is what keeps the grabber awake
     const r = await fetch('/api/windows?screens=1');
     data = await r.json();
+    data.windows.push(...links.map(linkWin));
     failures = 0;
     // restarted from its terminal: the page it served is the old one
     if (started !== null && data.started !== started) return location.reload();
@@ -1014,10 +1024,10 @@ function render() {
 }
 
 function status(match, q) {
-  const hits = data.windows.filter(match);
+  const hits = data.windows.filter(w => !w.link && match(w));
   const ours = data.windows.filter(w => w.term).length;
   const desks = new Set(data.windows.filter(w => !w.term).map(w => w.desktop)).size;
-  $('#stat').textContent = `${hits.length - ours}${q ? " of " + (data.windows.length - ours) : ""} windows · `
+  $('#stat').textContent = `${hits.length - ours}${q ? " of " + (data.windows.length - links.length - ours) : ""} windows · `
     + (ours ? `${ours} terminal${ours > 1 ? 's' : ''} of our own · ` : '')
     + `${data.grid.cols}×${data.grid.rows} workspaces · ${desks} in use`;
   $('#ts').innerHTML = failures ? `<span class="stale">disconnected — retrying</span>`
@@ -1062,7 +1072,7 @@ const MIN_ZOOM = 0.02, MAX_ZOOM = 4;
 // instead. Windows that shared a workspace still start out together.
 let seating = { key: '', cols: 1, at: new Map() };
 function plan() {
-  const used = [...new Set(data.windows.map(w => w.desktop))].sort((a, b) => a - b);
+  const used = [...new Set(data.windows.filter(w => !w.link).map(w => w.desktop))].sort((a, b) => a - b);
   const key = used.join(',');
   if (key !== seating.key) {
     seating = { key, cols: Math.max(1, Math.ceil(Math.sqrt(used.length))),
@@ -1178,6 +1188,49 @@ function fitAll() {
   store.set('origin', origin);
 }
 
+// ---- links: a page you mean to come back to, kept as a card ---------------
+let links = store.get('links', []);
+
+function linkWin(l) {
+  return { id: 'link:' + l.id, link: l, title: l.title, app: new URL(l.url).host,
+           w: l.w || 320, h: l.h || 64, x: 0, y: 0, z: 1e9, desktop: null };
+}
+
+function card(pic, w) {
+  const u = new URL(w.link.url);
+  pic.className = 'pic card';
+  pic.style.cssText = '';
+  pic.innerHTML = `<div class="ttl"><img alt=""><span></span></div><div class="url"></div>`;
+  const img = pic.querySelector('img');
+  img.onerror = () => img.remove();
+  img.src = u.origin + '/favicon.ico';
+  pic.querySelector('.ttl span').textContent = w.title;
+  pic.querySelector('.url').textContent = u.host + u.pathname;
+}
+
+// dropped in the middle of what you are looking at, so you see it arrive
+function addLink(url, title) {
+  const id = Date.now().toString(36), pan = $('#pan');
+  links.push({ id, url, title });
+  store.set('links', links);
+  layout['link:' + id] = clearSpot([(pan.clientWidth / 2 - origin[0]) / zoom - 160,
+                                    (pan.clientHeight / 2 - origin[1]) / zoom - 32], 'link:' + id);
+  store.set('layout', layout);
+  sel = 'link:' + id;
+  if (data) data.windows.push(linkWin(links[links.length - 1]));
+  render();
+}
+
+function closeLink(id) {
+  links = links.filter(l => 'link:' + l.id !== id);
+  store.set('links', links);
+  delete layout[id];
+  store.set('layout', layout);
+  if (data) data.windows = data.windows.filter(w => w.id !== id);
+  if (sel === id) sel = null;
+  render();
+}
+
 // cut this window out of its workspace photo — percentages, so the photo's own
 // pixel size never comes into it
 function dress(pic, w) {
@@ -1235,7 +1288,8 @@ function showGrid(on) {
   if (!on) return;
   const step = GRID * zoom;
   g.style.backgroundSize = `${step}px ${step}px`;
-  g.style.backgroundPosition = `${origin[0]}px ${origin[1]}px`;
+  // a dot sits in the middle of its cell, so shift half a cell to put it on the line
+  g.style.backgroundPosition = `${origin[0] - step / 2}px ${origin[1] - step / 2}px`;
 }
 const snap = v => Math.round(v / GRID) * GRID;
 // one grid line on in a direction; from a spot between lines, the next one that way
@@ -1545,6 +1599,50 @@ function grab(e, w, el) {
   el.addEventListener('pointercancel', done);
 }
 
+// A card is resized the same way, with no characters to count: the far corner
+// lands on the nearest grid line, and the size is kept with the link.
+function grabLink(e, w, el) {
+  if (e.button) return;
+  e.preventDefault();
+  e.stopPropagation();
+  const sx = e.clientX, sy = e.clientY, w0 = w.w, h0 = w.h;
+  const [x, y] = seatOf(w);
+  if (!layout[w.id]) { layout[w.id] = [x, y]; store.set('layout', layout); }
+  showGrid(true);
+  el.setPointerCapture(e.pointerId);
+  const move = ev => {
+    w.w = Math.max(90, snap(w0 + (ev.clientX - sx) / zoom));
+    w.h = Math.max(60, snap(h0 + (ev.clientY - sy) / zoom));
+    place(el, w);
+  };
+  const done = ev => {
+    try { el.releasePointerCapture(ev.pointerId); } catch (err) {}
+    el.removeEventListener('pointermove', move);
+    el.removeEventListener('pointerup', done);
+    el.removeEventListener('pointercancel', done);
+    showGrid(false);
+    const l = links.find(v => 'link:' + v.id === w.id);
+    if (l) { l.w = w.w; l.h = w.h; store.set('links', links); }
+  };
+  el.addEventListener('pointermove', move);
+  el.addEventListener('pointerup', done);
+  el.addEventListener('pointercancel', done);
+}
+
+// A new tile that lands on another's corner hides it, and you cannot tell
+// anything opened: step it down and right, as a desktop does, until its corner
+// is clear. Only new tiles go through this, never ones that are already placed.
+function clearSpot([x, y], exceptId) {
+  const taken = () => data.windows.some(v => {
+    if (v.id === exceptId) return false;
+    const [a, b] = seatOf(v);
+    return Math.abs(a - x) < GRID && Math.abs(b - y) < GRID;
+  });
+  x = snap(x); y = snap(y);
+  for (let n = 0; n < 100 && taken(); n++) { x += 2 * GRID; y += 2 * GRID; }
+  return [x, y];
+}
+
 // A new terminal opens in the middle of whatever you are looking at, and the
 // view stays where it is: you zoomed in there to work there.
 async function newTerm() {
@@ -1564,12 +1662,17 @@ async function newTerm() {
     if (el) $('#tiles').append(el);
     render();
   };
-  if (!zoom) { hold(true); await poll(); return pickIt(); }
+  if (!zoom) {
+    hold(true); await poll();
+    const v = data.windows.find(v => v.id === 'web:' + made.id);
+    if (v) { layout[v.id] = clearSpot(seatOf(v), v.id); store.set('layout', layout); }
+    return pickIt();
+  }
   hold(false);                   // a refit now would carry the view off to it
   await poll();                  // its size is only known once it is listed
   const w = data.windows.find(v => v.id === 'web:' + made.id);
   if (!w) return;
-  layout[w.id] = [Math.round(at[0] - w.w / 2), Math.round(at[1] - w.h / 2)];
+  layout[w.id] = clearSpot([at[0] - w.w / 2, at[1] - w.h / 2], w.id);
   store.set('layout', layout);
   pickIt();
 }
@@ -1595,8 +1698,15 @@ function renderCanvas(match, q) {
     if (!el) {
       el = document.createElement('div');
       if (!w.term) {
-        el.innerHTML = `<div class="cap"><span class="dot"></span><span class="t2"></span></div>`;
+        el.innerHTML = `<div class="cap"><span class="dot"></span><span class="t2"></span>`
+          + (w.link ? `<span class="shut" title="Remove">✕</span>` : '') + `</div>`;
         el.append(document.createElement('div'));
+        if (w.link) {
+          const grip = document.createElement('div');
+          grip.className = 'grip';
+          grip.title = 'Drag to resize this card';
+          el.append(grip);
+        }
       }
       el.addEventListener('pointerdown', e => {
         const win = tileEls.get(w.id).win;
@@ -1610,6 +1720,11 @@ function renderCanvas(match, q) {
           // a photograph has nothing to click, so all of it is
           // — except in NORMAL, where the mouse moves windows and never types
           if (document.body.classList.contains('insert') && !e.target.closest('.cap')) return;
+        } else if (win.link && e.target.closest('.grip')) {
+          return grabLink(e, win, el);
+        } else if (win.link && e.target.closest('.shut')) {
+          e.preventDefault();
+          return closeLink(win.id);
         } else if (document.body.classList.contains('insert')) {
           return;                // in INSERT a photograph is just more surface: it pans
         }
@@ -1628,7 +1743,14 @@ function renderCanvas(match, q) {
       el.title = `${w.app} — ${w.title} · workspace ${w.desktop + 1}`;
       el.querySelector('.dot').style.background = colorOf(w.app);
       el.querySelector('.t2').textContent = w.title;
-      dress(el.lastElementChild, w);
+      if (w.link) {
+        el.title = w.link.url;
+        const pic = el.children[1];          // the grip comes after it
+        if (pic.dataset.url !== w.link.url) {
+          card(pic, w);
+          pic.dataset.url = w.link.url;
+        }
+      } else dress(el.lastElementChild, w);
     }
     place(el, w);
   });
@@ -1682,6 +1804,7 @@ function syncLens() {
       + (w.term ? ';background:#12110d' : '') + (match(w) ? '' : ';opacity:.3');
     el.win = w;
     if (w.term) return;
+    if (w.link) { if (!el.key) { el.key = 'link'; card(el.firstChild, w); } return; }
     // a photograph only needs cutting again when the cut changes
     const key = shotUrl(w.desktop) + JSON.stringify([w.crop, w.over, w.seen, w.w, w.h]);
     if (el.key !== key) { el.key = key; dress(el.firstChild, w); }
@@ -1834,6 +1957,11 @@ async function activate(id) {
   const el = tileEls.get(id);
   if (el) $('#tiles').append(el);      // focusing it brings it to the front, as a drag does
   render();
+  if (id.startsWith('link:')) {
+    const w = data.windows.find(x => x.id === id);
+    if (w) window.open(w.link.url, '_blank', 'noopener');
+    return;
+  }
   if (id.startsWith('web:')) {
     // this one is already in front of you; focusing it means the keyboard
     const t = terms.get(id.slice(4));
@@ -1972,6 +2100,10 @@ document.addEventListener('keydown', e => {
   if (k === 'm' || k === 'r') { e.preventDefault(); return edit(k === 'm' ? 'move' : 'resize'); }
   if (k === 'b') { e.preventDefault(); return setBare(!bare); }
   if (k === 't') { e.preventDefault(); return void newTerm(); }
+  if (k === 'u') {                     // a sample card, until there is a way to give one a URL
+    e.preventDefault();
+    return addLink('https://github.com/ariunbayar/webworkspace', 'ariunbayar/webworkspace: a web workspace');
+  }
   if (k === '1') { e.preventDefault(); return actualSize(); }
   if (k === 'z') { e.preventDefault(); return setLens(!lensOn); }
   if (k === 'Enter' || k === ' ') { const w = selected(); if (w) { e.preventDefault(); activate(w.id); } return; }
