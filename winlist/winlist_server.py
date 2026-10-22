@@ -755,8 +755,9 @@ PAGE = r"""<!doctype html>
   .cap .shut:hover { opacity:1; background:var(--accent); color:#fff }
   .tile.gone .cap .note { color:var(--accent); opacity:1 }
   .cap .note { flex:none; font-size:10px; opacity:.75 }
-  /* a corner to pull: the terminal is the only tile with a size of its own to
-     change, since the rest are pictures of windows somebody else is sizing */
+  /* a corner to pull: a terminal and a link are the only tiles with a size of
+     their own to change, since the rest are pictures of windows somebody else
+     is sizing */
   .grip { position:absolute; right:0; bottom:0; width:14px; height:14px;
           cursor:nwse-resize; opacity:.45;
           background:linear-gradient(135deg, transparent 45%, #b9b5a8 45% 55%,
@@ -1193,7 +1194,7 @@ let links = store.get('links', []);
 
 function linkWin(l) {
   return { id: 'link:' + l.id, link: l, title: l.title, app: new URL(l.url).host,
-           w: 320, h: 64, x: 0, y: 0, z: 1e9, desktop: null };
+           w: l.w || 320, h: l.h || 64, x: 0, y: 0, z: 1e9, desktop: null };
 }
 
 function card(pic, w) {
@@ -1598,6 +1599,36 @@ function grab(e, w, el) {
   el.addEventListener('pointercancel', done);
 }
 
+// A card is resized the same way, with no characters to count: the far corner
+// lands on the nearest grid line, and the size is kept with the link.
+function grabLink(e, w, el) {
+  if (e.button) return;
+  e.preventDefault();
+  e.stopPropagation();
+  const sx = e.clientX, sy = e.clientY, w0 = w.w, h0 = w.h;
+  const [x, y] = seatOf(w);
+  if (!layout[w.id]) { layout[w.id] = [x, y]; store.set('layout', layout); }
+  showGrid(true);
+  el.setPointerCapture(e.pointerId);
+  const move = ev => {
+    w.w = Math.max(90, snap(w0 + (ev.clientX - sx) / zoom));
+    w.h = Math.max(60, snap(h0 + (ev.clientY - sy) / zoom));
+    place(el, w);
+  };
+  const done = ev => {
+    try { el.releasePointerCapture(ev.pointerId); } catch (err) {}
+    el.removeEventListener('pointermove', move);
+    el.removeEventListener('pointerup', done);
+    el.removeEventListener('pointercancel', done);
+    showGrid(false);
+    const l = links.find(v => 'link:' + v.id === w.id);
+    if (l) { l.w = w.w; l.h = w.h; store.set('links', links); }
+  };
+  el.addEventListener('pointermove', move);
+  el.addEventListener('pointerup', done);
+  el.addEventListener('pointercancel', done);
+}
+
 // A new terminal opens in the middle of whatever you are looking at, and the
 // view stays where it is: you zoomed in there to work there.
 async function newTerm() {
@@ -1651,6 +1682,12 @@ function renderCanvas(match, q) {
         el.innerHTML = `<div class="cap"><span class="dot"></span><span class="t2"></span>`
           + (w.link ? `<span class="shut" title="Remove">✕</span>` : '') + `</div>`;
         el.append(document.createElement('div'));
+        if (w.link) {
+          const grip = document.createElement('div');
+          grip.className = 'grip';
+          grip.title = 'Drag to resize this card';
+          el.append(grip);
+        }
       }
       el.addEventListener('pointerdown', e => {
         const win = tileEls.get(w.id).win;
@@ -1664,6 +1701,8 @@ function renderCanvas(match, q) {
           // a photograph has nothing to click, so all of it is
           // — except in NORMAL, where the mouse moves windows and never types
           if (document.body.classList.contains('insert') && !e.target.closest('.cap')) return;
+        } else if (win.link && e.target.closest('.grip')) {
+          return grabLink(e, win, el);
         } else if (win.link && e.target.closest('.shut')) {
           e.preventDefault();
           return closeLink(win.id);
@@ -1687,9 +1726,10 @@ function renderCanvas(match, q) {
       el.querySelector('.t2').textContent = w.title;
       if (w.link) {
         el.title = w.link.url;
-        if (el.lastElementChild.dataset.url !== w.link.url) {
-          card(el.lastElementChild, w);
-          el.lastElementChild.dataset.url = w.link.url;
+        const pic = el.children[1];          // the grip comes after it
+        if (pic.dataset.url !== w.link.url) {
+          card(pic, w);
+          pic.dataset.url = w.link.url;
         }
       } else dress(el.lastElementChild, w);
     }
