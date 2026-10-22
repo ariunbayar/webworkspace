@@ -131,14 +131,12 @@ Click a window — or pick one with the arrow keys / `hjkl` and press Enter — 
 focus it, which also switches to its workspace; the arrow keys still walk the
 workspaces the windows came from, in order. `/` filters, `Esc` clears (then
 leaves the full window).
-`m` moves the picked window and `r` resizes it (terminals only): `hjkl` or the
-arrows step one grid cell, `Enter` or `Esc` finishes. The grid shows only while
-moving or resizing, and dragging with the mouse snaps to it too.
-**Super+Enter** is `m` and `r` in one, the way gTile's keys are: the arrow keys
+**Super+Enter** moves and sizes the picked tile, the way gTile's keys do: the arrow keys
 (or `hjkl`) move the picked tile one grid cell, Shift with them sizes it, and
 Enter or Esc (or Super+Enter again) finishes. A terminal sizes by its
 characters, a card by the grid, and a photo is scaled, keeping its shape.
-Moving a tile, from the keyboard (`m` or Super+Enter) or by dragging it, also
+The grid shows only while moving or sizing, and dragging with the mouse snaps
+to it too. Moving a tile, from the keyboard or by dragging it, also
 snaps its size to the nearest grid step, so its far edges line up as well as its corner.
 Typing in a terminal, Super+Enter takes that one and hands the keyboard back after.
 In NORMAL mode the mouse only moves and resizes: it never reaches a terminal (no

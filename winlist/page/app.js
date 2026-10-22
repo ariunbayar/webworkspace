@@ -1633,15 +1633,12 @@ function showMode() {
   document.body.classList.toggle('tiling', editing === 'tile');
 }
 
-// Moving and resizing from the keyboard are modes of their own inside NORMAL:
-// hjkl step the picked window one grid cell, Enter or Esc leaves. r sizes a
-// terminal by its characters and nothing else; Super+Enter's Shift+arrows size
-// a card too, and scale a photograph, keeping its shape.
-let editing = null;       // 'move' | 'resize' | 'tile' | null
+// Moving and sizing from the keyboard is a mode of its own inside NORMAL,
+// entered with Super+Enter: hjkl step the picked window one grid cell, Shift
+// with them sizes it, Enter or Esc leaves.
+let editing = null;       // 'tile' | null
 function edit(how) {
-  const w = selected();
-  const t = w && w.term && terms.get(w.term.session);
-  if (!w || (how === 'resize' && !(t && t.cell && w.term.alive))) return;
+  if (!selected()) return;
   editing = how;
   showGrid(true);
   showMode();
@@ -1681,7 +1678,7 @@ function nudge(dx, dy, grow) {
   const w = selected(), el = w && tileEls.get(w.id);
   if (!el) return endEdit();
   const [x, y] = seatOf(w);
-  if (editing === 'move' || (editing === 'tile' && !grow)) {
+  if (!grow) {
     layout[w.id] = [dx ? stepTo(x, dx) : snap(x), dy ? stepTo(y, dy) : snap(y)];
     fitGrid(w, el);
     place(el, w);
@@ -1717,7 +1714,7 @@ function nudge(dx, dy, grow) {
     if (resizeTo(w, el, t, edge)) break;
   }
 }
-// Super+Enter is m and r in one, the way gTile's keys are: the arrows move the
+// Super+Enter moves and sizes, the way gTile's keys do: the arrows move the
 // tile a grid cell, Shift with them sizes it, Enter or Esc leaves. Typing in a
 // terminal or a document when you asked, you are handed back to it after.
 let scales = store.get('scales', {});      // window id -> how much its photo is scaled
@@ -1779,7 +1776,6 @@ document.addEventListener('keydown', e => {
     if ($('#q').value || sel) { $('#q').value = ''; sel = null; return render(); }
     return bare ? undefined : setBare(true);
   }
-  if (k === 'm' || k === 'r') { e.preventDefault(); return edit(k === 'm' ? 'move' : 'resize'); }
   if (k === 'b') { e.preventDefault(); return setBare(!bare); }
   if (k === 't') { e.preventDefault(); return void newTerm(); }
   if (k === 'u') { e.preventDefault(); return askLink(); }
