@@ -1441,6 +1441,10 @@ function span(t, cols, rows) {
 // does, and why a full-screen program redraws while you are still pulling.
 function resizeTo(w, el, t, edge) {
   const [x, y] = seatOf(w);
+  // an unmoved terminal sits wherever the others' sizes leave room, so resizing
+  // one would carry its neighbours off (and a reload would not put them back):
+  // pin it where it is the first time it changes size
+  if (!layout[w.id]) { layout[w.id] = [x, y]; store.set('layout', layout); }
   const cols = Math.max(20, Math.round((edge[0] - x - t.pad[0]) / t.cell[0]));
   const rows = Math.max(5, Math.round((edge[1] - y - t.pad[1]) / t.cell[1]));
   if (cols === t.term.cols && rows === t.term.rows) return false;
