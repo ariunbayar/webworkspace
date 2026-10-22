@@ -1822,6 +1822,39 @@ function mount(w) {
   return t;
 }
 
+// xterm.js turns a mouse position into a cell with its own unscaled cell size,
+// so on a terminal drawn at any zoom but 1:1 a click lands on the wrong row and
+// column — further off the further from the corner. Each real mouse event meant
+// for a terminal is caught first and sent on again with its position brought
+// back to the terminal's own scale. A press keeps its terminal until let go, so
+// a selection dragged out past the edge is still measured against it.
+let mouseScreen = null;
+['mousedown', 'mousemove', 'mouseup', 'click', 'dblclick', 'auxclick', 'contextmenu', 'wheel']
+  .forEach(type => addEventListener(type, e => {
+    if (!e.isTrusted) return;                  // ours, already put right
+    const host = e.target.closest && e.target.closest('.termhost');
+    const screen = (host && host.querySelector('.xterm-screen')) || mouseScreen;
+    if (type === 'mousedown') mouseScreen = host ? screen : null;
+    if (!screen || zoom === 1) {
+      if (type === 'mouseup') mouseScreen = null;
+      return;
+    }
+    const r = screen.getBoundingClientRect();
+    const init = {
+      bubbles: true, cancelable: true, composed: true, view: window, detail: e.detail,
+      clientX: r.left + (e.clientX - r.left) / zoom, clientY: r.top + (e.clientY - r.top) / zoom,
+      screenX: e.screenX, screenY: e.screenY, button: e.button, buttons: e.buttons,
+      ctrlKey: e.ctrlKey, shiftKey: e.shiftKey, altKey: e.altKey, metaKey: e.metaKey,
+      relatedTarget: e.relatedTarget,
+    };
+    const again = type === 'wheel'
+      ? new WheelEvent(type, { ...init, deltaX: e.deltaX, deltaY: e.deltaY, deltaZ: e.deltaZ, deltaMode: e.deltaMode })
+      : new MouseEvent(type, init);
+    e.stopImmediatePropagation();
+    if (!e.target.dispatchEvent(again)) e.preventDefault();
+    if (type === 'mouseup') mouseScreen = null;
+  }, { capture: true, passive: false }));
+
 function dressTerm(el, w) {
   const t = mount(w), id = w.term.session;
   if (!t.wrap) {
