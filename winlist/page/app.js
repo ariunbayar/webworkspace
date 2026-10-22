@@ -1287,6 +1287,12 @@ function renderCanvas(match) {
       if (w.link) el.addEventListener('dblclick', e => {
         if (!e.target.closest('.shut, .grip')) activate(w.id);
       });
+      // a terminal is typed into on a double click, as Enter does: the one
+      // click only picks it. Once it has the keyboard, a double click in it
+      // is xterm's again, to select a word
+      if (w.term) el.addEventListener('dblclick', e => {
+        if (!inInsert() && !e.target.closest('.shut, .grip, .prof')) activate(w.id);
+      });
       tileEls.set(w.id, el);
       $('#tiles').append(el);
     }
