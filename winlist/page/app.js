@@ -1703,6 +1703,19 @@ function move(dx, dy) {
   // the first pick is the window you were last in, if it is one of these
   if (!cur) { sel = (pick.find(w => w.focused) || pick[0]).id; return (render(), reveal()); }
 
+  if (dx && !dy) {                       // left and right: the nearest tile that way, as seen
+    const mid = v => { const [x, y] = seatOf(v); return [x + v.w / 2, y + v.h / 2]; };
+    const [cx, cy] = mid(cur);
+    let best = null, score = Infinity;
+    pick.forEach(v => {
+      if (v.id === cur.id) return;
+      const [x, y] = mid(v), ahead = (x - cx) * dx;
+      if (ahead <= 1) return;
+      const sc = ahead + 2 * Math.abs(y - cy);   // straight across beats nearer but off to the side
+      if (sc < score) { score = sc; best = v; }
+    });
+    if (best) { sel = best.id; return (render(), reveal()); }
+  }
   if (dy && !dx) {                       // within a workspace, then on to the next one
     const here = ordered(cur.desktop).filter(match);
     const at = here.findIndex(w => w.id === cur.id);

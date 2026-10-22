@@ -129,8 +129,17 @@ itself. None of that plumbing shows on the surface, so it gets a picture.
 
 Click a window — or pick one with the arrow keys / `hjkl` and press Enter — to
 focus it, which also switches to its workspace; the arrow keys still walk the
-workspaces the windows came from, in order. `/` filters, `Esc` clears (then
-leaves the full window).
+workspaces the windows came from, in order — left and right go to the nearest
+tile that way on the surface. `/` filters on every word you type, anywhere in a
+tile's title, app, running program, folder, card address or `ws2`; Enter jumps
+to the first match, `Esc` clears (then leaves the full window). `0` (or Fit)
+fits everything in view.
+
+A tile's caption names the app in words beside the title, numbers windows that
+would otherwise read the same (`#1`, `#2`), and for a terminal says what is
+running and a short `~/…/folder`. While moving/sizing or typing in a terminal,
+the keys for that mode show at the bottom; a failed focus, a lost server and the
+like say so over the surface.
 **Super+Enter** moves and sizes the picked tile, the way gTile's keys do: the arrow keys
 (or `hjkl`) move the picked tile one grid cell, Shift with them sizes it, and
 Enter or Esc (or Super+Enter again) finishes. A terminal sizes by its
