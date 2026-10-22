@@ -763,6 +763,15 @@ PAGE = r"""<!doctype html>
                      transparent 55% 70%, #b9b5a8 70% 80%, transparent 80%) }
   .grip:hover { opacity:.95 }
   .tile.gone .grip { display:none }
+  /* a link is kept as the least that still says what it was: the site's icon,
+     the page's title and where it lives. Opening it is a click away */
+  .pic.card { display:flex; flex-direction:column; justify-content:center; gap:3px;
+              padding:6px 10px; background:var(--panel); min-width:0 }
+  .card .ttl { display:flex; align-items:center; gap:7px; font-size:13px; color:var(--fg);
+               white-space:nowrap; overflow:hidden; text-overflow:ellipsis }
+  .card .ttl img { width:16px; height:16px; flex:none }
+  .card .url { font-size:11px; color:var(--dim); white-space:nowrap; overflow:hidden;
+               text-overflow:ellipsis }
   .termsize { position:absolute; right:6px; bottom:6px; padding:1px 5px; border-radius:3px;
               background:rgba(0,0,0,.72); color:#e9e7df; font:11px ui-monospace,monospace;
               pointer-events:none }
@@ -976,6 +985,7 @@ async function poll() {
     // asking for screens is what keeps the grabber awake
     const r = await fetch('/api/windows?screens=1');
     data = await r.json();
+    data.windows.push(...links.map(linkWin));
     failures = 0;
     // restarted from its terminal: the page it served is the old one
     if (started !== null && data.started !== started) return location.reload();
@@ -1014,10 +1024,10 @@ function render() {
 }
 
 function status(match, q) {
-  const hits = data.windows.filter(match);
+  const hits = data.windows.filter(w => !w.link && match(w));
   const ours = data.windows.filter(w => w.term).length;
   const desks = new Set(data.windows.filter(w => !w.term).map(w => w.desktop)).size;
-  $('#stat').textContent = `${hits.length - ours}${q ? " of " + (data.windows.length - ours) : ""} windows · `
+  $('#stat').textContent = `${hits.length - ours}${q ? " of " + (data.windows.length - links.length - ours) : ""} windows · `
     + (ours ? `${ours} terminal${ours > 1 ? 's' : ''} of our own · ` : '')
     + `${data.grid.cols}×${data.grid.rows} workspaces · ${desks} in use`;
   $('#ts').innerHTML = failures ? `<span class="stale">disconnected — retrying</span>`
@@ -1062,7 +1072,7 @@ const MIN_ZOOM = 0.02, MAX_ZOOM = 4;
 // instead. Windows that shared a workspace still start out together.
 let seating = { key: '', cols: 1, at: new Map() };
 function plan() {
-  const used = [...new Set(data.windows.map(w => w.desktop))].sort((a, b) => a - b);
+  const used = [...new Set(data.windows.filter(w => !w.link).map(w => w.desktop))].sort((a, b) => a - b);
   const key = used.join(',');
   if (key !== seating.key) {
     seating = { key, cols: Math.max(1, Math.ceil(Math.sqrt(used.length))),
@@ -1176,6 +1186,49 @@ function fitAll() {
             (pan.clientHeight - (y1 - y0) * zoom) / 2 - y0 * zoom];
   store.set('zoom', zoom);
   store.set('origin', origin);
+}
+
+// ---- links: a page you mean to come back to, kept as a card ---------------
+let links = store.get('links', []);
+
+function linkWin(l) {
+  return { id: 'link:' + l.id, link: l, title: l.title, app: new URL(l.url).host,
+           w: 320, h: 64, x: 0, y: 0, z: 1e9, desktop: null };
+}
+
+function card(pic, w) {
+  const u = new URL(w.link.url);
+  pic.className = 'pic card';
+  pic.style.cssText = '';
+  pic.innerHTML = `<div class="ttl"><img alt=""><span></span></div><div class="url"></div>`;
+  const img = pic.querySelector('img');
+  img.onerror = () => img.remove();
+  img.src = u.origin + '/favicon.ico';
+  pic.querySelector('.ttl span').textContent = w.title;
+  pic.querySelector('.url').textContent = u.host + u.pathname;
+}
+
+// dropped in the middle of what you are looking at, so you see it arrive
+function addLink(url, title) {
+  const id = Date.now().toString(36), pan = $('#pan');
+  links.push({ id, url, title });
+  store.set('links', links);
+  layout['link:' + id] = [snap((pan.clientWidth / 2 - origin[0]) / zoom - 160),
+                          snap((pan.clientHeight / 2 - origin[1]) / zoom - 32)];
+  store.set('layout', layout);
+  sel = 'link:' + id;
+  if (data) data.windows.push(linkWin(links[links.length - 1]));
+  render();
+}
+
+function closeLink(id) {
+  links = links.filter(l => 'link:' + l.id !== id);
+  store.set('links', links);
+  delete layout[id];
+  store.set('layout', layout);
+  if (data) data.windows = data.windows.filter(w => w.id !== id);
+  if (sel === id) sel = null;
+  render();
 }
 
 // cut this window out of its workspace photo — percentages, so the photo's own
@@ -1595,7 +1648,8 @@ function renderCanvas(match, q) {
     if (!el) {
       el = document.createElement('div');
       if (!w.term) {
-        el.innerHTML = `<div class="cap"><span class="dot"></span><span class="t2"></span></div>`;
+        el.innerHTML = `<div class="cap"><span class="dot"></span><span class="t2"></span>`
+          + (w.link ? `<span class="shut" title="Remove">✕</span>` : '') + `</div>`;
         el.append(document.createElement('div'));
       }
       el.addEventListener('pointerdown', e => {
@@ -1610,6 +1664,9 @@ function renderCanvas(match, q) {
           // a photograph has nothing to click, so all of it is
           // — except in NORMAL, where the mouse moves windows and never types
           if (document.body.classList.contains('insert') && !e.target.closest('.cap')) return;
+        } else if (win.link && e.target.closest('.shut')) {
+          e.preventDefault();
+          return closeLink(win.id);
         } else if (document.body.classList.contains('insert')) {
           return;                // in INSERT a photograph is just more surface: it pans
         }
@@ -1628,7 +1685,13 @@ function renderCanvas(match, q) {
       el.title = `${w.app} — ${w.title} · workspace ${w.desktop + 1}`;
       el.querySelector('.dot').style.background = colorOf(w.app);
       el.querySelector('.t2').textContent = w.title;
-      dress(el.lastElementChild, w);
+      if (w.link) {
+        el.title = w.link.url;
+        if (el.lastElementChild.dataset.url !== w.link.url) {
+          card(el.lastElementChild, w);
+          el.lastElementChild.dataset.url = w.link.url;
+        }
+      } else dress(el.lastElementChild, w);
     }
     place(el, w);
   });
@@ -1682,6 +1745,7 @@ function syncLens() {
       + (w.term ? ';background:#12110d' : '') + (match(w) ? '' : ';opacity:.3');
     el.win = w;
     if (w.term) return;
+    if (w.link) { if (!el.key) { el.key = 'link'; card(el.firstChild, w); } return; }
     // a photograph only needs cutting again when the cut changes
     const key = shotUrl(w.desktop) + JSON.stringify([w.crop, w.over, w.seen, w.w, w.h]);
     if (el.key !== key) { el.key = key; dress(el.firstChild, w); }
@@ -1834,6 +1898,11 @@ async function activate(id) {
   const el = tileEls.get(id);
   if (el) $('#tiles').append(el);      // focusing it brings it to the front, as a drag does
   render();
+  if (id.startsWith('link:')) {
+    const w = data.windows.find(x => x.id === id);
+    if (w) window.open(w.link.url, '_blank', 'noopener');
+    return;
+  }
   if (id.startsWith('web:')) {
     // this one is already in front of you; focusing it means the keyboard
     const t = terms.get(id.slice(4));
@@ -1972,6 +2041,10 @@ document.addEventListener('keydown', e => {
   if (k === 'm' || k === 'r') { e.preventDefault(); return edit(k === 'm' ? 'move' : 'resize'); }
   if (k === 'b') { e.preventDefault(); return setBare(!bare); }
   if (k === 't') { e.preventDefault(); return void newTerm(); }
+  if (k === 'u') {                     // a sample card, until there is a way to give one a URL
+    e.preventDefault();
+    return addLink('https://github.com/ariunbayar/webworkspace', 'ariunbayar/webworkspace: a web workspace');
+  }
   if (k === '1') { e.preventDefault(); return actualSize(); }
   if (k === 'z') { e.preventDefault(); return setLens(!lensOn); }
   if (k === 'Enter' || k === ' ') { const w = selected(); if (w) { e.preventDefault(); activate(w.id); } return; }
