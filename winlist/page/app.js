@@ -6,7 +6,7 @@ const PALETTE = ["#2f7d8c","#a8642b","#7a5cd6","#3f7d3f","#94566f","#736b5e"];
 const colorOf = a => COLORS[a] || (COLORS[a] = PALETTE[[...String(a)].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7) % PALETTE.length]);
 const SHELL_NAMES = new Set(['bash', 'sh', 'zsh', 'fish', 'dash', 'tmux', 'screen']);
 const baseName = p => String(p).split(/[?#]/)[0].replace(/\/+$/, '').split('/').pop() || String(p);
-const shortPath = p => String(p || '').replace(/^\/home\/[^/]+/, '~').replace(/^(~?\/?)(?:[^/]+\/)+([^/]+\/[^/]+)$/, '$1…/$2');
+const shortPath = p => String(p || '').replace(/^\/home\/[^/]+/, '~').replace(/^(~?\/?)(?:[^/]+\/){2,}([^/]+\/[^/]+)$/, '$1…/$2');
 const $ = s => document.querySelector(s);
 const esc = s => s.replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const utf8 = new TextEncoder();
@@ -419,8 +419,17 @@ function renderGroups() {
   groupEls.forEach((el, id) => { if (!live.has(id)) { el.remove(); groupEls.delete(id); } });
 }
 
+// said over the surface, where it is seen, not only in the bar that is folded
+// away — and before the first answer too, when there is nothing else to show
+function showTrouble() {
+  const trouble = failures >= 2 ? `Lost the server — retrying. Is it running? <code>python3 winlist/winlist_server.py</code>`
+    : data && data.error ? esc(data.error) : '';
+  $('#banner').innerHTML = trouble;
+  $('#banner').classList.toggle('on', !!trouble);
+}
+
 function render() {
-  if (!data) return;
+  if (!data) return showTrouble();
   const match = visible(), q = $('#q').value.trim();
   renderGroups();
   renderCanvas(match);
@@ -439,11 +448,7 @@ function status(match, q) {
   $('#stat').textContent = `${hits.length - ours}${q ? " of " + (data.windows.length - links.length - ours) : ""} windows · `
     + (ours ? `${ours} terminal${ours > 1 ? 's' : ''} of our own · ` : '')
     + `${data.grid.cols}×${data.grid.rows} workspaces · ${desks} in use`;
-  // said over the surface, where it is seen, not only in the bar that is folded away
-  const trouble = failures >= 2 ? `Lost the server — retrying. Is it running? <code>python3 winlist/winlist_server.py</code>`
-    : data.error ? esc(data.error) : '';
-  $('#banner').innerHTML = trouble;
-  $('#banner').classList.toggle('on', !!trouble);
+  showTrouble();
   $('#ts').innerHTML = failures ? `<span class="stale">disconnected — retrying</span>`
     : `updated ${data.captured}`;
   $('#foot').innerHTML = `Every window on one surface, seeded from where it `
