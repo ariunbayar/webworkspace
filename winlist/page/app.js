@@ -2,7 +2,11 @@ const COLORS = { "Google Chrome":"#4285f4", "Claude Code":"#c96442", "Vim":"#019
   "Neovim":"#019833", "Viber":"#7360f2", "Firefox":"#ff7139", "memmon":"#7a5cd6",
   "Terminal":"#5a5852", "VS Code":"#0078d4", "Files":"#77767b", "Slack":"#4a154b" };
 const PALETTE = ["#2f7d8c","#a8642b","#7a5cd6","#3f7d3f","#94566f","#736b5e"];
-const colorOf = a => COLORS[a] || (COLORS[a] = PALETTE[Object.keys(COLORS).length % PALETTE.length]);
+// an app not named above gets a colour from its name, so it keeps it across reloads
+const colorOf = a => COLORS[a] || (COLORS[a] = PALETTE[[...String(a)].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7) % PALETTE.length]);
+const SHELL_NAMES = new Set(['bash', 'sh', 'zsh', 'fish', 'dash', 'tmux', 'screen']);
+const baseName = p => String(p).split(/[?#]/)[0].replace(/\/+$/, '').split('/').pop() || String(p);
+const shortPath = p => String(p || '').replace(/^\/home\/[^/]+/, '~').replace(/^(~?\/?)(?:[^/]+\/)+([^/]+\/[^/]+)$/, '$1…/$2');
 const $ = s => document.querySelector(s);
 const esc = s => s.replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const utf8 = new TextEncoder();
@@ -244,9 +248,16 @@ const groupEls = new Map();
 function newGroup() {
   const w = 1600, h = 1000, [cx, cy] = viewCenter();
   const [x, y] = clearSpot([cx - w / 2, cy - h / 2]);
-  groups.push({ id: newId(), name: 'Group', x, y, w, h });
+  // numbered, and named straight away: a group called Group says nothing
+  const used = new Set(groups.map(g => g.name));
+  let n = 1;
+  while (used.has(n === 1 ? 'Group' : 'Group ' + n)) n++;
+  const g = { id: newId(), name: n === 1 ? 'Group' : 'Group ' + n, x, y, w, h };
+  groups.push(g);
   store.set('groups', groups);
   render();
+  const el = groupEls.get(g.id);
+  if (el) rename(g, el.querySelector('.gname'));
 }
 
 function saveGroups() { store.set('groups', groups); }
@@ -347,7 +358,7 @@ function renderGroups() {
     if (!el) {
       el = document.createElement('div');
       el.className = 'group';
-      el.innerHTML = `<div class="gcap"><span class="gname"></span>`
+      el.innerHTML = `<div class="gcap"><span class="gname" title="Double-click to rename"></span><span class="gcount"></span>`
         + `<span class="shut" title="Remove the group (its windows stay)">✕</span></div>`
         + `<div class="grip" title="Drag to resize this group"></div>`;
       const cap = el.querySelector('.gcap'), name = el.querySelector('.gname');
@@ -370,6 +381,8 @@ function renderGroups() {
     }
     el.group = g;
     if (!el.querySelector('.gname').isContentEditable) el.querySelector('.gname').textContent = g.name;
+    const n = data ? members(g).length : 0;
+    el.querySelector('.gcount').textContent = n ? '· ' + n : '';
     placeGroup(el, g);
   });
   groupEls.forEach((el, id) => { if (!live.has(id)) { el.remove(); groupEls.delete(id); } });
@@ -591,9 +604,22 @@ function markTaken(id) {
   store.set('taken', taken);
 }
 
+// a card with no name of its own is called what it points at: the file's name,
+// or the site and the last part of the address
+function cardTitle(l) {
+  if (l.title) return l.title;
+  if (l.path || l.image) return baseName(l.path || l.image);
+  try {
+    const u = new URL(l.url), last = baseName(u.pathname);
+    return u.host.replace(/^www\./, '') + (u.pathname.length > 1 ? '/' + last : '');
+  } catch { return l.url || ''; }
+}
+function cardHost(url) {
+  try { return new URL(url).host.replace(/^www\./, ''); } catch { return 'Link'; }
+}
 function linkWin(l) {
-  return { id: 'link:' + l.id, link: l, title: l.title,
-           app: l.image ? 'Image' : l.path ? 'Markdown' : new URL(l.url).host,
+  return { id: 'link:' + l.id, link: l, title: cardTitle(l),
+           app: l.image ? 'Image' : l.path ? 'Markdown' : cardHost(l.url),
            w: l.w || (l.image ? 640 : l.path ? 720 : 320),
            h: l.h || (l.image ? 480 : l.path ? 900 : 76),
            x: 0, y: 0, z: 1e9, desktop: null };
@@ -1028,7 +1054,7 @@ let mouseScreen = null;
 function dressTerm(el, w) {
   const t = mount(w), id = w.term.session;
   if (!t.wrap) {
-    el.innerHTML = `<div class="cap"><span class="dot"></span><span class="t2"></span>` +
+    el.innerHTML = `<div class="cap"><span class="dot"></span><span class="app"></span><span class="t2"></span>` +
                    `<span class="note"></span>` +
                    `<span class="prof" title="Switch font (Ctrl+Alt+F)"></span>` +
                    `<span class="shut" title="Close">✕</span></div>` +
@@ -1084,9 +1110,16 @@ function dressTerm(el, w) {
   const cap = t.cap;
   cap.querySelector('.dot').style.background = colorOf(w.app);
   cap.querySelector('.prof').textContent = (profiles()[t.prof] || {}).name || '';
-  cap.querySelector('.t2').textContent = t.title || w.term.title || w.term.running || w.title;
-  cap.querySelector('.note').textContent = w.term.alive
-    ? (w.term.cwd || '')
+  const title = t.title || w.term.title || w.term.running || w.title;
+  cap.querySelector('.t2').textContent = title;
+  // what is running, unless the title already says so: a shell says nothing
+  const run = w.term.running || '';
+  cap.querySelector('.app').textContent = run && !SHELL_NAMES.has(run)
+    && !title.toLowerCase().includes(run.toLowerCase()) ? run : '';
+  const note = cap.querySelector('.note');
+  note.title = w.term.cwd || '';
+  note.textContent = w.term.alive
+    ? shortPath(w.term.cwd)
     : 'exited ' + (w.term.exit === null ? '?' : w.term.exit);
   el.classList.toggle('gone', !w.term.alive);
   // a running session is reconnected whenever its socket has dropped; one that
@@ -1267,13 +1300,24 @@ function renderCanvas(match) {
   markEdges();
 
   const live = new Set();
+  // windows that would read the same are numbered, in id order so a number
+  // stays with its window from one poll to the next
+  const same = new Map(), twins = new Map();
+  data.windows.forEach(w => {
+    if (w.term) return;
+    const k = w.app + '\n' + w.title;
+    same.set(k, [...(same.get(k) || []), w.id]);
+  });
+  same.forEach(ids => {
+    if (ids.length > 1) ids.sort().forEach((id, i) => twins.set(id, '#' + (i + 1)));
+  });
   data.windows.slice().sort((a, b) => a.z - b.z).forEach(w => {
     live.add(w.id);
     let el = tileEls.get(w.id);
     if (!el) {
       el = document.createElement('div');
       if (!w.term) {
-        el.innerHTML = `<div class="cap"><span class="dot"></span><span class="t2"></span>`
+        el.innerHTML = `<div class="cap"><span class="dot"></span><span class="app"></span><span class="t2"></span><span class="ord"></span>`
           + (w.link ? `<span class="shut" title="Remove">✕</span>` : '') + `</div>`;
         el.append(document.createElement('div'));
         if (w.link) {
@@ -1323,12 +1367,17 @@ function renderCanvas(match) {
     el.className = 'tile' + (w.term ? ' term' : '') + (w.link ? ' link' : '') + (w.focused ? ' focused' : '')
       + (match(w) ? '' : ' off') + (w.id === sel ? ' sel' : '');
     if (w.term) {
-      el.title = `${w.title} · pid ${w.pid}`;
+      el.title = [w.term.running, w.term.cwd, w.title].filter(Boolean).join(' — ') + ` · pid ${w.pid}`;
       dressTerm(el, w);
     } else {
       el.title = `${w.app} — ${w.title} · workspace ${w.desktop + 1}`;
       el.querySelector('.dot').style.background = colorOf(w.app);
       el.querySelector('.t2').textContent = w.title;
+      // the app is named in words, not only by the dot's colour — unless the
+      // title says it already, or it is a card, whose title is what it is
+      el.querySelector('.app').textContent = !w.link && w.app
+        && !w.title.toLowerCase().startsWith(w.app.toLowerCase()) ? w.app : '';
+      el.querySelector('.ord').textContent = twins.get(w.id) || '';
       if (w.link) {
         el.title = w.link.url || w.link.path || w.link.image;
         const gh = ghOf(w), key = cardKey(w);

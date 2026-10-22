@@ -104,6 +104,14 @@
   .cap .shut:hover { opacity:1; background:var(--accent); color:#fff }
   .tile.gone .cap .note { color:var(--accent); opacity:1 }
   .cap .note { flex:none; font-size:11px; opacity:.75 }
+  /* the app in words beside the title; it gives way first when the tile is narrow */
+  .tile { container-type:inline-size }
+  .cap .app { flex:0 1 auto; max-width:40%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+              font-size:11.5px; font-weight:600; opacity:.8 }
+  .cap .app:empty, .cap .ord:empty { display:none }
+  .cap .ord { flex:none; font-size:11px; opacity:.6 }
+  @container (max-width:170px) { .cap .app { display:none } }
+  .gcount { margin-left:6px; opacity:.6; font-weight:400 }
   .cap .prof { flex:none; font-size:11px; opacity:.55; cursor:pointer; padding:0 4px; border-radius:3px }
   .cap .prof:empty { display:none }
   .cap .prof:hover { opacity:1; background:var(--line) }
