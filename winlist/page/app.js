@@ -882,6 +882,9 @@ const SYMBOLS = ',"PowerlineSymbols","Symbols Nerd Font",ui-monospace,monospace'
 const termFont = (face = look().font) => (face ? `"${face}",` : '') + FALLBACK_FONT + SYMBOLS;
 // the faces in ~/.Xresources a terminal can switch between, default first
 const profiles = () => look().profiles || [];
+// the face each terminal was switched to, by name, so a reload of the page or
+// a restart of this server puts it back: the session outlives both, in pty_server
+const faces = store.get('faces', {});   // session id -> profile name
 const FALLBACK_THEME = { background: '#12110d', foreground: '#e9e7df', cursor: '#e0875c',
   black: '#2a2820', red: '#d76b5a', green: '#7fa84f', yellow: '#d0a33c',
   blue: '#6f9bc4', magenta: '#b07ec0', cyan: '#5fa8a0', white: '#d9d5c8' };
@@ -908,10 +911,13 @@ function mount(w) {
   let t = terms.get(id);
   if (t) return t;
   const l = look();
+  // a profile since taken out of ~/.Xresources falls back to the default
+  const prof = Math.max(0, profiles().findIndex(p => p.name === faces[id]));
+  const face = profiles()[prof] || { font: l.font, size: l.size };
   const term = new Terminal({
     cols: w.term.cols, rows: w.term.rows, theme: termTheme(),
-    fontFamily: termFont(),
-    fontSize: l.size || 13,
+    fontFamily: termFont(face.font),
+    fontSize: face.size || 13,
     // xterm.js clips each row to its cell, and a tight face like Pragmata
     // draws capitals above its own line box: at 1.0 the bar of a T is cut off
     lineHeight: 1.125,
@@ -920,7 +926,7 @@ function mount(w) {
     drawBoldTextInBrightColors: l.bold_bright === undefined ? true : l.bold_bright,
     convertEol: false, macOptionIsMeta: true,
   });
-  t = { term, ws: null, wrap: null, cap: null, capH: 0, natural: null, cell: null, pad: [0, 0], read: false, title: '', prof: 0 };
+  t = { term, ws: null, wrap: null, cap: null, capH: 0, natural: null, cell: null, pad: [0, 0], read: false, title: '', prof };
   terms.set(id, t);
   // the title the shell sets (OSC 0/2) is what a desktop terminal shows, and
   // xterm.js hears it as it streams by, well before the next poll would
@@ -965,6 +971,8 @@ function swapFace(id) {
   const t = terms.get(id), ps = profiles();
   if (!t || ps.length < 2) return;
   t.prof = (t.prof + 1) % ps.length;
+  faces[id] = ps[t.prof].name;
+  store.set('faces', faces);
   t.term.options.fontFamily = termFont(ps[t.prof].font);
   t.term.options.fontSize = ps[t.prof].size || 13;
   if (t.wrap) measure(t);
@@ -1232,6 +1240,8 @@ $('#newterm').onclick = newTerm;
 
 async function closeTerm(id) {
   await fetch('/api/terminals/' + id, { method: 'DELETE' }).catch(() => {});
+  delete faces[id];                          // gone for good: nothing to put back
+  store.set('faces', faces);
   const t = terms.get(id);
   if (t && t.ws) t.ws.close();
   poll();
