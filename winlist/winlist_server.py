@@ -1356,6 +1356,32 @@ function dressTerm(el, w) {
     wrap.style.transform = 'none';
     t.term.open(host);
     t.wrap = wrap;
+    // a finger has no wheel, so one dragged up or down the terminal is turned
+    // into one: xterm.js then scrolls, or tells the program, exactly as it
+    // would for the mouse. A second finger makes it a pinch again.
+    host.addEventListener('pointerdown', e => {
+      if (e.pointerType === 'mouse' || zoom <= 0.5 || pointers.size > 1) return;
+      let py = e.clientY;
+      const move = ev => {
+        if (ev.pointerId !== e.pointerId) return;
+        const dy = (py - ev.clientY) / zoom;
+        py = ev.clientY;
+        if (dy) t.term.element.dispatchEvent(new WheelEvent('wheel',
+          { deltaY: dy, deltaMode: 0, bubbles: true, cancelable: true }));
+      };
+      const done = ev => {
+        if (ev && ev.pointerId !== e.pointerId) return;
+        removeEventListener('pointermove', move);
+        removeEventListener('pointerup', done);
+        removeEventListener('pointercancel', done);
+        if (letGo === done) letGo = null;
+      };
+      if (letGo) letGo();
+      letGo = done;
+      addEventListener('pointermove', move);
+      addEventListener('pointerup', done);
+      addEventListener('pointercancel', done);
+    });
     measure(t);
     const grip = document.createElement('div');
     grip.className = 'grip';
