@@ -641,6 +641,7 @@ def sample():
         "pty": {"on": PTY_ON, "port": PTY_PORT, "cell": n_desktops, "error": _pty_error},
         "look": LOOK,          # what your xterm looks like, for ours to match
         "links": board(),       # the cards on the board, the same in every browser
+        "pings": pinged(),      # windows that want you, the same in every browser
     }
 
 
@@ -853,6 +854,31 @@ def change_link(lid, body):
             link.update(placed(body))
         _save_links()
         return link
+
+
+# A window that wants you — Claude finished in it — is pinged from outside, by
+# a hook, and stays pinged until some page has seen it looked at. Kept here so
+# every browser shows the same pings; in memory only, a restart forgets them.
+_pings = {}                             # window id -> when it was pinged
+_pings_lock = threading.Lock()
+
+
+def ping(wid, on=True):
+    """Ping a window, or with on=False let it be. False if the id is not one we use."""
+    if not isinstance(wid, str) or not (wid.startswith("web:") or WIN_ID.match(wid)):
+        return False
+    wid = wid if wid.startswith("web:") else wid.lower()
+    with _pings_lock:
+        if on:
+            _pings[wid] = time.time()
+        else:
+            _pings.pop(wid, None)
+    return True
+
+
+def pinged():
+    with _pings_lock:
+        return sorted(_pings)
 
 
 def focus(wid):
@@ -1077,6 +1103,15 @@ class Handler(BaseHTTPRequestHandler):
             except (ValueError, json.JSONDecodeError):
                 return self._send(json.dumps({"error": "bad request"}), code=400)
             return self._send(json.dumps({"kept": log_usage(body)}))
+        if self.path.startswith("/api/ping"):
+            try:
+                n = int(self.headers.get("Content-Length", 0))
+                body = json.loads(self.rfile.read(min(n, 4096)) or b"{}")
+            except (ValueError, json.JSONDecodeError):
+                return self._send(json.dumps({"error": "bad request"}), code=400)
+            if not isinstance(body, dict) or not ping(body.get("window")):
+                return self._send(json.dumps({"error": "give a window id"}), code=400)
+            return self._send(json.dumps({"ok": True}))
         if self.path.startswith("/api/links"):
             try:
                 n = int(self.headers.get("Content-Length", 0))
@@ -1116,6 +1151,9 @@ class Handler(BaseHTTPRequestHandler):
             return
         if self.path.startswith("/api/links/"):
             return self._card(None)
+        if self.path.startswith("/api/ping/"):
+            ping(urllib.parse.unquote(self.path[len("/api/ping/"):].split("?")[0]), on=False)
+            return self._send(json.dumps({"ok": True}))
         if not self.path.startswith("/api/terminals/"):
             return self._send(json.dumps({"error": "not found"}), code=404)
         sid = self.path[len("/api/terminals/"):].split("?")[0]

@@ -97,6 +97,7 @@ class Session:
         # here, on the near side of the fork, and handed to exec as a whole.
         env = dict(os.environ)
         env["TERM"] = "xterm-256color"
+        env["WINLIST_TERM"] = sid       # so a hook in it can ping its own tile
         # the terminal knows its own size; a stale copy in the environment
         # would only contradict it
         env.pop("COLUMNS", None)

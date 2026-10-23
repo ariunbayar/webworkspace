@@ -244,7 +244,7 @@ async function poll() {
     if (!r.ok || !Array.isArray(got.windows)) throw new Error(got.error || r.status);
     data = got;
     data.windows.forEach(w => { if (scales[w.id]) { w.w *= scales[w.id]; w.h *= scales[w.id]; } });
-    if (pingAll) { data.windows.forEach(w => pings.add(w.id)); pingAll = false; }
+    takePings(data.pings || [], asked);
     takeLinks(data.links || [], asked);
     data.windows.push(...links.map(linkWin));
     // one sent from outside — a shell, an agent — is placed by the first page to see it
@@ -556,9 +556,21 @@ function shift(dx, dy) {          // slide the whole surface, no edges to run in
 // A window that wants you — Claude finished in it — pings: its triangle bobs
 // toward it, or the tile itself pulses if it is in view, until it has been in
 // view for two seconds, half of it at least, big enough to read.
-// PREVIEW: #ping in the address pings every window.
 const pings = new Set(), inViewSince = new Map();
-let pingAll = location.hash === '#ping';
+const unpinged = new Map();   // window id -> when the server was told it is seen; 0 while in flight
+function seenPing(id) {
+  pings.delete(id);
+  unpinged.set(id, 0);
+  fetch('/api/ping/' + encodeURIComponent(id), { method: 'DELETE' })
+    .catch(() => {})
+    .finally(() => unpinged.set(id, Date.now()));
+}
+// what the server holds, less what this page cleared since the poll set out
+function takePings(list, asked) {
+  for (const [id, at] of unpinged) if (at && at < asked) unpinged.delete(id);
+  pings.clear();
+  list.forEach(id => { if (!unpinged.has(id)) pings.add(id); });
+}
 function lookedAt(w, px, py, pw, ph, W, H) {
   const ox = Math.min(px + pw, W) - Math.max(px, 0), oy = Math.min(py + ph, H) - Math.max(py, 0);
   return ox > 0 && oy > 0 && ox * oy >= pw * ph / 2 && pw >= 300;
@@ -585,7 +597,7 @@ function drawEdges() {
       const ping = pings.has(w.id);
       if (ping && lookedAt(w, px, py, pw, ph, W, H)) {
         if (!inViewSince.has(w.id)) inViewSince.set(w.id, now);
-        else if (now - inViewSince.get(w.id) >= 2000) { pings.delete(w.id); seen = true; }
+        else if (now - inViewSince.get(w.id) >= 2000) { seenPing(w.id); seen = true; }
       } else inViewSince.delete(w.id);
       if (px < W && px + pw > 0 && py < H && py + ph > 0) return;   // some of it shows
       const dx = px + pw / 2 - cx, dy = py + ph / 2 - cy;
