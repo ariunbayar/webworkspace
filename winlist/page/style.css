@@ -253,7 +253,7 @@
   /* a window that wants you: its triangle grows, turns amber and bobs toward
      it; a tile in view pulses a ring instead */
   .edge.ping { width:24px; height:24px; margin:-12px 0 0 -12px; background:#f2a516; opacity:1;
-               z-index:71; animation:ping-edge .7s cubic-bezier(.3,0,.2,1) infinite }
+               z-index:71; pointer-events:auto; cursor:pointer; animation:ping-edge .7s cubic-bezier(.3,0,.2,1) infinite }
   @keyframes ping-edge {
     0%, 100% { transform:rotate(var(--a)) translateX(-14px) scale(.8); background:#f2a516 }
     45%      { transform:rotate(var(--a)) translateX(2px) scale(1.6); background:#ff3b1f }

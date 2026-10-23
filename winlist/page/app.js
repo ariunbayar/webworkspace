@@ -603,7 +603,7 @@ function drawEdges() {
       const dx = px + pw / 2 - cx, dy = py + ph / 2 - cy;
       const k = Math.min((cx - inset) / Math.abs(dx || 1e-9), (cy - inset) / Math.abs(dy || 1e-9));
       const ex = cx + dx * k, ey = cy + dy * k, key = Math.round(ex / 40) + ',' + Math.round(ey / 40);
-      spots.set(key, [ex, ey, Math.atan2(dy, dx), ping || (spots.get(key) || [])[3]]);
+      spots.set(key, [ex, ey, Math.atan2(dy, dx), ping ? w.id : (spots.get(key) || [])[3]]);
     });
     if (seen) render();
     // the tile pulses while you look; the look counts once the poll comes round
@@ -613,16 +613,30 @@ function drawEdges() {
   while (box.children.length < list.length) {
     const d = document.createElement('div');
     d.className = 'edge';
+    // a pinging one is a way there: a click brings its window to the middle
+    d.addEventListener('pointerdown', e => e.stopPropagation());
+    d.addEventListener('click', () => d.ping && goToPing(d.ping));
     box.append(d);
   }
   while (box.children.length > list.length) box.lastChild.remove();
   list.forEach(([ex, ey, a, ping], i) => {
     const d = box.children[i], s = d.style;
+    d.ping = ping;
     d.classList.toggle('ping', !!ping);
     s.left = ex + 'px';
     s.top = ey + 'px';
     s.setProperty('--a', a + 'rad');
   });
+}
+
+// to the window, picked, and near enough to read: the look that clears the ping
+function goToPing(id) {
+  const w = data && data.windows.find(v => v.id === id), pan = $('#pan');
+  if (!w) return;
+  sel = id;
+  render();
+  reveal();
+  if (w.w * zoom < 300) setZoom(Math.min(0.8 * pan.clientWidth / w.w, 0.8 * pan.clientHeight / w.h));
 }
 
 // zoom about a point: whatever is under the mouse, or between the fingers, is
