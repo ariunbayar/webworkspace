@@ -726,9 +726,23 @@ const ghColor = gh => ({ open: '#1f883d', merged: '#8250df', 'not planned': '#59
 const ghStates = new Map();        // card url -> {state, pr}, asked of the server
 const ghOf = w => w.link.url && ghStates.get(w.link.url);
 
+const GH_URL = /^https:\/\/github\.com\/[^/]+\/[^/]+\/(pull|issues)\/(\d+)/;
+
+// an issue and a PR are told apart by name and number, ahead of GitHub's own
+// title — which stands in for a bare host, or for the page's "… · GitHub" one
+function shownTitle(w) {
+  const m = w.link && GH_URL.exec(w.link.url || '');
+  if (!m) return w.title;
+  const gh = ghOf(w), n = '#' + m[2], kind = m[1] === 'pull' ? 'PR' : 'Issue';
+  const t = w.link.title || '';
+  const base = gh && gh.title && (!t || t === cardHost(w.link.url) || / · GitHub$/.test(t))
+    ? gh.title : w.title;
+  return new RegExp(n + '(?!\\d)').test(base) ? base : `${kind} ${n} · ${base}`;
+}
+
 async function askGitHub() {
   for (const l of links) {
-    if (!/^https:\/\/github\.com\/[^/]+\/[^/]+\/(pull|issues)\/\d+/.test(l.url || '')) continue;
+    if (!GH_URL.test(l.url || '')) continue;
     try {
       const r = await fetch('/api/ghstate?url=' + encodeURIComponent(l.url));
       const st = await r.json();
@@ -742,7 +756,7 @@ async function askGitHub() {
 function cardKey(w) {
   const gh = ghOf(w);
   return w.link.image ? w.link.image
-    : w.link.path ? docKey(w) : w.link.url + (gh ? ' ' + gh.state : '');
+    : w.link.path ? docKey(w) : w.link.url + (gh ? ' ' + gh.state : '') + ' ' + shownTitle(w);
 }
 
 const imgSrc = l => /^https?:/i.test(l.image) ? l.image : '/api/image?path=' + encodeURIComponent(l.image);
@@ -779,7 +793,7 @@ function card(pic, w) {
   const img = pic.querySelector('img');
   img.onerror = () => img.remove();
   img.src = u.origin + '/favicon.ico';
-  pic.querySelector('.ttl span').textContent = w.title;
+  pic.querySelector('.ttl span').textContent = shownTitle(w);
   pic.querySelector('.url').textContent = u.host + u.pathname;
   const gh = ghOf(w);
   if (gh) {
@@ -1417,7 +1431,7 @@ function renderCanvas(match) {
     } else {
       el.title = `${w.app} — ${w.title} · workspace ${w.desktop + 1}`;
       el.querySelector('.dot').style.background = colorOf(w.app);
-      el.querySelector('.t2').textContent = w.title;
+      el.querySelector('.t2').textContent = shownTitle(w);
       // the app is named in words, not only by the dot's colour — unless the
       // title says it already, or it is a card, whose title is what it is
       el.querySelector('.app').textContent = !w.link && w.app
