@@ -53,6 +53,13 @@ let arrangeAt = '';          // what the server last had
 let arrangeTimer = 0, arrangeBusy = 0, arrangeDone = 0;
 const arrangeNow = () => JSON.stringify({ groups, scales,
   layout: Object.fromEntries(Object.entries(layout).filter(([k]) => !k.startsWith('link:'))) });
+// the browser's own copy goes to one backup key, not away, in case the server's is wrong
+function backupLocal() {
+  const had = Object.fromEntries(['groups', 'layout', 'scales'].map(k => [k, store.get(k, null)]).filter(([, v]) => v));
+  if (!Object.keys(had).length) return;
+  if (!store.get('arrangement.backup', null)) store.set('arrangement.backup', { ...had, at: new Date().toISOString() });
+  Object.keys(had).forEach(k => { try { localStorage.removeItem('winlist.' + k); } catch {} });
+}
 function saveArrange() {
   if (!arrangeKnown) return;           // not yet known whether the server's wins
   clearTimeout(arrangeTimer);
@@ -66,7 +73,7 @@ async function sendArrange() {
     const r = await fetch('/api/arrangement', { method: 'PUT', body });
     if (r.ok) {
       arrangeAt = body;
-      ['groups', 'layout', 'scales'].forEach(k => { try { localStorage.removeItem('winlist.' + k); } catch {} });
+      backupLocal();
     }
   } catch {}
   arrangeBusy--;
@@ -86,7 +93,7 @@ function takeArrange(a, asked) {
   scales = a.scales;
   const cards = Object.entries(layout).filter(([k]) => k.startsWith('link:'));
   layout = { ...a.layout, ...Object.fromEntries(cards) };
-  ['groups', 'layout', 'scales'].forEach(k => { try { localStorage.removeItem('winlist.' + k); } catch {} });
+  backupLocal();
 }
 const saveLayout = () => {
   saveArrange();
