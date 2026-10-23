@@ -157,6 +157,12 @@
               padding:6px 10px; background:var(--panel); min-width:0 }
   .card .ttl { display:flex; align-items:center; gap:7px; font-size:13px; color:var(--fg);
                white-space:nowrap; overflow:hidden; text-overflow:ellipsis }
+  .pic.card.tool { align-items:flex-start }
+  .runbtn { font:inherit; font-size:14px; font-weight:600; color:#fff; background:var(--accent); border:0;
+            border-radius:6px; padding:7px 14px; cursor:pointer; max-width:100%; overflow:hidden;
+            text-overflow:ellipsis; white-space:nowrap }
+  .runbtn:hover { filter:brightness(1.12) }
+  .runbtn:active { transform:translateY(1px) }
   .card .ttl img { width:16px; height:16px; flex:none }
   /* a markdown file, drawn at its own size and scaled with the surface like a
      terminal, so zooming in is how you read it */

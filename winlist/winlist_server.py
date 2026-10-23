@@ -815,9 +815,12 @@ def placed(body):
             and abs(body[k]) < 1e7}
 
 
-def send_link(url=None, title=None, path=None, image=None, keep=None):
-    """A card for the board: a web page (url), a markdown file (path) or a
-    picture (image: a path or an http(s) URL). None, and why, if it won't do.
+def send_link(url=None, title=None, path=None, image=None, keep=None, tool=None, folder=None):
+    """A card for the board: a web page (url), a markdown file (path), a
+    picture (image: a path or an http(s) URL) or a button for one of a
+    project's tools (tool, by name, in folder). None, and why, if it won't do.
+    A tool card holds the name only: what it runs is looked up when pressed,
+    so an edit to the script, or to .winlist-tools, is what runs next.
     keep is a card a browser held from before the board lived here: taken as
     it was, file or no file, with its place."""
     title = (title or "").strip()
@@ -827,6 +830,15 @@ def send_link(url=None, title=None, path=None, image=None, keep=None):
             return None, "give a url, a path to a markdown file, or an image"
         card = {kind: keep[kind], "title": title or keep[kind]}
         card.update(placed(keep))
+    elif tool:
+        tools, err = project_tools(folder or "")
+        if err:
+            return None, err
+        found = next((t for t in tools if t["name"] == tool), None)
+        if not found:
+            return None, "no tool %s in %s" % (tool, folder)
+        card = {"tool": tool, "dir": os.path.expanduser(folder), "about": found["about"],
+                "title": title or tool}
     elif image:
         if not re.match(r"https?://[^/\s]+", image):
             image, _, err = image_file(image)
@@ -1143,7 +1155,7 @@ class Handler(BaseHTTPRequestHandler):
             except (ValueError, json.JSONDecodeError):
                 return self._send(json.dumps({"error": "bad request"}), code=400)
             link, err = send_link(body.get("url"), body.get("title"), body.get("path"),
-                                  body.get("image"), body.get("keep"))
+                                  body.get("image"), body.get("keep"), body.get("tool"), body.get("dir"))
             if not link:
                 return self._send(json.dumps({"error": err}), code=400)
             return self._send(json.dumps(link), code=201)
