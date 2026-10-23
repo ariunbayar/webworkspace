@@ -102,7 +102,6 @@ $('#tray').onclick = () => setBare(!bare);
 // none of the plumbing shows on the page, so it gets a picture of its own
 const archbox = $('#archbox');
 const showArch = () => { if (!archbox.open) archbox.showModal(); };
-$('#arch').onclick = showArch;
 $('#archclose').onclick = () => archbox.close();
 // the bar only has room for the common keys; ? lists them all
 // u asks for a URL; the server finds the page's title, as for one sent by curl
@@ -235,7 +234,7 @@ const ACTIONS = [
   ['Actual size', '1', () => actualSize()],
   ['Loupe', 'z', () => setLens(!lensOn)],
   ['Top bar', 'b', () => setBare(!bare)],
-  ['Filter', '/', () => { if (bare) setBare(false); $('#q').focus(); }],
+  ['Filter', '/', () => { openQ(); }],
   ['Architecture', 'a', () => showArch()],
   ['Keys help', '?', () => showHelp()],
   ['Move/size picked tile', 'Super+Enter', () => {
@@ -364,7 +363,6 @@ function actualSize() {
   shift(Math.round(box.left + origin[0]) - box.left - origin[0],
         Math.round(box.top + origin[1]) - box.top - origin[1]);
 }
-$('#actual').onclick = actualSize;
 // the whole arrangement goes, so it asks once more: a second click within 3s
 let resetArmed = 0;
 $('#reset').onclick = () => {
@@ -385,6 +383,10 @@ $('#reset').onclick = () => {
 };
 addEventListener('resize', render);
 $('#q').addEventListener('input', () => { sel = null; render(); });
+// hidden until asked for (/ or the palette); stays while it holds text, folds when it empties and loses focus
+const openQ = () => { if (bare) setBare(false); $('#q').classList.add('on'); $('#q').focus(); };
+const foldQ = () => { if (!$('#q').value) $('#q').classList.remove('on'); };
+$('#q').addEventListener('blur', foldQ);
 
 // A window that has closed leaves its place behind in the layout. It is let go
 // once it has been missing for a minute of polls — not on the first, since a
@@ -1730,8 +1732,6 @@ async function newTerm({ claude, argv, group, cwd, corner } = {}) {
   saveLayout();
   pickIt();
 }
-$('#newterm').onclick = () => newTerm();
-$('#newclaude').onclick = () => newTerm({ claude: true });
 
 async function closeTerm(id) {
   await fetch('/api/terminals/' + id, { method: 'DELETE' }).catch(() => {});
@@ -1868,11 +1868,9 @@ const lensDirty = new Set();      // terminals whose rows changed since copied
 function setLens(v) {
   lensOn = v;
   store.set('lens', v);
-  $('#lens').setAttribute('aria-pressed', v);
   syncLens();
   aimLens();
 }
-$('#lens').onclick = () => setLens(!lensOn);
 
 // called from render(): tiles come, go and move, and the copy follows
 function syncLens() {
@@ -2310,9 +2308,9 @@ document.addEventListener('keydown', e => {
   if (k === 'a') { e.preventDefault(); return showArch(); }
   if (k === '?') { e.preventDefault(); return showHelp(); }
   if (k === ':') { e.preventDefault(); return showPalette(); }
-  if (k === '/') { e.preventDefault(); if (bare) setBare(false); $('#q').focus(); return; }
+  if (k === '/') { e.preventDefault(); openQ(); return; }
   if (k === 'Escape') {
-    if ($('#q').value || sel) { $('#q').value = ''; sel = null; return render(); }
+    if ($('#q').value || sel) { $('#q').value = ''; foldQ(); sel = null; return render(); }
     return bare ? undefined : setBare(true);
   }
   if (k === 'b') { e.preventDefault(); return setBare(!bare); }

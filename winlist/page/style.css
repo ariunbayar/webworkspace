@@ -42,11 +42,11 @@
   .t2 { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:12px }
 
   /* the virtual screen: every window on one surface, arranged however you like */
+  #q:not(.on) { display:none }
   .ctl { display:flex; gap:8px; align-items:center }
   .btn { border:1px solid var(--line); background:var(--panel); color:var(--dim); font:inherit;
          font-size:12px; padding:5px 10px; border-radius:6px; cursor:pointer }
   .btn:hover { color:var(--fg); border-color:var(--dim) }
-  .btn[aria-pressed=true] { background:var(--accent); border-color:var(--accent); color:#fff }
   #zoom { width:96px; accent-color:var(--accent) }
   /* the surface is placed, not scrolled: overflow is hidden and the canvas is
      translated, so a drag can carry everything as far as you like */
