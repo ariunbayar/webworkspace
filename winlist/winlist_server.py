@@ -476,6 +476,17 @@ def lost_terms():
                 if k not in _live and "cwd" in v]
 
 
+def term_session(window, session):
+    """Remember which Claude session a page terminal runs, for --resume."""
+    sid = window[4:] if isinstance(window, str) and window.startswith("web:") else None
+    if not sid or not isinstance(session, str) or not re.fullmatch(r"[A-Za-z0-9-]{1,64}", session):
+        return
+    with _terms_lock:
+        if sid in _terms and _terms[sid].get("session") != session:
+            _terms[sid]["session"] = session
+            _save_terms()
+
+
 def change_term(sid, body):
     """Where the page has a terminal's tile and which face; body None forgets it."""
     with _terms_lock:
@@ -1326,6 +1337,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(json.dumps({"error": "bad request"}), code=400)
             if not isinstance(body, dict) or not claude_state(body.get("window"), body.get("state")):
                 return self._send(json.dumps({"error": "give a window id and a state"}), code=400)
+            term_session(body.get("window"), body.get("session"))
             return self._send(json.dumps({"ok": True}))
         if self.path.startswith("/api/links"):
             try:

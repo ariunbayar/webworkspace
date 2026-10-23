@@ -792,7 +792,7 @@ async function restoreTerms(keep) {
     if (keep) {
       const body = { cols: r.cols, rows: r.rows };
       if (r.cwd_ok) body.cwd = r.cwd;
-      if (r.claude) body.argv = ['claude'];
+      if (r.claude) body.argv = r.session ? ['claude', '--resume', r.session] : ['claude'];
       const made = await fetch('/api/terminals', { method: 'POST', body: JSON.stringify(body) })
         .then(x => x.json()).catch(() => null);
       if (!made || !made.id) { toast('Could not restore one: ' + esc((made && made.error) || 'no answer from the server'), 4000); continue; }

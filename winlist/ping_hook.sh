@@ -5,6 +5,7 @@
 # rest only set the state shown in the tile's caption.
 in=$(cat 2>/dev/null)
 ev=$(printf %s "$in" | sed -n 's/.*"hook_event_name" *: *"\([A-Za-z]*\)".*/\1/p' | head -n 1)
+sess=$(printf %s "$in" | sed -n 's/.*"session_id" *: *"\([A-Za-z0-9-]*\)".*/\1/p' | head -n 1)
 id=
 if [ -n "$WINLIST_TERM" ]; then
   id="web:$WINLIST_TERM"
@@ -22,5 +23,6 @@ case "$ev" in
   *) exit 0 ;;
 esac
 [ "$st" = done ] && curl -s -m 1 localhost:8766/api/ping -d "{\"window\":\"$id\"}" >/dev/null 2>&1
-curl -s -m 1 localhost:8766/api/claude -d "{\"window\":\"$id\",\"state\":\"$st\"}" >/dev/null 2>&1
+[ -n "$sess" ] && sess=",\"session\":\"$sess\""
+curl -s -m 1 localhost:8766/api/claude -d "{\"window\":\"$id\",\"state\":\"$st\"$sess}" >/dev/null 2>&1
 exit 0
