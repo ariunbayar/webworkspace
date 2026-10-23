@@ -2243,6 +2243,19 @@ function nudge(dx, dy, grow) {
     if (resizeTo(w, el, t, edge)) break;
   }
 }
+// pan, never zoom, just far enough that the tile in hand is back in the frame
+function follow() {
+  const w = selected(), pan = $('#pan');
+  if (!w) return;
+  const [x, y] = seatOf(w), m = GRID * zoom;
+  const fit = (o, at, len, view) => {  // how far to slide along one axis
+    const lo = o + at * zoom, hi = lo + len * zoom;
+    return lo < m || hi + m > view && len * zoom + 2 * m > view ? m - lo
+      : hi + m > view ? view - m - hi : 0;
+  };
+  const dx = fit(origin[0], x, w.w, pan.clientWidth), dy = fit(origin[1], y, w.h, pan.clientHeight);
+  if (dx || dy) shift(dx, dy);
+}
 // Super+Enter moves and sizes, the way gTile's keys do: the arrows move the
 // tile a grid cell, Shift with them sizes it, Enter or Esc leaves. Typing in a
 // terminal or a document when you asked, you are handed back to it after.
@@ -2300,7 +2313,7 @@ document.addEventListener('keydown', e => {
     if (k === 'Escape' || k === 'Enter') return endEdit();
     const step = { ArrowUp: [0, -1], k: [0, -1], ArrowDown: [0, 1], j: [0, 1],
                    ArrowLeft: [-1, 0], h: [-1, 0], ArrowRight: [1, 0], l: [1, 0] }[k.length === 1 ? k.toLowerCase() : k];
-    if (step) nudge(...step, e.shiftKey);
+    if (step) { nudge(...step, e.shiftKey); follow(); }
     return;
   }
   // the page's own keys are bare letters: anything held with them is the browser's
