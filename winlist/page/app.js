@@ -316,7 +316,7 @@ function palItems() {
   const ws = (data ? data.windows : []).map(w => {
     const t = w.term && terms.get(w.term.session);
     return { kind: kindOf(w.id) === 'term' ? 'terminal' : kindOf(w.id), key: '',
-      name: w.title || (t && t.title) || w.app || '', extra: haystack(w),
+      name: labelOf(w) || w.title || (t && t.title) || w.app || '', extra: haystack(w),
       run: () => { sel = w.id; render(); reveal(); } };
   });
   return [...ACTIONS, ...gs, ...ws];
@@ -844,11 +844,13 @@ async function restoreTerms(keep) {
       if (!made || !made.id) { toast('Could not restore one: ' + esc((made && made.error) || 'no answer from the server'), 4000); continue; }
       if (r.at) layout['web:' + made.id] = r.at;
       if (r.face) faces[made.id] = r.face;
+      if (labels['web:' + r.id]) { labels['web:' + made.id] = labels['web:' + r.id]; delete labels['web:' + r.id]; }
       if (!r.cwd_ok) moved++;
     }
     await fetch('/api/terminals/' + r.id, { method: 'DELETE' }).catch(() => {});   // forgets it
   }
   store.set('faces', faces);
+  store.set('labels', labels);
   saveLayout();
   restoreNote = moved ? `${moved} folder${moved > 1 ? 's are' : ' is'} gone: started in ~ instead.` : '';
   if (restoreNote) setTimeout(() => { restoreNote = ''; showTrouble(); }, 8000);
