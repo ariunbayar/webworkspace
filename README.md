@@ -185,6 +185,33 @@ anything typed. `python3 winlist/usage_report.py` reads it back per day;
 `--split YYYY-MM-DD` compares the rates before and from a date, `--days N`
 keeps to the last N days.
 
+Claude status
+---
+
+A window running Claude Code (an X terminal, or a terminal tile here) shows a
+chip in its caption, and a ring in the same colour that still reads when the
+tile is tiny:
+
+- **working** (blue): you sent a prompt, or a tool is running.
+- **waiting** (amber): it needs you — a permission prompt or a question.
+- **done** (green): it finished its turn and is idle. This one also pings, as before.
+
+Claude Code's hooks report it, through `winlist/ping_hook.sh`, which reads the
+event from the hook's JSON and finds its window from `$WINLIST_TERM` (a page
+terminal) or `$WINDOWID` (xterm). Stop was the only hook before; add the rest
+to the `hooks` of `~/.claude/settings.json`, with the same command as Stop
+(the path is where this checkout is):
+
+    "UserPromptSubmit": [{"hooks": [{"type": "command", "command": "/path/to/winlist/ping_hook.sh"}]}],
+    "PostToolUse":      [{"hooks": [{"type": "command", "command": "/path/to/winlist/ping_hook.sh"}]}],
+    "Notification":     [{"hooks": [{"type": "command", "command": "/path/to/winlist/ping_hook.sh"}]}]
+
+`PostToolUse` is what turns waiting back into working once you have answered;
+`PreToolUse` would do the same, but is not needed. The idle reminder
+(`idle_prompt`) is ignored, so a finished window stays done. A state is kept in
+the server's memory only: it goes with the window, and a working one with no
+news for 30 minutes is dropped.
+
 Terminals
 ---
 
