@@ -154,8 +154,8 @@
   /* a link is kept as the least that still says what it was: the site's icon,
      the page's title and where it lives. Opening it is a click away */
   .pic.card { display:flex; flex-direction:column; justify-content:center; gap:3px;
-              padding:6px 10px; background:var(--panel); min-width:0 }
-  .card .ttl { display:flex; align-items:center; gap:7px; font-size:13px; color:var(--fg);
+              padding:6px 10px; background:var(--panel); min-width:0; overflow:hidden }
+  .card .ttl { display:flex; align-items:center; gap:7px; font-size:13px; color:var(--fg); min-width:0;
                white-space:nowrap; overflow:hidden; text-overflow:ellipsis }
   .pic.card.tool { align-items:flex-start }
   .runbtn { font:inherit; font-size:14px; font-weight:600; color:#fff; background:var(--accent); border:0;
@@ -163,6 +163,7 @@
             text-overflow:ellipsis; white-space:nowrap }
   .runbtn:hover { filter:brightness(1.12) }
   .runbtn:active { transform:translateY(1px) }
+  .card .ttl span { min-width:0; overflow:hidden; text-overflow:ellipsis }
   .card .ttl img { width:16px; height:16px; flex:none }
   /* a markdown file, drawn at its own size and scaled with the surface like a
      terminal, so zooming in is how you read it */

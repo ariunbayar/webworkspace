@@ -1077,8 +1077,8 @@ function drawEdges() {
       if (!match(w)) return;
       const [x, y] = seatOf(w);
       const px = origin[0] + x * zoom, py = origin[1] + y * zoom;
-      const pw = w.term ? w.w * zoom : Math.max(90, w.w * zoom);
-      const ph = w.term ? w.h * zoom : Math.max(60, w.h * zoom);
+      const pw = w.term || isCard(w) ? w.w * zoom : Math.max(90, w.w * zoom);
+      const ph = w.term || isCard(w) ? w.h * zoom : Math.max(60, w.h * zoom);
       const ping = pings.has(w.id);
       if (ping && lookedAt(w, px, py, pw, ph, W, H)) {
         if (!inViewSince.has(w.id)) inViewSince.set(w.id, now);
@@ -1240,6 +1240,7 @@ function cardTitle(l) {
 function cardHost(url) {
   try { return new URL(url).host.replace(/^www\./, ''); } catch { return 'Link'; }
 }
+const isCard = w => w.link && !w.link.image && !w.link.path;   // link or tool card
 function linkWin(l) {
   return { id: 'link:' + l.id, link: l, title: cardTitle(l),
            app: l.tool ? 'Tool' : l.image ? 'Image' : l.path ? 'Markdown' : cardHost(l.url),
@@ -1471,8 +1472,10 @@ function place(el, w) {
     if (t && t.wrap) t.wrap.style.transform = `scale(${zoom})`;
     return;
   }
-  el.style.width = Math.max(90, w.w * zoom) + 'px';
-  el.style.height = Math.max(60, w.h * zoom) + 'px';
+  // a link card is exactly its saved size at any zoom: no screen-px floor
+  const fl = isCard(w) ? 0 : 1;
+  el.style.width = Math.max(90 * fl, w.w * zoom) + 'px';
+  el.style.height = Math.max(60 * fl, w.h * zoom) + 'px';
   const dw = w.link && w.link.path && el.querySelector('.docwrap');
   if (dw) {                          // the caption stays at screen size
     dw.style.width = w.w + 'px';
