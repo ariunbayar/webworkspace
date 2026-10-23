@@ -648,6 +648,7 @@ def sample():
         "pty": {"on": PTY_ON, "port": PTY_PORT, "cell": n_desktops, "error": _pty_error},
         "look": LOOK,          # what your xterm looks like, for ours to match
         "links": board(),       # the cards on the board, the same in every browser
+        "arrange": arrangement(),  # its groups and tile places; None until a page sends one
         "pings": pinged(),      # windows that want you, the same in every browser
         "claude": claude_states({w["id"] for w in windows}),  # what Claude is up to in each
     }
@@ -806,6 +807,64 @@ def _save_links():
         pass                            # still on the board, just not past a restart
 
 
+# The groups and where the tiles sit are kept beside the cards, for the same
+# reason. None until a page sends the first one, which is how a page knows to
+# hand over what its browser held.
+ARRANGE_FILE = os.path.join(os.path.dirname(LINKS_FILE), "arrangement.json")
+
+
+def _load_arrangement():
+    try:
+        with open(ARRANGE_FILE) as f:
+            return tidy(json.load(f))
+    except (OSError, ValueError):
+        return None
+
+
+def tidy(body):
+    """groups, layout and scales from what a page sent, or None if it is no arrangement."""
+    if not isinstance(body, dict):
+        return None
+    groups = [g for g in body.get("groups") or [] if isinstance(g, dict) and isinstance(g.get("id"), str)]
+    layout = body.get("layout")
+    scales = body.get("scales")
+    num = lambda v: isinstance(v, (int, float)) and not isinstance(v, bool) and abs(v) < 1e7
+    return {
+        "groups": groups[:200],
+        # cards place themselves through the cards, so only windows are kept here
+        "layout": {k: v for k, v in (layout.items() if isinstance(layout, dict) else ())
+                   if isinstance(v, list) and len(v) == 2 and all(map(num, v)) and not k.startswith("link:")},
+        "scales": {k: v for k, v in (scales.items() if isinstance(scales, dict) else ()) if num(v)},
+    }
+
+
+_arrange = _load_arrangement()
+_arrange_lock = threading.Lock()
+
+
+def arrangement():
+    with _arrange_lock:
+        return _arrange
+
+
+def set_arrangement(body):
+    """Last write wins. None, and why, if it is no arrangement."""
+    global _arrange
+    new = tidy(body)
+    if not new:
+        return None
+    with _arrange_lock:
+        _arrange = new
+        try:
+            os.makedirs(os.path.dirname(ARRANGE_FILE), exist_ok=True)
+            with open(ARRANGE_FILE + ".tmp", "w") as f:
+                json.dump(new, f)
+            os.replace(ARRANGE_FILE + ".tmp", ARRANGE_FILE)
+        except OSError:
+            pass                        # still held, just not past a restart
+    return new
+
+
 CARD_PLACE = ("x", "y", "w", "h")
 
 
@@ -816,9 +875,12 @@ def placed(body):
             and abs(body[k]) < 1e7}
 
 
-def send_link(url=None, title=None, path=None, image=None, keep=None):
-    """A card for the board: a web page (url), a markdown file (path) or a
-    picture (image: a path or an http(s) URL). None, and why, if it won't do.
+def send_link(url=None, title=None, path=None, image=None, keep=None, tool=None, folder=None):
+    """A card for the board: a web page (url), a markdown file (path), a
+    picture (image: a path or an http(s) URL) or a button for one of a
+    project's tools (tool, by name, in folder). None, and why, if it won't do.
+    A tool card holds the name only: what it runs is looked up when pressed,
+    so an edit to the script, or to .winlist-tools, is what runs next.
     keep is a card a browser held from before the board lived here: taken as
     it was, file or no file, with its place."""
     title = (title or "").strip()
@@ -828,6 +890,15 @@ def send_link(url=None, title=None, path=None, image=None, keep=None):
             return None, "give a url, a path to a markdown file, or an image"
         card = {kind: keep[kind], "title": title or keep[kind]}
         card.update(placed(keep))
+    elif tool:
+        tools, err = project_tools(folder or "")
+        if err:
+            return None, err
+        found = next((t for t in tools if t["name"] == tool), None)
+        if not found:
+            return None, "no tool %s in %s" % (tool, folder)
+        card = {"tool": tool, "dir": os.path.expanduser(folder), "about": found["about"],
+                "title": title or tool}
     elif image:
         if not re.match(r"https?://[^/\s]+", image):
             image, _, err = image_file(image)
@@ -1083,6 +1154,14 @@ class Handler(BaseHTTPRequestHandler):
             if os.path.isdir(path):
                 return self._send(json.dumps({"ok": True, "path": path}))
             self._send(json.dumps({"error": "no such folder"}), code=404)
+        elif self.path.startswith("/api/tools?"):
+            # the commands come back to be run, so only this page may ask
+            if not same_page(None, self.headers.get("Host", ""), named=True):
+                return self._send(json.dumps({"error": "refused"}), code=403)
+            q = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
+            tools, err = project_tools(q.get("dir", [""])[0])
+            self._send(json.dumps({"tools": tools} if tools is not None else {"error": err}),
+                       code=200 if tools is not None else 404)
         elif self.path.startswith("/api/image?"):
             if not same_page(None, self.headers.get("Host", ""), named=True):
                 return self._send(json.dumps({"error": "refused"}), code=403)
@@ -1175,7 +1254,7 @@ class Handler(BaseHTTPRequestHandler):
             except (ValueError, json.JSONDecodeError):
                 return self._send(json.dumps({"error": "bad request"}), code=400)
             link, err = send_link(body.get("url"), body.get("title"), body.get("path"),
-                                  body.get("image"), body.get("keep"))
+                                  body.get("image"), body.get("keep"), body.get("tool"), body.get("dir"))
             if not link:
                 return self._send(json.dumps({"error": err}), code=400)
             return self._send(json.dumps(link), code=201)
@@ -1187,6 +1266,21 @@ class Handler(BaseHTTPRequestHandler):
         if not link:
             return self._send(json.dumps({"error": "no such card"}), code=404)
         self._send(json.dumps(link))
+
+    def do_PUT(self):
+        if not self._guard():
+            return
+        if self.path.split("?")[0] != "/api/arrangement":
+            return self._send(json.dumps({"error": "not found"}), code=404)
+        try:
+            n = int(self.headers.get("Content-Length", 0))
+            body = json.loads(self.rfile.read(n) or b"{}")
+        except (ValueError, json.JSONDecodeError):
+            return self._send(json.dumps({"error": "bad request"}), code=400)
+        new = set_arrangement(body)
+        if not new:
+            return self._send(json.dumps({"error": "bad request"}), code=400)
+        self._send(json.dumps(new))
 
     def do_PATCH(self):
         if not self._guard():
@@ -1299,6 +1393,67 @@ KillMode=process
 [Install]
 WantedBy=graphical-session.target
 """
+
+
+# ---- project tools: what a group's folder knows how to run -----------------
+
+TOOLS_FILE = ".winlist-tools"
+LEAD = re.compile(r"^#\s*\S+\s+[—-]+\s+(.+)$")   # "# dev-server.sh — what it does"
+
+
+def script_about(path):
+    """The one-line summary a script gives in its opening comment, if any."""
+    try:
+        with open(path, errors="replace") as f:
+            for _, line in zip(range(12), f):
+                m = LEAD.match(line.strip())
+                if m:
+                    return m.group(1).strip().rstrip(".")
+    except OSError:
+        pass
+    return ""
+
+
+def project_tools(folder):
+    """[{name, about, argv}] for a project folder, or an error.
+
+    Two sources, as the action selector reads them: executable scripts at the
+    top of the folder's tmp/ (dev-server.sh, deploy.sh), and a .winlist-tools
+    file of `Name: command` lines for anything else. Each runs in bash and
+    leaves a shell behind, so Ctrl-C stops a server without losing its tile:
+    the trap is a handler, not an ignore, so the tool itself still gets the
+    Ctrl-C while bash lives on past it.
+    """
+    folder = os.path.expanduser(folder)
+    if not os.path.isdir(folder):
+        return None, "no such folder"
+    shell = os.environ.get("SHELL", "/bin/bash")
+    found = []
+
+    def add(name, cmd, about):
+        found.append({"name": name, "about": about, "cmd": cmd,
+                      "argv": ["bash", "-c", "trap : INT\n%s\nexec %s -i" % (cmd, shlex.quote(shell))]})
+
+    try:
+        with open(os.path.join(folder, TOOLS_FILE)) as f:
+            for line in f:
+                line = line.strip()
+                name, sep, cmd = line.partition(":")
+                if line and not line.startswith("#") and sep and cmd.strip():
+                    add(name.strip(), cmd.strip(), "from " + TOOLS_FILE)
+    except OSError:
+        pass
+    tmp = os.path.join(folder, "tmp")
+    try:
+        names = sorted(os.listdir(tmp))
+    except OSError:
+        names = []
+    for n in names:
+        path = os.path.join(tmp, n)
+        if n.endswith(".sh") and os.path.isfile(path) and os.access(path, os.X_OK):
+            add(n[:-3].replace("-", " ").replace("_", " ").capitalize(),
+                "./tmp/" + shlex.quote(n), script_about(path))
+    return found, None
 
 
 def systemctl(*args):
