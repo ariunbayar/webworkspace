@@ -249,6 +249,22 @@
   .edge { position:absolute; width:8px; height:8px; margin:-4px 0 0 -4px; pointer-events:none;
           z-index:70; background:#e0453a; opacity:.75;
           clip-path:polygon(0 0, 100% 50%, 0 100%) }
+  .edge { transform:rotate(var(--a)) }
+  /* a window that wants you: its triangle grows, turns amber and bobs toward
+     it; a tile in view pulses a ring instead */
+  .edge.ping { width:24px; height:24px; margin:-12px 0 0 -12px; background:#f2a516; opacity:1;
+               z-index:71; pointer-events:auto; cursor:pointer; animation:ping-edge .7s cubic-bezier(.3,0,.2,1) infinite }
+  @keyframes ping-edge {
+    0%, 100% { transform:rotate(var(--a)) translateX(-14px) scale(.8); background:#f2a516 }
+    45%      { transform:rotate(var(--a)) translateX(2px) scale(1.6); background:#ff3b1f }
+    60%      { transform:rotate(var(--a)) translateX(0) scale(1.4); background:#ff3b1f } }
+  .tile.ping { animation:ping-tile 1.4s ease-out infinite }
+  @keyframes ping-tile {
+    0%   { box-shadow:0 0 0 0 rgba(242,165,22,.9) }
+    100% { box-shadow:0 0 0 18px rgba(242,165,22,0) } }
+  @media (prefers-reduced-motion: reduce) {
+    .edge.ping { animation:none }
+    .tile.ping { animation:none; box-shadow:0 0 0 6px #f2a516 } }
   /* a window onto the surface at actual size, whatever the zoom: what is under
      the pointer, one virtual pixel to one screen pixel. It never takes a click */
   #loupe { position:absolute; left:10px; bottom:10px; width:min(720px,80%); height:min(240px,40%);

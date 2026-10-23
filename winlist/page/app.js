@@ -244,6 +244,7 @@ async function poll() {
     if (!r.ok || !Array.isArray(got.windows)) throw new Error(got.error || r.status);
     data = got;
     data.windows.forEach(w => { if (scales[w.id]) { w.w *= scales[w.id]; w.h *= scales[w.id]; } });
+    takePings(data.pings || [], asked);
     takeLinks(data.links || [], asked);
     data.windows.push(...links.map(linkWin));
     // one sent from outside — a shell, an agent — is placed by the first page to see it
@@ -552,6 +553,29 @@ function shift(dx, dy) {          // slide the whole surface, no edges to run in
 // A triangle on the frame's edge for windows wholly out of view, on the line from
 // the frame's middle to the window's. Nearby ones share a triangle, and a window
 // the search has ruled out gets none.
+// A window that wants you — Claude finished in it — pings: its triangle bobs
+// toward it, or the tile itself pulses if it is in view, until it has been in
+// view for two seconds, half of it at least, big enough to read.
+const pings = new Set(), inViewSince = new Map();
+const unpinged = new Map();   // window id -> when the server was told it is seen; 0 while in flight
+function seenPing(id) {
+  pings.delete(id);
+  unpinged.set(id, 0);
+  fetch('/api/ping/' + encodeURIComponent(id), { method: 'DELETE' })
+    .catch(() => {})
+    .finally(() => unpinged.set(id, Date.now()));
+}
+// what the server holds, less what this page cleared since the poll set out
+function takePings(list, asked) {
+  for (const [id, at] of unpinged) if (at && at < asked) unpinged.delete(id);
+  pings.clear();
+  list.forEach(id => { if (!unpinged.has(id)) pings.add(id); });
+}
+function lookedAt(w, px, py, pw, ph, W, H) {
+  const ox = Math.min(px + pw, W) - Math.max(px, 0), oy = Math.min(py + ph, H) - Math.max(py, 0);
+  return ox > 0 && oy > 0 && ox * oy >= pw * ph / 2 && pw >= 300;
+}
+
 let edgeQueued = false;
 function markEdges() {
   if (edgeQueued) return;
@@ -562,34 +586,57 @@ function drawEdges() {
   const pan = $('#pan'), box = $('#edges'), W = pan.clientWidth, H = pan.clientHeight;
   const spots = new Map();
   if (data && W && H) {
-    const match = visible(), cx = W / 2, cy = H / 2, inset = 8;
+    const match = visible(), cx = W / 2, cy = H / 2, inset = 8, now = Date.now();
+    let seen = false;
     data.windows.forEach(w => {
       if (!match(w)) return;
       const [x, y] = seatOf(w);
       const px = origin[0] + x * zoom, py = origin[1] + y * zoom;
       const pw = w.term ? w.w * zoom : Math.max(90, w.w * zoom);
       const ph = w.term ? w.h * zoom : Math.max(60, w.h * zoom);
+      const ping = pings.has(w.id);
+      if (ping && lookedAt(w, px, py, pw, ph, W, H)) {
+        if (!inViewSince.has(w.id)) inViewSince.set(w.id, now);
+        else if (now - inViewSince.get(w.id) >= 2000) { seenPing(w.id); seen = true; }
+      } else inViewSince.delete(w.id);
       if (px < W && px + pw > 0 && py < H && py + ph > 0) return;   // some of it shows
       const dx = px + pw / 2 - cx, dy = py + ph / 2 - cy;
       const k = Math.min((cx - inset) / Math.abs(dx || 1e-9), (cy - inset) / Math.abs(dy || 1e-9));
-      const ex = cx + dx * k, ey = cy + dy * k;
-      spots.set(Math.round(ex / 40) + ',' + Math.round(ey / 40),
-                [ex, ey, Math.atan2(dy, dx)]);
+      const ex = cx + dx * k, ey = cy + dy * k, key = Math.round(ex / 40) + ',' + Math.round(ey / 40);
+      spots.set(key, [ex, ey, Math.atan2(dy, dx), ping ? w.id : (spots.get(key) || [])[3]]);
     });
+    if (seen) render();
+    // the tile pulses while you look; the look counts once the poll comes round
+    if (inViewSince.size) setTimeout(markEdges, 2100);
   }
   const list = [...spots.values()];
   while (box.children.length < list.length) {
     const d = document.createElement('div');
     d.className = 'edge';
+    // a pinging one is a way there: a click brings its window to the middle
+    d.addEventListener('pointerdown', e => e.stopPropagation());
+    d.addEventListener('click', () => d.ping && goToPing(d.ping));
     box.append(d);
   }
   while (box.children.length > list.length) box.lastChild.remove();
-  list.forEach(([ex, ey, a], i) => {
-    const s = box.children[i].style;
+  list.forEach(([ex, ey, a, ping], i) => {
+    const d = box.children[i], s = d.style;
+    d.ping = ping;
+    d.classList.toggle('ping', !!ping);
     s.left = ex + 'px';
     s.top = ey + 'px';
-    s.transform = `rotate(${a}rad)`;
+    s.setProperty('--a', a + 'rad');
   });
+}
+
+// to the window, picked, and near enough to read: the look that clears the ping
+function goToPing(id) {
+  const w = data && data.windows.find(v => v.id === id), pan = $('#pan');
+  if (!w) return;
+  sel = id;
+  render();
+  reveal();
+  if (w.w * zoom < 300) setZoom(Math.min(0.8 * pan.clientWidth / w.w, 0.8 * pan.clientHeight / w.h));
 }
 
 // zoom about a point: whatever is under the mouse, or between the fingers, is
@@ -1470,7 +1517,7 @@ function renderCanvas(match) {
     }
     el.win = w;                       // the drag handler always wants the fresh one
     el.className = 'tile' + (w.term ? ' term' : '') + (w.link ? ' link' : '') + (w.focused ? ' focused' : '')
-      + (match(w) ? '' : ' off') + (w.id === sel ? ' sel' : '');
+      + (match(w) ? '' : ' off') + (w.id === sel ? ' sel' : '') + (pings.has(w.id) ? ' ping' : '');
     if (w.term) {
       el.title = [w.term.running, w.term.cwd, w.title].filter(Boolean).join(' — ') + ` · pid ${w.pid}`;
       dressTerm(el, w);
