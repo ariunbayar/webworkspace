@@ -955,11 +955,12 @@ def placed(body):
             and abs(body[k]) < 1e7}
 
 
-def send_link(url=None, title=None, path=None, image=None, keep=None):
+def send_link(url=None, title=None, path=None, image=None, keep=None, origin="api"):
     """A card for the board: a web page (url), a markdown file (path) or a
     picture (image: a path or an http(s) URL). None, and why, if it won't do.
     keep is a card a browser held from before the board lived here: taken as
-    it was, file or no file, with its place."""
+    it was, file or no file, with its place. origin is "page" when a page
+    added it by hand; anything else is "api": sent from outside, to the Inbox."""
     title = (title or "").strip()
     if keep:
         kind = next((k for k in ("image", "path", "url") if isinstance(keep.get(k), str) and keep[k]), None)
@@ -983,7 +984,7 @@ def send_link(url=None, title=None, path=None, image=None, keep=None):
     else:
         return None, "give a url, a path to a markdown file, or an image"
     with _links_lock:
-        link = dict(card, id="%x" % time.time_ns())
+        link = dict(card, id="%x" % time.time_ns(), origin="page" if origin == "page" else "api")
         _links.append(link)
         _save_links()
     return link, None
@@ -1322,7 +1323,8 @@ class Handler(BaseHTTPRequestHandler):
             except (ValueError, json.JSONDecodeError):
                 return self._send(json.dumps({"error": "bad request"}), code=400)
             link, err = send_link(body.get("url"), body.get("title"), body.get("path"),
-                                  body.get("image"), body.get("keep"))
+                                  body.get("image"), body.get("keep"),
+                                  "page" if body.get("from") == "page" or body.get("keep") else "api")
             if not link:
                 return self._send(json.dumps({"error": err}), code=400)
             return self._send(json.dumps(link), code=201)
