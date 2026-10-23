@@ -69,6 +69,17 @@ title bar rather than anywhere on it — the rest of it is for typing into — a
 surface, so zoom out and the terminal goes small with the photographs, zoom in
 and you can read it.
 
+A group (`g`) can carry a folder: click `+ folder` in its caption and type a
+path. A terminal (`t`) or Claude Code (`c`) opened inside that group starts
+there, and `▸ tools` in the caption lists what the project can run: the
+executable `tmp/*.sh` scripts at the top of the folder, named from the file
+and described by the script's opening `# name — what it does` comment, plus
+any `Name: command` lines in a `.winlist-tools` file there. Picking one puts
+its button on the surface, in the group, a card like any other: press `▶`
+(or pick it and press Enter) and the tool runs in a new terminal beside it.
+Each press is a fresh run of whatever the script says now; Ctrl-C stops it and
+leaves a shell in its tile.
+
 A shell that exits leaves its tile behind, greyed, with its last words still
 in it and the reason it went in the title bar. **new shell** there starts
 another one in its place — the same size, the same directory, the same spot on
