@@ -2666,7 +2666,7 @@ track('open', { vw: innerWidth, vh: innerHeight, bare, zoom: Math.round(zoom * 1
 // few that belong to the page are counted, never what is typed
 document.addEventListener('keydown', e => {
   const typing = e.target.tagName === 'TEXTAREA' || e.target.tagName === 'INPUT'
-    || !!(e.target.closest && e.target.closest('.docwrap'));
+    || !!(e.target.closest && e.target.closest('.docwrap')) || !!e.target.isContentEditable;
   const mods = (e.ctrlKey ? 'C-' : '') + (e.altKey ? 'A-' : '') + (e.metaKey ? 'S-' : '')
     + (e.shiftKey && e.key.length > 1 ? 's-' : '');
   const page = tileKey(e) || (e.code === 'Space' && e.ctrlKey) || (e.code === 'KeyF' && e.ctrlKey && e.altKey);
