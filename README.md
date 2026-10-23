@@ -117,6 +117,7 @@ kept on the server (per window), so every browser shows it (zoom and pan stay pe
 and the slider zoom, dragging the background with the mouse carries the whole
 surface with it,
 and clicking a window still focuses it for real.
+`=` (or the ▦ in a group's caption) tidies the group holding the picked tile: its windows are packed in rows, none overlapping, each keeping its size.
 A click on the background — not a drag — picks where the next picture, link,
 markdown file or terminal opens: it is centred on that spot, and a crosshair
 shows there for a moment. Pan or zoom the spot out of view and new ones go back

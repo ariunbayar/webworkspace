@@ -548,6 +548,44 @@ function members(g) {
   });
 }
 
+// shelves, tallest first: each tile keeps its size and the order depends on
+// sizes alone, so tidying a tidy group moves nothing. Offsets are on the grid
+function pack(items, width, step) {
+  const up = v => Math.ceil(v / step) * step;
+  const order = items.slice().sort((a, b) => b.h - a.h || b.w - a.w || (a.id < b.id ? -1 : 1));
+  const at = new Map();
+  let x = 0, y = 0, row = 0;
+  order.forEach(t => {
+    if (x && x + t.w > width) { y += row; x = 0; row = 0; }
+    at.set(t.id, [x, y]);
+    x += up(t.w); row = Math.max(row, up(t.h));
+  });
+  return { at, h: y + row };
+}
+
+// the group holding the picked tile, else the one under the click
+function tidyGroup() {
+  const w = selected();
+  return (w && groups.find(g => members(g).some(v => v.id === w.id)))
+    || (anchor && groups.find(g => anchor[0] >= g.x && anchor[0] <= g.x + g.w
+                                && anchor[1] >= g.y && anchor[1] <= g.y + g.h));
+}
+
+function tidy(g = tidyGroup()) {
+  if (!g) return void toast('Pick a tile in a group, or click inside one');
+  const ws = members(g), step = gridStep();
+  const top = Math.ceil(28 / zoom / step) * step + step;    // the caption, then a cell
+  const wide = Math.max(0, ...ws.map(w => w.w));
+  g.w = Math.max(g.w, Math.ceil(wide / step) * step + 2 * step);
+  const { at, h } = pack(ws, g.w - 2 * step, step);
+  g.h = Math.max(g.h, top + h + step);
+  ws.forEach(w => { const [dx, dy] = at.get(w.id); layout[w.id] = [snap(g.x + step + dx), snap(g.y + top + dy)]; });
+  saveLayout();
+  saveGroups();
+  render();
+  toast(`Tidied ${esc(g.name)}: ${ws.length} tile${ws.length === 1 ? '' : 's'}`);
+}
+
 function carryGroup(e, g, el) {
   if (e.button || pointers.size > 1) return;   // a second finger means pinch
   e.preventDefault();
@@ -702,12 +740,17 @@ function renderGroups() {
       el.innerHTML = `<div class="gcap"><span class="gname" title="Double-click to rename"></span><span class="gcount"></span>`
         + `<span class="gdir" title="Folder new terminals start in (click to set)"></span>`
         + `<span class="gtools" title="Run one of this project's tools in a new terminal here">▸ tools</span>`
+        + `<span class="shut tidy" title="Tidy: pack the windows so none overlap (=)">▦</span>`
         + `<span class="shut" title="Remove the group (its windows stay)">✕</span></div>`
         + `<div class="grip" title="Drag to resize this group"></div>`;
       const cap = el.querySelector('.gcap'), name = el.querySelector('.gname');
       const dir = el.querySelector('.gdir'), tools = el.querySelector('.gtools');
       cap.addEventListener('pointerdown', e => {
         if (name.isContentEditable || dir.isContentEditable || e.target === dir || e.target === tools) return e.stopPropagation();
+        if (e.target.closest('.tidy')) {
+          e.preventDefault(); e.stopPropagation();
+          return tidy(el.group);
+        }
         if (e.target.closest('.shut')) {
           e.preventDefault(); e.stopPropagation();
           groups = groups.filter(v => v !== el.group);
@@ -2530,6 +2573,7 @@ document.addEventListener('keydown', e => {
   if (k === 'g') { e.preventDefault(); return newGroup(); }
   if (k === 'F2') { const w = selected(); if (w) { e.preventDefault(); renameTile(w); } return; }
   if (k === '1') { e.preventDefault(); return actualSize(); }
+  if (k === '=') { e.preventDefault(); return tidy(tidyGroup() || null); }
   if (k === 'z') { e.preventDefault(); return setLens(!lensOn); }
   if (k === 'Enter' || k === ' ') { const w = selected(); if (w) { e.preventDefault(); activate(w.id); } return; }
   const moves = { ArrowUp: [0, -1], k: [0, -1], ArrowDown: [0, 1], j: [0, 1],
@@ -2594,6 +2638,7 @@ closeTerm = counted('term.close', closeTerm);
 addCard = counted('card.add', addCard, f => ({ kind: f.image ? 'image' : f.path ? 'doc' : f.note ? 'note' : 'url' }));
 closeLink = counted('card.close', closeLink);
 newGroup = counted('group.new', newGroup);
+tidy = counted('group.tidy', tidy, g => g && ({ n: members(g).length }));
 actualSize = counted('actual', actualSize);
 setLens = counted('lens', setLens, v => ({ on: !!v }));
 setBare = counted('bare', setBare, v => ({ on: !!v }));
