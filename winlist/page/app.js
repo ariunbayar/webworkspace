@@ -791,6 +791,7 @@ function takeLinks(list, asked) {
   const byId = new Map(list.map(l => [l.id, l]));
   for (const [id, p] of pend) if (p.card) byId.set(id, p.card); else byId.delete(id);
   links = [...byId.values()];
+  for (const l of links) if (noteText.has(l.id)) l.text = noteText.get(l.id);
   // moved on another page: follow it, but never undo a drag under way here
   for (const l of links) {
     if (l.x == null || knownAt.get(l.id) === l.x + ',' + l.y) continue;
@@ -897,10 +898,12 @@ function docCard(pic, w) {
 // ---- notes: markdown typed on the card itself, kept with the cards ----------
 let noteEdit = null;                // id of the note being typed into
 const noteSave = new Map();         // card id -> timer of the text not yet sent
+const noteText = new Map();         // card id -> that text: a poll swaps the card objects, never this
 function sendNote(id) {
   clearTimeout(noteSave.get(id)); noteSave.delete(id);
-  const l = links.find(v => v.id === id);
-  if (l) sendCard(l, { text: l.text || '' });
+  const l = links.find(v => v.id === id), text = noteText.get(id);
+  noteText.delete(id);
+  if (l && text != null) { l.text = text; sendCard(l, { text }); }
 }
 function leaveNote(id) {
   if (noteEdit !== id) return;      // a redraw drops the textarea and blurs it too
@@ -916,7 +919,7 @@ function editNote(id) {
 }
 async function newNote() {
   try {
-    const r = await fetch('/api/links', { method: 'POST', body: JSON.stringify({ note: true }) });
+    const r = await fetch('/api/links', { method: 'POST', body: JSON.stringify({ note: true, from: 'page' }) });
     const l = await r.json();
     if (!r.ok) return;
     addCard(l);
@@ -938,6 +941,7 @@ function noteCard(pic, w) {
   ta.value = w.link.text || '';
   ta.addEventListener('input', () => {
     // the poll may have swapped the card for the server's copy: write to the live one
+    noteText.set(id, ta.value);
     (links.find(v => v.id === id) || w.link).text = ta.value;
     clearTimeout(noteSave.get(id));
     noteSave.set(id, setTimeout(() => sendNote(id), 600));
