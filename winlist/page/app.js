@@ -485,7 +485,7 @@ function outside(e) { if (!e.target.closest('#tools')) closeTools(); }
 // picking a tool puts its button on the surface, in the group; pressing that
 // is what runs it, so a server you start every morning is one click away
 async function toolButton(g, t) {
-  const r = await fetch('/api/links', { method: 'POST', body: JSON.stringify({ tool: t.name, dir: g.dir }) })
+  const r = await fetch('/api/links', { method: 'POST', body: JSON.stringify({ tool: t.name, dir: g.dir, from: 'page' }) })
     .catch(() => null);
   const l = r && await r.json().catch(() => null);
   if (!r || !r.ok || !l) return void toast('Could not add the button: ' + esc((l && l.error) || 'no answer from the server'), 4000);
