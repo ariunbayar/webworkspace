@@ -640,14 +640,14 @@ def sample():
         "started": STARTED,
         "pty": {"on": PTY_ON, "port": PTY_PORT, "cell": n_desktops, "error": _pty_error},
         "look": LOOK,          # what your xterm looks like, for ours to match
-        "links": list(_links),  # sent from outside, for the page to make cards of
+        "links": board(),       # the cards on the board, the same in every browser
     }
 
 
-# Links sent from outside the page — a shell, an agent — wait here until a page
-# picks them up. Each has an id, so a page takes each one once; the last few are
-# kept for a page opened later — on disk, so a restart does not lose one that
-# no page has picked up yet.
+# The cards on the board — pages, documents, pictures — are kept here, not in
+# the browser, so every browser shows the same board. Each has an id, and once
+# a page has placed it, where it sits and how big it is. On disk, so a restart
+# keeps the board.
 LINKS_FILE = os.path.join(os.environ.get("XDG_STATE_HOME") or os.path.expanduser("~/.local/state"),
                           "winlist", "links.json")
 _links_lock = threading.Lock()
@@ -656,7 +656,7 @@ _links_lock = threading.Lock()
 def _load_links():
     try:
         with open(LINKS_FILE) as f:
-            return [l for l in json.load(f) if isinstance(l, dict) and "id" in l][-20:]
+            return [l for l in json.load(f) if isinstance(l, dict) and "id" in l]
     except (OSError, ValueError):
         return []
 
@@ -781,11 +781,45 @@ def image_file(path):
     return path, kind, None
 
 
-def send_link(url=None, title=None, path=None, image=None):
-    """A card for the page to pick up: a web page (url), a markdown file (path)
-    or a picture (image: a path or an http(s) URL). None, and why, if it won't do."""
+def board():
+    with _links_lock:
+        return [dict(l) for l in _links]
+
+
+def _save_links():
+    """Called holding _links_lock."""
+    try:
+        os.makedirs(os.path.dirname(LINKS_FILE), exist_ok=True)
+        with open(LINKS_FILE + ".tmp", "w") as f:
+            json.dump(_links, f)
+        os.replace(LINKS_FILE + ".tmp", LINKS_FILE)
+    except OSError:
+        pass                            # still on the board, just not past a restart
+
+
+CARD_PLACE = ("x", "y", "w", "h")
+
+
+def placed(body):
+    """Where a card sits and how big it is, from what a page sent: numbers only."""
+    return {k: round(body[k]) for k in CARD_PLACE
+            if isinstance(body.get(k), (int, float)) and not isinstance(body[k], bool)
+            and abs(body[k]) < 1e7}
+
+
+def send_link(url=None, title=None, path=None, image=None, keep=None):
+    """A card for the board: a web page (url), a markdown file (path) or a
+    picture (image: a path or an http(s) URL). None, and why, if it won't do.
+    keep is a card a browser held from before the board lived here: taken as
+    it was, file or no file, with its place."""
     title = (title or "").strip()
-    if image:
+    if keep:
+        kind = next((k for k in ("image", "path", "url") if isinstance(keep.get(k), str) and keep[k]), None)
+        if not kind:
+            return None, "give a url, a path to a markdown file, or an image"
+        card = {kind: keep[kind], "title": title or keep[kind]}
+        card.update(placed(keep))
+    elif image:
         if not re.match(r"https?://[^/\s]+", image):
             image, _, err = image_file(image)
             if err:
@@ -803,15 +837,22 @@ def send_link(url=None, title=None, path=None, image=None):
     with _links_lock:
         link = dict(card, id="%x" % time.time_ns())
         _links.append(link)
-        del _links[:-20]
-        try:
-            os.makedirs(os.path.dirname(LINKS_FILE), exist_ok=True)
-            with open(LINKS_FILE + ".tmp", "w") as f:
-                json.dump(_links, f)
-            os.replace(LINKS_FILE + ".tmp", LINKS_FILE)
-        except OSError:
-            pass                        # still sent, just not kept past a restart
+        _save_links()
     return link, None
+
+
+def change_link(lid, body):
+    """A card moved or resized on some page; body None takes it off the board."""
+    with _links_lock:
+        link = next((l for l in _links if l["id"] == lid), None)
+        if not link:
+            return None
+        if body is None:
+            _links.remove(link)
+        else:
+            link.update(placed(body))
+        _save_links()
+        return link
 
 
 def focus(wid):
@@ -1042,16 +1083,39 @@ class Handler(BaseHTTPRequestHandler):
                 body = json.loads(self.rfile.read(n) or b"{}")
             except (ValueError, json.JSONDecodeError):
                 return self._send(json.dumps({"error": "bad request"}), code=400)
-            link, err = send_link(body.get("url"), body.get("title"),
-                                  body.get("path"), body.get("image"))
+            link, err = send_link(body.get("url"), body.get("title"), body.get("path"),
+                                  body.get("image"), body.get("keep"))
             if not link:
                 return self._send(json.dumps({"error": err}), code=400)
             return self._send(json.dumps(link), code=201)
         return self._send(json.dumps({"error": "not found"}), code=404)
 
+    def _card(self, body):
+        lid = self.path[len("/api/links/"):].split("?")[0]
+        link = change_link(lid, body)
+        if not link:
+            return self._send(json.dumps({"error": "no such card"}), code=404)
+        self._send(json.dumps(link))
+
+    def do_PATCH(self):
+        if not self._guard():
+            return
+        if not self.path.startswith("/api/links/"):
+            return self._send(json.dumps({"error": "not found"}), code=404)
+        try:
+            n = int(self.headers.get("Content-Length", 0))
+            body = json.loads(self.rfile.read(n) or b"{}")
+        except (ValueError, json.JSONDecodeError):
+            return self._send(json.dumps({"error": "bad request"}), code=400)
+        if not isinstance(body, dict):
+            return self._send(json.dumps({"error": "bad request"}), code=400)
+        self._card(body)
+
     def do_DELETE(self):
         if not self._guard():
             return
+        if self.path.startswith("/api/links/"):
+            return self._card(None)
         if not self.path.startswith("/api/terminals/"):
             return self._send(json.dumps({"error": "not found"}), code=404)
         sid = self.path[len("/api/terminals/"):].split("?")[0]
