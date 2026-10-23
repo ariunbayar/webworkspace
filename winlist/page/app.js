@@ -172,7 +172,27 @@ function alertDoc(msg) {            // said where you were typing, not in a moda
   toast('Could not open it: ' + esc(msg || 'unknown error'), 4000);
 }
 const helpbox = $('#helpbox');
-const showHelp = () => { if (!helpbox.open) helpbox.showModal(); };
+const showHelp = () => {
+  if (helpbox.open) return;
+  $('#helpq').value = '';
+  filterHelp();
+  helpbox.showModal();
+  $('#helpq').focus();
+};
+// every word must turn up in the row, key or words; a section with none left goes
+function filterHelp() {
+  const words = $('#helpq').value.toLowerCase().split(/\s+/).filter(Boolean);
+  helpbox.querySelectorAll('.helpbody section').forEach(s => {
+    let any = false;
+    s.querySelectorAll('tr').forEach(tr => {
+      const hit = words.every(w => tr.textContent.toLowerCase().includes(w));
+      tr.hidden = !hit;
+      any = any || hit;
+    });
+    s.hidden = !any;
+  });
+}
+$('#helpq').oninput = filterHelp;
 $('#helpclose').onclick = () => helpbox.close();
 // squared, so the slider gives fine control down at the small end where the
 // whole surface lives and still reaches far enough in to read a window
@@ -2024,7 +2044,7 @@ document.addEventListener('keydown', e => {
   }
   const k = e.key;
   if (helpbox.open) {
-    if (e.key === '?') { e.preventDefault(); helpbox.close(); }
+    if (e.key === '?' && e.target.id !== 'helpq') { e.preventDefault(); helpbox.close(); }
     return;
   }
   if (archbox.open) return;
