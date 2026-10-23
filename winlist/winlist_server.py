@@ -648,6 +648,7 @@ def sample():
         "pty": {"on": PTY_ON, "port": PTY_PORT, "cell": n_desktops, "error": _pty_error},
         "look": LOOK,          # what your xterm looks like, for ours to match
         "links": board(),       # the cards on the board, the same in every browser
+        "arrange": arrangement(),  # its groups and tile places; None until a page sends one
         "pings": pinged(),      # windows that want you, the same in every browser
     }
 
@@ -803,6 +804,64 @@ def _save_links():
         os.replace(LINKS_FILE + ".tmp", LINKS_FILE)
     except OSError:
         pass                            # still on the board, just not past a restart
+
+
+# The groups and where the tiles sit are kept beside the cards, for the same
+# reason. None until a page sends the first one, which is how a page knows to
+# hand over what its browser held.
+ARRANGE_FILE = os.path.join(os.path.dirname(LINKS_FILE), "arrangement.json")
+
+
+def _load_arrangement():
+    try:
+        with open(ARRANGE_FILE) as f:
+            return tidy(json.load(f))
+    except (OSError, ValueError):
+        return None
+
+
+def tidy(body):
+    """groups, layout and scales from what a page sent, or None if it is no arrangement."""
+    if not isinstance(body, dict):
+        return None
+    groups = [g for g in body.get("groups") or [] if isinstance(g, dict) and isinstance(g.get("id"), str)]
+    layout = body.get("layout")
+    scales = body.get("scales")
+    num = lambda v: isinstance(v, (int, float)) and not isinstance(v, bool) and abs(v) < 1e7
+    return {
+        "groups": groups[:200],
+        # cards place themselves through the cards, so only windows are kept here
+        "layout": {k: v for k, v in (layout.items() if isinstance(layout, dict) else ())
+                   if isinstance(v, list) and len(v) == 2 and all(map(num, v)) and not k.startswith("link:")},
+        "scales": {k: v for k, v in (scales.items() if isinstance(scales, dict) else ()) if num(v)},
+    }
+
+
+_arrange = _load_arrangement()
+_arrange_lock = threading.Lock()
+
+
+def arrangement():
+    with _arrange_lock:
+        return _arrange
+
+
+def set_arrangement(body):
+    """Last write wins. None, and why, if it is no arrangement."""
+    global _arrange
+    new = tidy(body)
+    if not new:
+        return None
+    with _arrange_lock:
+        _arrange = new
+        try:
+            os.makedirs(os.path.dirname(ARRANGE_FILE), exist_ok=True)
+            with open(ARRANGE_FILE + ".tmp", "w") as f:
+                json.dump(new, f)
+            os.replace(ARRANGE_FILE + ".tmp", ARRANGE_FILE)
+        except OSError:
+            pass                        # still held, just not past a restart
+    return new
 
 
 CARD_PLACE = ("x", "y", "w", "h")
@@ -1147,6 +1206,21 @@ class Handler(BaseHTTPRequestHandler):
         if not link:
             return self._send(json.dumps({"error": "no such card"}), code=404)
         self._send(json.dumps(link))
+
+    def do_PUT(self):
+        if not self._guard():
+            return
+        if self.path.split("?")[0] != "/api/arrangement":
+            return self._send(json.dumps({"error": "not found"}), code=404)
+        try:
+            n = int(self.headers.get("Content-Length", 0))
+            body = json.loads(self.rfile.read(n) or b"{}")
+        except (ValueError, json.JSONDecodeError):
+            return self._send(json.dumps({"error": "bad request"}), code=400)
+        new = set_arrangement(body)
+        if not new:
+            return self._send(json.dumps({"error": "bad request"}), code=400)
+        self._send(json.dumps(new))
 
     def do_PATCH(self):
         if not self._guard():

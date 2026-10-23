@@ -45,8 +45,51 @@ function sendCard(l, fields) {             // fields that changed; null takes it
     .catch(() => {})
     .finally(() => { const p = pend.get(l.id); if (p && p.seq === seq) p.doneAt = Date.now(); });
 }
+// Groups, where the windows' tiles sit and how much their photos are scaled
+// live on the server too. A save waits a moment, since a drag saves often, and
+// a poll never undoes what this page has sent and not yet seen back.
+let arrangeKnown = false;    // the first poll has said whether the server has one
+let arrangeAt = '';          // what the server last had
+let arrangeTimer = 0, arrangeBusy = 0, arrangeDone = 0;
+const arrangeNow = () => JSON.stringify({ groups, scales,
+  layout: Object.fromEntries(Object.entries(layout).filter(([k]) => !k.startsWith('link:'))) });
+function saveArrange() {
+  if (!arrangeKnown) return;           // not yet known whether the server's wins
+  clearTimeout(arrangeTimer);
+  arrangeTimer = setTimeout(sendArrange, 400);
+}
+async function sendArrange() {
+  arrangeTimer = 0;
+  const body = arrangeNow();
+  arrangeBusy++;
+  try {
+    const r = await fetch('/api/arrangement', { method: 'PUT', body });
+    if (r.ok) {
+      arrangeAt = body;
+      ['groups', 'layout', 'scales'].forEach(k => { try { localStorage.removeItem('winlist.' + k); } catch {} });
+    }
+  } catch {}
+  arrangeBusy--;
+  arrangeDone = Date.now();
+}
+// what the server holds, unless this page has a change of its own on the way,
+// is under the pointer, or is being typed into
+function takeArrange(a, asked) {
+  if (!arrangeKnown) {
+    arrangeKnown = true;
+    if (!a) return sendArrange();      // none yet: this browser's is the first
+  } else if (!a || arrangeTimer || arrangeBusy || arrangeDone >= asked
+             || document.querySelector('.dragging') || document.activeElement?.isContentEditable) return;
+  if (JSON.stringify(a) === arrangeAt) return;
+  arrangeAt = JSON.stringify(a);
+  groups = a.groups;
+  scales = a.scales;
+  const cards = Object.entries(layout).filter(([k]) => k.startsWith('link:'));
+  layout = { ...a.layout, ...Object.fromEntries(cards) };
+  ['groups', 'layout', 'scales'].forEach(k => { try { localStorage.removeItem('winlist.' + k); } catch {} });
+}
 const saveLayout = () => {
-  store.set('layout', layout);
+  saveArrange();
   for (const l of links) {
     const at = layout['link:' + l.id];
     if (!at || (at[0] === l.x && at[1] === l.y)) continue;
@@ -257,7 +300,6 @@ $('#reset').onclick = () => {
   layout = {};
   scales = {};
   saveLayout();
-  store.set('scales', scales);
   render();
 };
 addEventListener('resize', render);
@@ -278,7 +320,7 @@ function forgetGone() {
     missing.set(id, n);
     if (n >= 30) { delete layout[id]; delete scales[id]; missing.delete(id); changed = true; }
   });
-  if (changed) { saveLayout(); store.set('scales', scales); }
+  if (changed) saveLayout();
 }
 
 async function poll() {
@@ -290,6 +332,7 @@ async function poll() {
     // an error answer is no picture of the desktop: keep the last good one
     if (!r.ok || !Array.isArray(got.windows)) throw new Error(got.error || r.status);
     data = got;
+    takeArrange(got.arrange, asked);
     data.windows.forEach(w => { if (scales[w.id]) { w.w *= scales[w.id]; w.h *= scales[w.id]; } });
     takePings(data.pings || [], asked);
     takeLinks(data.links || [], asked);
@@ -348,13 +391,13 @@ function newGroup() {
   while (used.has(n === 1 ? 'Group' : 'Group ' + n)) n++;
   const g = { id: newId(), name: n === 1 ? 'Group' : 'Group ' + n, x, y, w, h };
   groups.push(g);
-  store.set('groups', groups);
+  saveGroups();
   render();
   const el = groupEls.get(g.id);
   if (el) rename(g, el.querySelector('.gname'));
 }
 
-function saveGroups() { store.set('groups', groups); }
+const saveGroups = saveArrange;
 
 function placeGroup(el, g) {
   el.style.left = g.x * zoom + 'px';
@@ -1988,7 +2031,7 @@ function fitGrid(w, el) {
     w.w = w.w / s0 * s;
     w.h = w.h / s0 * s;
     if (Math.abs(s - 1) < 0.001) delete scales[w.id]; else scales[w.id] = s;
-    store.set('scales', scales);
+    saveArrange();
   }
 }
 function nudge(dx, dy, grow) {
@@ -2017,7 +2060,7 @@ function nudge(dx, dy, grow) {
     w.w = w.w / s0 * s;
     w.h = w.h / s0 * s;
     if (Math.abs(s - 1) < 0.001) delete scales[w.id]; else scales[w.id] = s;
-    store.set('scales', scales);
+    saveArrange();
     place(el, w);
     return;
   }

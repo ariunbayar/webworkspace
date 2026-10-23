@@ -105,7 +105,7 @@ and not used, since it is far taller than any browser window and mostly empty â€
 and from there you drag each window wherever you want it. **Dragging moves the tile and nothing else**: the window
 manager is never touched, so this is a place to arrange your windows as you
 think about them rather than as the desktop has them. The arrangement is
-remembered in the browser (per window), "Reset layout" puts it back, the wheel
+kept on the server (per window), so every browser shows it (zoom and pan stay per browser), "Reset layout" puts it back, the wheel
 and the slider zoom, dragging the background with the mouse carries the whole
 surface with it,
 and clicking a window still focuses it for real.
