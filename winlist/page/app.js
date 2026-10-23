@@ -872,7 +872,7 @@ function tellTerms() {
     const was = JSON.stringify(body);
     if (toldTerm.get(id) === was) return;
     toldTerm.set(id, was);
-    fetch('/api/terminals/' + id, { method: 'PATCH', body: was }).catch(() => toldTerm.delete(id));
+    fetch('/api/terminals/' + id, { method: 'PATCH', body: was }).then(r => { if (!r.ok) toldTerm.delete(id); }).catch(() => toldTerm.delete(id));
   });
 }
 
