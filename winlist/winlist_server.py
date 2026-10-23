@@ -955,7 +955,7 @@ def placed(body):
             and abs(body[k]) < 1e7}
 
 
-def send_link(url=None, title=None, path=None, image=None, keep=None, origin="api"):
+def send_link(url=None, title=None, path=None, image=None, keep=None, origin="api", note=False):
     """A card for the board: a web page (url), a markdown file (path) or a
     picture (image: a path or an http(s) URL). None, and why, if it won't do.
     keep is a card a browser held from before the board lived here: taken as
@@ -968,6 +968,8 @@ def send_link(url=None, title=None, path=None, image=None, keep=None, origin="ap
             return None, "give a url, a path to a markdown file, or an image"
         card = {kind: keep[kind], "title": title or keep[kind]}
         card.update(placed(keep))
+    elif note:
+        card = {"note": True, "text": "", "title": title or "Note"}
     elif image:
         if not re.match(r"https?://[^/\s]+", image):
             image, _, err = image_file(image)
@@ -991,7 +993,7 @@ def send_link(url=None, title=None, path=None, image=None, keep=None, origin="ap
 
 
 def change_link(lid, body):
-    """A card moved, resized or renamed on some page; body None takes it off the board."""
+    """A card moved, resized or renamed on some page, or a note typed in; body None takes it off the board."""
     with _links_lock:
         link = next((l for l in _links if l["id"] == lid), None)
         if not link:
@@ -1005,6 +1007,8 @@ def change_link(lid, body):
                 link["label"] = label
                 if not label:
                     del link["label"]
+            if link.get("note") and isinstance(body.get("text"), str):
+                link["text"] = body["text"][:200000]
         _save_links()
         return link
 
@@ -1329,7 +1333,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(json.dumps({"error": "bad request"}), code=400)
             link, err = send_link(body.get("url"), body.get("title"), body.get("path"),
                                   body.get("image"), body.get("keep"),
-                                  "page" if body.get("from") == "page" or body.get("keep") else "api")
+                                  "page" if body.get("from") == "page" or body.get("keep") else "api",
+                                  body.get("note") is True)
             if not link:
                 return self._send(json.dumps({"error": err}), code=400)
             return self._send(json.dumps(link), code=201)
