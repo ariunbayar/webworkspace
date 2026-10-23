@@ -650,6 +650,7 @@ def sample():
         "links": board(),       # the cards on the board, the same in every browser
         "arrange": arrangement(),  # its groups and tile places; None until a page sends one
         "pings": pinged(),      # windows that want you, the same in every browser
+        "claude": claude_states({w["id"] for w in windows}),  # what Claude is up to in each
     }
 
 
@@ -959,6 +960,36 @@ def pinged():
         return sorted(_pings)
 
 
+# What Claude Code is doing in a window — working, waiting on you, or done —
+# is reported by the same hook, one call per event, and the latest wins. Like
+# pings, in memory only.
+CLAUDE_STATES = ("working", "waiting", "done")
+CLAUDE_STALE = 30 * 60                  # a "working" this old lost its Stop: let it go
+_claude = {}                            # window id -> (state, when)
+_claude_lock = threading.Lock()
+
+
+def claude_state(wid, state):
+    """Note what Claude is doing in a window. False if the id or state is not one we use."""
+    if state not in CLAUDE_STATES or not isinstance(wid, str) \
+            or not (wid.startswith("web:") or WIN_ID.match(wid)):
+        return False
+    wid = wid if wid.startswith("web:") else wid.lower()
+    with _claude_lock:
+        _claude[wid] = (state, time.time())
+    return True
+
+
+def claude_states(live):
+    """{window id: {state, at}} for windows still there, minus a stale 'working'."""
+    now = time.time()
+    with _claude_lock:
+        for wid, (state, at) in list(_claude.items()):
+            if wid not in live or (state == "working" and now - at > CLAUDE_STALE):
+                del _claude[wid]
+        return {wid: {"state": st, "at": at} for wid, (st, at) in _claude.items()}
+
+
 def focus(wid):
     """Raise a window and switch to its workspace."""
     if wid.startswith("web:"):
@@ -1206,6 +1237,15 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(json.dumps({"error": "bad request"}), code=400)
             if not isinstance(body, dict) or not ping(body.get("window")):
                 return self._send(json.dumps({"error": "give a window id"}), code=400)
+            return self._send(json.dumps({"ok": True}))
+        if self.path.startswith("/api/claude"):
+            try:
+                n = int(self.headers.get("Content-Length", 0))
+                body = json.loads(self.rfile.read(min(n, 4096)) or b"{}")
+            except (ValueError, json.JSONDecodeError):
+                return self._send(json.dumps({"error": "bad request"}), code=400)
+            if not isinstance(body, dict) or not claude_state(body.get("window"), body.get("state")):
+                return self._send(json.dumps({"error": "give a window id and a state"}), code=400)
             return self._send(json.dumps({"ok": True}))
         if self.path.startswith("/api/links"):
             try:

@@ -471,6 +471,7 @@ async function poll() {
     takeArrange(got.arrange, asked);
     data.windows.forEach(w => { if (scales[w.id]) { w.w *= scales[w.id]; w.h *= scales[w.id]; } });
     takePings(data.pings || [], asked);
+    cstate = data.claude || {};
     takeLinks(data.links || [], asked);
     data.windows.push(...links.map(linkWin));
     // one sent from outside — a shell, an agent — is placed by the first page to see it
@@ -886,6 +887,7 @@ function shift(dx, dy) {          // slide the whole surface, no edges to run in
 // A window that wants you — Claude finished in it — pings: its triangle bobs
 // toward it, or the tile itself pulses if it is in view, until it has been in
 // view for two seconds, half of it at least, big enough to read.
+let cstate = {};             // window id -> {state, at}: what Claude is doing there
 const pings = new Set(), inViewSince = new Map();
 const unpinged = new Map();   // window id -> when the server was told it is seen; 0 while in flight
 function seenPing(id) {
@@ -1544,6 +1546,19 @@ let mouseScreen = null;
     if (type === 'mouseup') mouseScreen = null;
   }, { capture: true, passive: false }));
 
+// the state chip sits in the caption after the title, added once and then kept
+function chip(el, c) {
+  const cap = el.querySelector('.cap');
+  let b = cap && cap.querySelector('.csb');
+  if (!c) return b && b.remove();
+  if (cap && !b) {
+    b = document.createElement('span');
+    b.className = 'csb';
+    cap.querySelector('.t2').after(b);
+  }
+  if (b) b.textContent = c.state;
+}
+
 function dressTerm(el, w) {
   const t = mount(w), id = w.term.session;
   if (!t.wrap) {
@@ -1871,7 +1886,8 @@ function renderCanvas(match) {
     }
     el.win = w;                       // the drag handler always wants the fresh one
     el.className = 'tile' + (w.term ? ' term' : '') + (w.link ? ' link' : '') + (w.focused ? ' focused' : '')
-      + (match(w) ? '' : ' off') + (w.id === sel ? ' sel' : '') + (pings.has(w.id) ? ' ping' : '');
+      + (match(w) ? '' : ' off') + (w.id === sel ? ' sel' : '') + (pings.has(w.id) ? ' ping' : '')
+      + (cstate[w.id] ? ' cs-' + cstate[w.id].state : '');
     if (w.term) {
       el.title = [w.term.running, w.term.cwd, w.title].filter(Boolean).join(' — ') + ` · pid ${w.pid}`;
       dressTerm(el, w);
@@ -1895,6 +1911,7 @@ function renderCanvas(match) {
         }
       } else dress(el.lastElementChild, w);
     }
+    chip(el, cstate[w.id]);          // after dressing: a new terminal has no caption before
     place(el, w);
   });
   tileEls.forEach((el, id) => {
