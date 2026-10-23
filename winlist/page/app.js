@@ -119,7 +119,7 @@ linkbox.addEventListener('close', async () => {
   if (linkbox.returnValue !== 'add' || !url) return;
   if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
   try {
-    const r = await fetch('/api/links', { method: 'POST', body: JSON.stringify({ url }) });
+    const r = await fetch('/api/links', { method: 'POST', body: JSON.stringify({ from: 'page', url }) });
     const l = await r.json();
     if (r.ok) addCard(l);
   } catch {}
@@ -140,7 +140,7 @@ imgbox.addEventListener('close', async () => {
   const image = $('#imgsrc').value.trim();
   if (imgbox.returnValue !== 'add' || !image) return;
   try {
-    const r = await fetch('/api/links', { method: 'POST', body: JSON.stringify({ image }) });
+    const r = await fetch('/api/links', { method: 'POST', body: JSON.stringify({ from: 'page', image }) });
     const l = await r.json();
     if (!r.ok) return askImage('Could not open it: ' + (l.error || 'unknown error'));
     addCard(l);
@@ -159,7 +159,7 @@ docbox.addEventListener('close', async () => {
   const path = $('#docpath').value.trim();
   if (docbox.returnValue !== 'add' || !path) return;
   try {
-    const r = await fetch('/api/links', { method: 'POST', body: JSON.stringify({ path }) });
+    const r = await fetch('/api/links', { method: 'POST', body: JSON.stringify({ from: 'page', path }) });
     const l = await r.json();
     if (!r.ok) return alertDoc(l.error);
     addCard(l);
@@ -294,8 +294,8 @@ async function poll() {
     takePings(data.pings || [], asked);
     takeLinks(data.links || [], asked);
     data.windows.push(...links.map(linkWin));
-    // one sent from outside — a shell, an agent — is placed by the first page to see it
-    links.filter(l => l.x == null && !pend.has(l.id)).forEach(addCard);
+    // one sent from outside — a shell, an agent — is placed by the first page to see it, in the Inbox
+    links.filter(l => l.x == null && !pend.has(l.id)).forEach(l => l.origin === 'api' ? inboxCard(l) : addCard(l));
     forgetGone();
     failures = 0;
     // restarted from its terminal: the page it served is the old one
@@ -989,6 +989,36 @@ function addCard(l) {
   // picked if the keyboard is the page's; a terminal you are typing in keeps it
   if (!inInsert()) sel = w.id;
   if (data && !data.windows.some(v => v.id === w.id)) data.windows.push(w);
+  if (l.path) readDocs();
+  render();
+}
+
+// A card sent from outside lands in the Inbox group, newest at the top left, so
+// it never covers your work. Only cards still inside it are arranged: one you
+// dragged out stays where you put it. The view is not moved; a toast says so.
+function inboxCard(l) {
+  const w = linkWin(l);
+  let g = groups.find(v => v.name === 'Inbox');
+  if (!g) {
+    const [, y0, x1] = bounds();
+    g = { id: newId(), name: 'Inbox', x: snap(x1 + GRID * 2), y: snap(y0), w: GRID * 36, h: GRID * 12 };
+    groups.push(g);
+  }
+  if (!data.windows.some(v => v.id === w.id)) data.windows.push(w);
+  const age = v => links.findIndex(k => 'link:' + k.id === v.id);
+  const mine = [w, ...members(g).filter(v => v.id !== w.id && v.link && v.link.origin === 'api')]
+    .sort((a, b) => age(b) - age(a));
+  let x = g.x + GRID, y = g.y + GRID * 2, row = 0;   // the caption takes the top row
+  for (const v of mine) {
+    if (x > g.x + GRID && x + v.w > g.x + g.w - GRID) { x = g.x + GRID; y += row + GRID; row = 0; }
+    layout[v.id] = [x, y];
+    x = snap(x + v.w + GRID - 1);
+    row = Math.max(row, snap(v.h + GRID - 1) - GRID);
+  }
+  g.h = Math.max(g.h, snap(y + row + GRID * 2 - g.y));
+  saveGroups();
+  saveLayout();
+  toast('New card in Inbox: ' + esc(cardTitle(l)));
   if (l.path) readDocs();
   render();
 }
