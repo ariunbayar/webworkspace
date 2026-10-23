@@ -135,6 +135,11 @@
   .group .gname { flex:1; min-width:0; white-space:nowrap; overflow:hidden;
                   text-overflow:ellipsis; outline:none }
   .group .gname[contenteditable=true] { color:var(--fg); cursor:text }
+  .group .gdir { max-width:40%; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; cursor:pointer;
+                 outline:none; padding:0 4px; border-radius:3px; opacity:.8 }
+  .group .gdir.unset { opacity:.4 }
+  .group .gdir:hover { opacity:1 }
+  .group .gdir[contenteditable=true] { color:var(--fg); cursor:text; opacity:1; text-overflow:clip }
   .group .shut { cursor:pointer; opacity:.55; padding:0 3px; border-radius:3px }
   .group .shut:hover { opacity:1; background:var(--accent); color:#fff }
   /* a link is kept as the least that still says what it was: the site's icon,

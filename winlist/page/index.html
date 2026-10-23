@@ -17,11 +17,12 @@
       <button id="lens" class="btn" aria-pressed="false" title="Show what is under the pointer at actual size (z)">Loupe</button>
       <button id="reset" class="btn" title="Put every tile back where the desktop has it (asks once more)">Reset layout</button>
       <button id="newterm" class="btn" title="Start a terminal on this surface (t)">New terminal</button>
+      <button id="newclaude" class="btn" title="Start Claude Code on this surface (c)">Claude</button>
       <button id="arch" class="btn" title="How this fits together (a)">Architecture</button>
     </span>
     <span class="mode" id="mode" title="NORMAL: keys move about the surface · INSERT: typing into a terminal or document · TILE: moving and sizing (Super+Enter)"></span>
     <span class="keys"><kbd>↑↓←→</kbd> pick · <kbd>Enter</kbd> focus · <kbd>/</kbd> filter ·
-      <kbd>Super+Enter</kbd> move/size · <kbd>t</kbd> terminal · <kbd>0</kbd> fit ·
+      <kbd>Super+Enter</kbd> move/size · <kbd>t</kbd> terminal · <kbd>c</kbd> Claude · <kbd>0</kbd> fit ·
       <kbd>Ctrl+Space</kbd> leave a terminal · <kbd>?</kbd> all keys</span>
   </div>
   <div class="pan" id="pan"><div class="canvas" id="canvas"><div id="groups"></div><div id="tiles"></div><div id="mark"></div></div><div id="grid"></div><div id="edges"></div><div id="loupe"><div class="lens"></div></div><div id="nomatch"></div><div id="banner"></div></div>
@@ -67,7 +68,8 @@
       <tr><td><kbd>Super+Enter</kbd></td><td>move and size the picked window (or the terminal you are typing in) on the grid, as gTile does: <kbd>←↑↓→</kbd> move a cell, <kbd>Shift</kbd>+arrows size, <kbd>Enter</kbd> <kbd>Esc</kbd> done</td></tr>
     </table></section>
     <section><h3>Making</h3><table>
-      <tr><td><kbd>t</kbd></td><td>new terminal</td></tr>
+      <tr><td><kbd>t</kbd></td><td>new terminal; one opened inside a group that has a folder starts in it</td></tr>
+      <tr><td><kbd>c</kbd></td><td>new Claude Code terminal; the tile closes when Claude exits</td></tr>
       <tr><td><kbd>u</kbd></td><td>link card: type or paste a URL</td></tr>
       <tr><td><kbd>p</kbd></td><td>picture: an image file or image URL; double-click opens it full size</td></tr>
       <tr><td><kbd>o</kbd></td><td>open a markdown file; it follows your saves. <kbd>Enter</kbd> to scroll it (<kbd>jk</kbd> <kbd>du</kbd>), <kbd>Esc</kbd> back out</td></tr>
@@ -85,7 +87,7 @@
       <tr><td>drag a corner</td><td>resize a terminal or a card</td></tr>
       <tr><td>double-click a card</td><td>open its page</td></tr>
       <tr><td>double-click a terminal</td><td>type into it (INSERT)</td></tr>
-      <tr><td>click the background</td><td>new cards and terminals (<kbd>p</kbd> <kbd>u</kbd> <kbd>t</kbd> <kbd>o</kbd>) open centred there</td></tr>
+      <tr><td>click the background</td><td>new cards and terminals (<kbd>p</kbd> <kbd>u</kbd> <kbd>t</kbd> <kbd>c</kbd> <kbd>o</kbd>) open centred there</td></tr>
     </table></section>
     <section><h3>This page</h3><table>
       <tr><td><kbd>a</kbd></td><td>how it fits together</td></tr>

@@ -293,7 +293,7 @@ class Sessions:
 
     def start(self, argv=None, cwd=None, cols=80, rows=24):
         argv = argv or [self.shell]
-        cwd = cwd or os.path.expanduser("~")
+        cwd = os.path.expanduser(cwd or "~")
         if not os.path.isdir(cwd):
             raise ValueError("no such directory: %s" % cwd)
         with self.lock:

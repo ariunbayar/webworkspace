@@ -289,7 +289,7 @@ function byApp(ws) {
 function ordered(i) { return byApp(onWorkspace(i)).flatMap(([, group]) => group); }
 
 // ---- groups: a frame you put windows in, and move together ----------------
-let groups = store.get('groups', []);   // [{id, name, x, y, w, h}] in surface px
+let groups = store.get('groups', []);   // [{id, name, x, y, w, h, dir?}] in surface px; dir is where its new terminals start
 const groupEls = new Map();
 
 function newGroup() {
@@ -397,6 +397,27 @@ function rename(g, name) {
   };
 }
 
+// the folder chip: click, type a path, Enter; empty clears it. A group still
+// called Group takes the folder's name, as it would have been named after it
+function setDir(g, chip) {
+  chip.contentEditable = 'true';
+  chip.textContent = g.dir || '';
+  chip.focus();
+  getSelection().selectAllChildren(chip);
+  chip.addEventListener('blur', () => {
+    chip.contentEditable = 'false';
+    g.dir = chip.textContent.trim().replace(/(.)\/+$/, '$1') || undefined;
+    const base = g.dir && g.dir.split('/').pop();
+    if (base && base !== '~' && /^Group( \d+)?$/.test(g.name)) g.name = base;
+    saveGroups();
+    render();
+  }, { once: true });
+  chip.onkeydown = ev => {
+    ev.stopPropagation();
+    if (ev.key === 'Enter' || ev.key === 'Escape') { ev.preventDefault(); chip.blur(); }
+  };
+}
+
 function renderGroups() {
   const live = new Set();
   groups.forEach(g => {
@@ -406,11 +427,13 @@ function renderGroups() {
       el = document.createElement('div');
       el.className = 'group';
       el.innerHTML = `<div class="gcap"><span class="gname" title="Double-click to rename"></span><span class="gcount"></span>`
+        + `<span class="gdir" title="Folder new terminals start in (click to set)"></span>`
         + `<span class="shut" title="Remove the group (its windows stay)">✕</span></div>`
         + `<div class="grip" title="Drag to resize this group"></div>`;
       const cap = el.querySelector('.gcap'), name = el.querySelector('.gname');
+      const dir = el.querySelector('.gdir');
       cap.addEventListener('pointerdown', e => {
-        if (name.isContentEditable) return e.stopPropagation();
+        if (name.isContentEditable || dir.isContentEditable || e.target === dir) return e.stopPropagation();
         if (e.target.closest('.shut')) {
           e.preventDefault(); e.stopPropagation();
           groups = groups.filter(v => v !== el.group);
@@ -422,12 +445,18 @@ function renderGroups() {
       cap.addEventListener('dblclick', e => {
         if (e.target === name) rename(el.group, name);
       });
+      dir.addEventListener('click', () => { if (!dir.isContentEditable) setDir(el.group, dir); });
       el.querySelector('.grip').addEventListener('pointerdown', e => sizeGroup(e, el.group, el));
       groupEls.set(g.id, el);
       $('#groups').append(el);
     }
     el.group = g;
     if (!el.querySelector('.gname').isContentEditable) el.querySelector('.gname').textContent = g.name;
+    const dir = el.querySelector('.gdir');
+    if (!dir.isContentEditable) {
+      dir.textContent = g.dir ? shortPath(g.dir) : '+ folder';
+      dir.classList.toggle('unset', !g.dir);
+    }
     const n = data ? members(g).length : 0;
     el.querySelector('.gcount').textContent = n ? '· ' + n : '';
     placeGroup(el, g);
@@ -1405,13 +1434,17 @@ function clearSpot([x, y], exceptId) {
 
 // A new terminal opens at the drop point, and the view stays where it is: you
 // zoomed in there to work there.
-async function newTerm() {
+// Inside a group that has a folder, it starts there. With claude, the tile
+// goes when Claude exits, as any ended terminal does (see the 'gone' branch above).
+async function newTerm({ claude } = {}) {
   const at = dropAt(0, 0);
-  const made = await fetch('/api/terminals', {
-    method: 'POST',
-    body: JSON.stringify({ cols: termCols(), rows: termRows() }),
-  }).then(r => r.json()).catch(() => null);
-  if (!made || !made.id) return;
+  const g = groups.findLast(g => at[0] >= g.x && at[0] <= g.x + g.w && at[1] >= g.y && at[1] <= g.y + g.h);
+  const body = { cols: termCols(), rows: termRows() };
+  if (g && g.dir) body.cwd = g.dir;
+  if (claude) body.argv = ['claude'];
+  const made = await fetch('/api/terminals', { method: 'POST', body: JSON.stringify(body) })
+    .then(r => r.json()).catch(() => null);
+  if (!made || !made.id) return void toast('Could not start the terminal: ' + esc((made && made.error) || 'no answer from the server'), 4000);
   // the new one is picked and brought to the front, but you stay in NORMAL:
   // Enter is what types into it, as with any other terminal
   const pickIt = () => {
@@ -1433,7 +1466,8 @@ async function newTerm() {
   saveLayout();
   pickIt();
 }
-$('#newterm').onclick = newTerm;
+$('#newterm').onclick = () => newTerm();
+$('#newclaude').onclick = () => newTerm({ claude: true });
 
 async function closeTerm(id) {
   await fetch('/api/terminals/' + id, { method: 'DELETE' }).catch(() => {});
@@ -2015,6 +2049,7 @@ document.addEventListener('keydown', e => {
   }
   if (k === 'b') { e.preventDefault(); return setBare(!bare); }
   if (k === 't') { e.preventDefault(); return void newTerm(); }
+  if (k === 'c') { e.preventDefault(); return void newTerm({ claude: true }); }
   if (k === 'u') { e.preventDefault(); return askLink(); }
   if (k === 'o') { e.preventDefault(); return askDoc(); }
   if (k === 'p') { e.preventDefault(); return askImage(); }
