@@ -435,6 +435,8 @@ $('#reset').onclick = () => {
   render();
 };
 addEventListener('resize', render);
+// the frame can change size without a window resize (bar folded, layout settled): the edge marks are measured against it
+new ResizeObserver(markEdges).observe($('#pan'));
 $('#q').addEventListener('input', () => { sel = null; render(); });
 // hidden until asked for (/ or the palette); stays while it holds text, folds when it empties and loses focus
 const openQ = () => { if (bare) setBare(false); $('#q').classList.add('on'); $('#q').focus(); };
@@ -475,7 +477,7 @@ async function poll() {
     takeLinks(data.links || [], asked);
     data.windows.push(...links.map(linkWin));
     // one sent from outside — a shell, an agent — is placed by the first page to see it
-    links.filter(l => l.x == null && !pend.has(l.id)).forEach(addCard);
+    links.filter(l => l.x == null && !pend.has(l.id)).forEach(l => addCard(l, null, true));
     forgetGone();
     tellTerms();
     failures = 0;
@@ -1394,7 +1396,7 @@ function card(pic, w) {
 
 // a card the server just made, dropped at the drop point, in view, so you see
 // it arrive
-function addCard(l, at) {
+function addCard(l, at, placed) {      // placed: found on the server, not added here
   const w = linkWin(l);
   if (!links.includes(l)) links.push(l);
   layout[w.id] = clearSpot(at || dropAt(w.w, w.h), w.id);
@@ -2633,7 +2635,8 @@ const counted = (ev, f, props) => function (...a) {
 activate = counted('activate', activate, id => ({ kind: kindOf(id) }));
 newTerm = counted('term.new', newTerm);
 closeTerm = counted('term.close', closeTerm);
-addCard = counted('card.add', addCard, f => ({ kind: f.image ? 'image' : f.path ? 'doc' : 'url' }));
+// a card the poll finds unplaced is placed again every poll until the server holds it: not an add
+addCard = counted('card.add', addCard, (f, at, placed) => placed ? null : { kind: f.image ? 'image' : f.path ? 'doc' : 'url' });
 closeLink = counted('card.close', closeLink);
 newGroup = counted('group.new', newGroup);
 actualSize = counted('actual', actualSize);
