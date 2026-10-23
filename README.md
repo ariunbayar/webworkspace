@@ -132,8 +132,7 @@ focus it, which also switches to its workspace; the arrow keys still walk the
 workspaces the windows came from, in order — left and right go to the nearest
 tile that way on the surface. `/` filters on every word you type, anywhere in a
 tile's title, app, running program, folder, card address or `ws2`; Enter jumps
-to the first match, `Esc` clears (then leaves the full window). `0` (or Fit)
-fits everything in view.
+to the first match, `Esc` clears (then leaves the full window).
 
 A tile's caption names the app in words beside the title, numbers windows that
 would otherwise read the same (`#1`, `#2`), and for a terminal says what is

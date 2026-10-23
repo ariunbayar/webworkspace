@@ -194,7 +194,6 @@ function actualSize() {
         Math.round(box.top + origin[1]) - box.top - origin[1]);
 }
 $('#actual').onclick = actualSize;
-$('#fit').onclick = () => { fitAll(); render(); };
 // the whole arrangement goes, so it asks once more: a second click within 3s
 let resetArmed = 0;
 $('#reset').onclick = () => {
@@ -2055,7 +2054,6 @@ document.addEventListener('keydown', e => {
   if (k === 'p') { e.preventDefault(); return askImage(); }
   if (k === 'g') { e.preventDefault(); return newGroup(); }
   if (k === '1') { e.preventDefault(); return actualSize(); }
-  if (k === '0') { e.preventDefault(); fitAll(); return render(); }
   if (k === 'z') { e.preventDefault(); return setLens(!lensOn); }
   if (k === 'Enter' || k === ' ') { const w = selected(); if (w) { e.preventDefault(); activate(w.id); } return; }
   const moves = { ArrowUp: [0, -1], k: [0, -1], ArrowDown: [0, 1], j: [0, 1],
@@ -2120,7 +2118,6 @@ closeTerm = counted('term.close', closeTerm);
 addCard = counted('card.add', addCard, f => ({ kind: f.image ? 'image' : f.path ? 'doc' : 'url' }));
 closeLink = counted('card.close', closeLink);
 newGroup = counted('group.new', newGroup);
-fitAll = counted('fit', fitAll, () => zoom ? {} : null);
 actualSize = counted('actual', actualSize);
 setLens = counted('lens', setLens, v => ({ on: !!v }));
 setBare = counted('bare', setBare, v => ({ on: !!v }));
