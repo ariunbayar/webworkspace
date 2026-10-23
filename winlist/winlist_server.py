@@ -418,6 +418,83 @@ def pty(path, method="GET", body=None, timeout=0.3):
         return None
 
 
+# The page's terminals are remembered here, so a reboot or a new pty_server
+# can offer them back: session id -> {cwd, cols, rows, claude, at, face}. The
+# server knows the first four; the page says where a tile sits and its face.
+# Closed on purpose, or ended, and it is forgotten.
+TERMS_FILE = os.path.join(os.environ.get("XDG_STATE_HOME") or os.path.expanduser("~/.local/state"),
+                          "winlist", "terms.json")
+_terms_lock = threading.Lock()
+_live = None                        # session ids pty_server holds now; None: not asked yet
+
+
+def _load_terms():
+    try:
+        with open(TERMS_FILE) as f:
+            return {k: v for k, v in json.load(f).items() if isinstance(v, dict)}
+    except (OSError, ValueError, AttributeError):
+        return {}
+
+
+_terms = _load_terms()
+
+
+def _save_terms():
+    """Called holding _terms_lock."""
+    try:
+        os.makedirs(os.path.dirname(TERMS_FILE), exist_ok=True)
+        with open(TERMS_FILE + ".tmp", "w") as f:
+            json.dump(_terms, f)
+        os.replace(TERMS_FILE + ".tmp", TERMS_FILE)
+    except OSError:
+        pass                        # still remembered, just not past a restart
+
+
+def note_terms(sessions):
+    """What pty_server holds now: remember each live one, forget one that ended."""
+    global _live
+    with _terms_lock:
+        before = json.dumps(_terms, sort_keys=True)
+        _live = {t["id"] for t in sessions}
+        for t in sessions:
+            if not t.get("alive"):
+                _terms.pop(t["id"], None)
+                continue
+            claude = t.get("argv") == ["claude"] or t.get("running") == "claude"
+            _terms.setdefault(t["id"], {}).update(
+                cwd=t.get("cwd") or "", cols=t.get("cols", 80), rows=t.get("rows", 24), claude=claude)
+        if json.dumps(_terms, sort_keys=True) != before:
+            _save_terms()
+
+
+def lost_terms():
+    """Remembered terminals whose sessions are gone: the new pty_server never had them."""
+    with _terms_lock:
+        if _live is None:
+            return []
+        return [dict(v, id=k, cwd_ok=os.path.isdir(v.get("cwd") or "")) for k, v in _terms.items()
+                if k not in _live and "cwd" in v]
+
+
+def change_term(sid, body):
+    """Where the page has a terminal's tile and which face; body None forgets it."""
+    with _terms_lock:
+        if body is None:
+            if _terms.pop(sid, None) is not None:
+                _save_terms()
+            return True
+        if sid not in _terms:
+            return False
+        at, face = body.get("at"), body.get("face")
+        if (isinstance(at, list) and len(at) == 2
+                and all(isinstance(v, (int, float)) and not isinstance(v, bool) and abs(v) < 1e7 for v in at)):
+            _terms[sid]["at"] = [round(v) for v in at]
+        if isinstance(face, str):
+            _terms[sid]["face"] = face[:100]
+        _save_terms()
+        return True
+
+
 # A terminal has no rectangle on any screen, so it needs a size to start with.
 # The page measures the real one as soon as xterm.js has laid a session out and
 # says so; until then this is only enough to put a tile somewhere sensible.
@@ -437,6 +514,8 @@ def terminals(desktop, across):
     answer = pty("/sessions") if PTY_ON else None
     if not answer:
         return []
+    if isinstance(answer.get("sessions"), list):    # an error answer is no list of sessions
+        note_terms(answer["sessions"])
     out, x, y, tall = [], 0, 0, 0
     for i, t in enumerate(answer.get("sessions", [])):
         name = t.get("title") or t.get("running") or "shell"
@@ -648,6 +727,7 @@ def sample():
         "pty": {"on": PTY_ON, "port": PTY_PORT, "cell": n_desktops, "error": _pty_error},
         "look": LOOK,          # what your xterm looks like, for ours to match
         "links": board(),       # the cards on the board, the same in every browser
+        "lost": lost_terms(),   # terminals a reboot took, for the page to offer back
         "pings": pinged(),      # windows that want you, the same in every browser
     }
 
@@ -1151,7 +1231,8 @@ class Handler(BaseHTTPRequestHandler):
     def do_PATCH(self):
         if not self._guard():
             return
-        if not self.path.startswith("/api/links/"):
+        terms = self.path.startswith("/api/terminals/")
+        if not terms and not self.path.startswith("/api/links/"):
             return self._send(json.dumps({"error": "not found"}), code=404)
         try:
             n = int(self.headers.get("Content-Length", 0))
@@ -1160,6 +1241,10 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(json.dumps({"error": "bad request"}), code=400)
         if not isinstance(body, dict):
             return self._send(json.dumps({"error": "bad request"}), code=400)
+        if terms:
+            sid = self.path[len("/api/terminals/"):].split("?")[0]
+            ok = change_term(sid, body)
+            return self._send(json.dumps({"ok": ok}), code=200 if ok else 404)
         self._card(body)
 
     def do_DELETE(self):
@@ -1173,6 +1258,7 @@ class Handler(BaseHTTPRequestHandler):
         if not self.path.startswith("/api/terminals/"):
             return self._send(json.dumps({"error": "not found"}), code=404)
         sid = self.path[len("/api/terminals/"):].split("?")[0]
+        change_term(sid, None)              # shut on purpose: not offered back
         gone = pty("/sessions/" + sid, "DELETE", timeout=5)
         if gone is None:
             return self._send(json.dumps({"error": _pty_error}), code=502)

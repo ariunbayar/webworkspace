@@ -177,6 +177,13 @@ keeps to the last N days.
 Terminals
 ---
 
+The page's terminals are remembered in `~/.local/state/winlist/terms.json`
+(folder, size, place on the surface, font, whether it ran Claude). After a
+reboot or a new `pty_server.py` the bar offers **Restore N** to start them
+again in the same folders, in the same places (Claude ones re-run `claude`; a
+folder that is gone gets `~`), or **Dismiss** to forget them. A terminal you
+close, or that ends, is forgotten.
+
 Shells the browser can hold on to, one pseudo-terminal each, stdlib only.
 `winlist_server.py` starts this when nothing is listening on its port, so there
 is normally nothing to start. It runs as a process of its own and is left

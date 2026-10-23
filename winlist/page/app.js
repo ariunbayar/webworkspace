@@ -297,6 +297,7 @@ async function poll() {
     // one sent from outside — a shell, an agent — is placed by the first page to see it
     links.filter(l => l.x == null && !pend.has(l.id)).forEach(addCard);
     forgetGone();
+    tellTerms();
     failures = 0;
     // restarted from its terminal: the page it served is the old one
     if (started !== null && data.started !== started) return location.reload();
@@ -520,10 +521,64 @@ function renderGroups() {
 // said over the surface, where it is seen, not only in the bar that is folded
 // away — and before the first answer too, when there is nothing else to show
 function showTrouble() {
+  const lost = restoring ? [] : (data && data.lost) || [];
   const trouble = failures >= 2 ? `Lost the server — retrying. Is it running? <code>python3 winlist/winlist_server.py</code>`
-    : data && data.error ? esc(data.error) : '';
-  $('#banner').innerHTML = trouble;
+    : data && data.error ? esc(data.error)
+    : lost.length ? `${lost.length} terminal${lost.length > 1 ? 's' : ''} did not survive the restart. `
+      + `<button data-act="restore">Restore ${lost.length}</button> <button data-act="dismiss">Dismiss</button>`
+    : restoreNote;
+  if ($('#banner').innerHTML !== trouble) $('#banner').innerHTML = trouble;   // not under a click
   $('#banner').classList.toggle('on', !!trouble);
+}
+
+// Terminals a reboot took are remembered on the server (data.lost); one click
+// starts them again, in the same folder, where their tiles were.
+let restoring = false, restoreNote = '';
+async function restoreTerms(keep) {
+  const lost = (data.lost || []).slice();
+  restoring = true;
+  showTrouble();
+  let moved = 0;
+  for (const r of lost) {
+    if (keep) {
+      const body = { cols: r.cols, rows: r.rows };
+      if (r.cwd_ok) body.cwd = r.cwd;
+      if (r.claude) body.argv = ['claude'];
+      const made = await fetch('/api/terminals', { method: 'POST', body: JSON.stringify(body) })
+        .then(x => x.json()).catch(() => null);
+      if (!made || !made.id) { toast('Could not restore one: ' + esc((made && made.error) || 'no answer from the server'), 4000); continue; }
+      if (r.at) layout['web:' + made.id] = r.at;
+      if (r.face) faces[made.id] = r.face;
+      if (!r.cwd_ok) moved++;
+    }
+    await fetch('/api/terminals/' + r.id, { method: 'DELETE' }).catch(() => {});   // forgets it
+  }
+  store.set('faces', faces);
+  saveLayout();
+  restoreNote = moved ? `${moved} folder${moved > 1 ? 's are' : ' is'} gone: started in ~ instead.` : '';
+  if (restoreNote) setTimeout(() => { restoreNote = ''; showTrouble(); }, 8000);
+  restoring = false;
+  poll();
+}
+$('#banner').addEventListener('click', e => {
+  const act = e.target.dataset.act;
+  if (act) restoreTerms(act === 'restore');
+});
+
+// The page knows where a terminal's tile sits and which face it has; the
+// server keeps them with the terminal, for after a reboot. Told when they change.
+const toldTerm = new Map();       // session id -> what the server was last told
+function tellTerms() {
+  data.windows.forEach(w => {
+    if (!w.term || !w.term.alive) return;
+    const id = w.term.session, at = seatOf(w).map(Math.round), face = (profiles()[0] || {}).name;
+    const body = { at, face: faces[id] || face };
+    if (!body.face) delete body.face;
+    const was = JSON.stringify(body);
+    if (toldTerm.get(id) === was) return;
+    toldTerm.set(id, was);
+    fetch('/api/terminals/' + id, { method: 'PATCH', body: was }).catch(() => toldTerm.delete(id));
+  });
 }
 
 function render() {

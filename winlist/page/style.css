@@ -251,6 +251,8 @@
             background:var(--accent); color:#fff; font-size:12px }
   #banner.on { display:block }
   #banner code { background:rgba(0,0,0,.2); color:#fff }
+  #banner button { margin-left:6px; padding:1px 8px; font:inherit; color:#fff; background:rgba(0,0,0,.25);
+                   border:1px solid rgba(255,255,255,.4); border-radius:4px; cursor:pointer }
   #zpct { font-size:11px; color:var(--dim); min-width:3.2em; text-align:right }
   /* small quiet triangles on the frame's edge, pointing at windows out of view */
   .edge { position:absolute; width:8px; height:8px; margin:-4px 0 0 -4px; pointer-events:none;
