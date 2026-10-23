@@ -154,6 +154,8 @@ like say so over the surface.
 (or `hjkl`) move the picked tile one grid cell, Shift with them sizes it, and
 Enter or Esc (or Super+Enter again) finishes. A terminal sizes by its
 characters, a card by the grid, and a photo is scaled, keeping its shape.
+A card sent from outside (`POST /api/links` without `"from": "page"`) lands in an
+**Inbox** group, newest first, instead of on top of your work; drag it out to keep it.
 The grid shows only while moving or sizing, and dragging with the mouse snaps
 to it too. Moving a tile, from the keyboard or by dragging it, also
 snaps its size to the nearest grid step, so its far edges line up as well as its corner.
