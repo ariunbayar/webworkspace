@@ -1318,7 +1318,7 @@ def project_tools(folder):
 
     def add(name, cmd, about):
         found.append({"name": name, "about": about, "cmd": cmd,
-                      "argv": ["bash", "-c", "trap : INT; %s; exec %s -i" % (cmd, shlex.quote(shell))]})
+                      "argv": ["bash", "-c", "trap : INT\n%s\nexec %s -i" % (cmd, shlex.quote(shell))]})
 
     try:
         with open(os.path.join(folder, TOOLS_FILE)) as f:
