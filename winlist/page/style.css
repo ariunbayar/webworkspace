@@ -140,6 +140,15 @@
   .group .gdir.unset { opacity:.4 }
   .group .gdir:hover { opacity:1 }
   .group .gdir[contenteditable=true] { color:var(--fg); cursor:text; opacity:1; text-overflow:clip }
+  .group .gtools { white-space:nowrap; cursor:pointer; opacity:.6; padding:0 4px; border-radius:3px }
+  .group .gtools:hover { opacity:1; background:var(--accent); color:#fff }
+  #tools { position:fixed; z-index:50; display:grid; min-width:220px; max-width:340px; padding:4px;
+           background:var(--panel); border:1px solid var(--line); border-radius:8px; box-shadow:0 8px 24px rgba(0,0,0,.35) }
+  #tools button { display:flex; gap:9px; align-items:flex-start; text-align:left; font:inherit; font-size:12px;
+                  color:var(--fg); background:none; border:0; border-radius:5px; padding:6px 8px; cursor:pointer }
+  #tools button:hover, #tools button:focus-visible { background:var(--accent); color:#fff; outline:none }
+  #tools span { display:grid; gap:1px; min-width:0 }
+  #tools small { color:inherit; opacity:.7 }
   .group .shut { cursor:pointer; opacity:.55; padding:0 3px; border-radius:3px }
   .group .shut:hover { opacity:1; background:var(--accent); color:#fff }
   /* a link is kept as the least that still says what it was: the site's icon,

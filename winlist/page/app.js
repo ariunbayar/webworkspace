@@ -444,6 +444,49 @@ function rename(g, name) {
   };
 }
 
+// the tools chip: what the group's folder can run, from its tmp/ scripts and
+// its .winlist-tools file, read afresh each time it is opened
+async function showTools(g, chip) {
+  closeTools();
+  const res = await fetch('/api/tools?dir=' + encodeURIComponent(g.dir))
+    .then(r => r.json()).catch(() => null);
+  if (!res || !res.tools) return void toast('Could not read the tools: ' + esc((res && res.error) || 'no answer from the server'), 4000);
+  if (!res.tools.length) return void toast(`No tools in ${esc(shortPath(g.dir))}: add executable <code>tmp/*.sh</code> scripts, or <code>Name: command</code> lines in <code>.winlist-tools</code>`, 6000);
+  const menu = document.createElement('div');
+  menu.id = 'tools';
+  menu.setAttribute('role', 'menu');
+  res.tools.forEach((t, i) => {
+    const b = document.createElement('button');
+    b.setAttribute('role', 'menuitem');
+    b.title = t.cmd;
+    b.innerHTML = `<kbd>${i + 1}</kbd><span><b>${esc(t.name)}</b>${t.about ? `<small>${esc(t.about)}</small>` : ''}</span>`;
+    b.onclick = () => { closeTools(); newTerm({ argv: t.argv, group: g }); };
+    menu.append(b);
+  });
+  const r = chip.getBoundingClientRect();
+  menu.style.left = Math.max(4, Math.min(r.left, innerWidth - 340)) + 'px';
+  menu.style.top = r.bottom + 4 + 'px';
+  document.body.append(menu);
+  const items = [...menu.children];
+  items[0].focus();
+  menu.addEventListener('keydown', e => {
+    e.stopPropagation();
+    const at = items.indexOf(document.activeElement);
+    if (e.key === 'Escape') { e.preventDefault(); return closeTools(); }
+    if (e.key === 'ArrowDown' || e.key === 'j') { e.preventDefault(); items[(at + 1) % items.length].focus(); }
+    if (e.key === 'ArrowUp' || e.key === 'k') { e.preventDefault(); items[(at - 1 + items.length) % items.length].focus(); }
+    const n = +e.key;
+    if (n >= 1 && n <= items.length) { e.preventDefault(); items[n - 1].click(); }
+  });
+  setTimeout(() => addEventListener('pointerdown', outside), 0);
+}
+function outside(e) { if (!e.target.closest('#tools')) closeTools(); }
+function closeTools() {
+  removeEventListener('pointerdown', outside);
+  const m = $('#tools');
+  if (m) m.remove();
+}
+
 // the folder chip: click, type a path, Enter; empty clears it. A group still
 // called Group takes the folder's name, as it would have been named after it
 function setDir(g, chip) {
@@ -481,12 +524,13 @@ function renderGroups() {
       el.className = 'group';
       el.innerHTML = `<div class="gcap"><span class="gname" title="Double-click to rename"></span><span class="gcount"></span>`
         + `<span class="gdir" title="Folder new terminals start in (click to set)"></span>`
+        + `<span class="gtools" title="Run one of this project's tools in a new terminal here">▸ tools</span>`
         + `<span class="shut" title="Remove the group (its windows stay)">✕</span></div>`
         + `<div class="grip" title="Drag to resize this group"></div>`;
       const cap = el.querySelector('.gcap'), name = el.querySelector('.gname');
-      const dir = el.querySelector('.gdir');
+      const dir = el.querySelector('.gdir'), tools = el.querySelector('.gtools');
       cap.addEventListener('pointerdown', e => {
-        if (name.isContentEditable || dir.isContentEditable || e.target === dir) return e.stopPropagation();
+        if (name.isContentEditable || dir.isContentEditable || e.target === dir || e.target === tools) return e.stopPropagation();
         if (e.target.closest('.shut')) {
           e.preventDefault(); e.stopPropagation();
           groups = groups.filter(v => v !== el.group);
@@ -499,6 +543,7 @@ function renderGroups() {
         if (e.target === name) rename(el.group, name);
       });
       dir.addEventListener('click', () => { if (!dir.isContentEditable) setDir(el.group, dir); });
+      tools.addEventListener('click', () => showTools(el.group, tools));
       el.querySelector('.grip').addEventListener('pointerdown', e => sizeGroup(e, el.group, el));
       groupEls.set(g.id, el);
       $('#groups').append(el);
@@ -510,6 +555,7 @@ function renderGroups() {
       dir.textContent = g.dir ? shortPath(g.dir) : '+ folder';
       dir.classList.toggle('unset', !g.dir);
     }
+    el.querySelector('.gtools').hidden = !g.dir;
     const n = data ? members(g).length : 0;
     el.querySelector('.gcount').textContent = n ? '· ' + n : '';
     placeGroup(el, g);
@@ -1489,12 +1535,17 @@ function clearSpot([x, y], exceptId) {
 // zoomed in there to work there.
 // Inside a group that has a folder, it starts there. With claude, the tile
 // goes when Claude exits, as any ended terminal does (see the 'gone' branch above).
-async function newTerm({ claude } = {}) {
-  const at = dropAt(0, 0);
-  const g = groups.findLast(g => at[0] >= g.x && at[0] <= g.x + g.w && at[1] >= g.y && at[1] <= g.y + g.h);
+// A project tool brings its own command and group: it opens in the middle of
+// that group unless the drop point is already inside it.
+const inGroup = (g, [x, y]) => x >= g.x && x <= g.x + g.w && y >= g.y && y <= g.y + g.h;
+async function newTerm({ claude, argv, group } = {}) {
+  let at = dropAt(0, 0);
+  if (group && !inGroup(group, at)) at = [group.x + group.w / 2, group.y + group.h / 2];
+  const g = group || groups.findLast(g => inGroup(g, at));
   const body = { cols: termCols(), rows: termRows() };
   if (g && g.dir) body.cwd = g.dir;
   if (claude) body.argv = ['claude'];
+  if (argv) body.argv = argv;
   const made = await fetch('/api/terminals', { method: 'POST', body: JSON.stringify(body) })
     .then(r => r.json()).catch(() => null);
   if (!made || !made.id) return void toast('Could not start the terminal: ' + esc((made && made.error) || 'no answer from the server'), 4000);
