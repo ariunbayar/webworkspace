@@ -451,9 +451,15 @@ function setDir(g, chip) {
   chip.textContent = g.dir || '';
   chip.focus();
   getSelection().selectAllChildren(chip);
-  chip.addEventListener('blur', () => {
+  chip.addEventListener('blur', async () => {
     chip.contentEditable = 'false';
-    g.dir = chip.textContent.trim().replace(/(.)\/+$/, '$1') || undefined;
+    const dir = chip.textContent.trim().replace(/(.)\/+$/, '$1') || undefined;
+    if (dir) {                       // a folder that is not there would start nothing
+      const ok = await fetch('/api/dir?path=' + encodeURIComponent(dir))
+        .then(r => r.ok).catch(() => false);
+      if (!ok) { toast('No such folder: ' + esc(dir), 4000); return render(); }
+    }
+    g.dir = dir;
     const base = g.dir && g.dir.split('/').pop();
     if (base && base !== '~' && /^Group( \d+)?$/.test(g.name)) g.name = base;
     saveGroups();

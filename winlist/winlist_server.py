@@ -1036,6 +1036,15 @@ class Handler(BaseHTTPRequestHandler):
             q = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
             doc, err = read_doc(q.get("path", [""])[0], q.get("since", [None])[0])
             self._send(json.dumps(doc or {"error": err}), code=200 if doc else 404)
+        elif self.path.startswith("/api/dir?"):
+            # a group's folder is only worth keeping if a terminal can start there
+            if not same_page(None, self.headers.get("Host", ""), named=True):
+                return self._send(json.dumps({"error": "refused"}), code=403)
+            q = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
+            path = os.path.expanduser(q.get("path", [""])[0])
+            if os.path.isdir(path):
+                return self._send(json.dumps({"ok": True, "path": path}))
+            self._send(json.dumps({"error": "no such folder"}), code=404)
         elif self.path.startswith("/api/image?"):
             if not same_page(None, self.headers.get("Host", ""), named=True):
                 return self._send(json.dumps({"error": "refused"}), code=403)
