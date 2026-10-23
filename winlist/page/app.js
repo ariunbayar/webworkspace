@@ -2244,7 +2244,7 @@ function nudge(dx, dy, grow) {
   }
 }
 // pan, never zoom, just far enough that the tile in hand is back in the frame
-function follow() {
+function keepInView() {
   const w = selected(), pan = $('#pan');
   if (!w) return;
   const [x, y] = seatOf(w), m = GRID * zoom;
@@ -2313,7 +2313,7 @@ document.addEventListener('keydown', e => {
     if (k === 'Escape' || k === 'Enter') return endEdit();
     const step = { ArrowUp: [0, -1], k: [0, -1], ArrowDown: [0, 1], j: [0, 1],
                    ArrowLeft: [-1, 0], h: [-1, 0], ArrowRight: [1, 0], l: [1, 0] }[k.length === 1 ? k.toLowerCase() : k];
-    if (step) { nudge(...step, e.shiftKey); follow(); }
+    if (step) { nudge(...step, e.shiftKey); keepInView(); }
     return;
   }
   // the page's own keys are bare letters: anything held with them is the browser's
