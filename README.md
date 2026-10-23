@@ -74,8 +74,11 @@ path. A terminal (`t`) or Claude Code (`c`) opened inside that group starts
 there, and `▸ tools` in the caption lists what the project can run: the
 executable `tmp/*.sh` scripts at the top of the folder, named from the file
 and described by the script's opening `# name — what it does` comment, plus
-any `Name: command` lines in a `.winlist-tools` file there. Picking one runs it
-in a new terminal in the group; Ctrl-C stops it and leaves a shell in its tile.
+any `Name: command` lines in a `.winlist-tools` file there. Picking one puts
+its button on the surface, in the group, a card like any other: press `▶`
+(or pick it and press Enter) and the tool runs in a new terminal beside it.
+Each press is a fresh run of whatever the script says now; Ctrl-C stops it and
+leaves a shell in its tile.
 
 A shell that exits leaves its tile behind, greyed, with its last words still
 in it and the reason it went in the title bar. **new shell** there starts

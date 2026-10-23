@@ -490,7 +490,7 @@ const labelOf = w => w.link ? w.link.label : labels[w.id];
 function haystack(w) {
   const t = w.term && terms.get(w.term.session);
   return [labelOf(w), w.title, w.app, w.cls, t && t.title, w.term && w.term.running, w.term && w.term.cwd,
-          w.link && (w.link.url || w.link.path || w.link.image || w.link.text),
+          w.link && (w.link.url || w.link.path || w.link.image || w.link.text || w.link.tool),
           w.desktop !== null && w.desktop !== undefined ? 'ws' + (w.desktop + 1) : ''
          ].filter(Boolean).join(' ').toLowerCase();
 }
@@ -678,7 +678,7 @@ async function showTools(g, chip) {
     b.setAttribute('role', 'menuitem');
     b.title = t.cmd;
     b.innerHTML = `<kbd>${i + 1}</kbd><span><b>${esc(t.name)}</b>${t.about ? `<small>${esc(t.about)}</small>` : ''}</span>`;
-    b.onclick = () => { closeTools(); newTerm({ argv: t.argv, group: g }); };
+    b.onclick = () => { closeTools(); toolButton(g, t); };
     menu.append(b);
   });
   const r = chip.getBoundingClientRect();
@@ -699,6 +699,29 @@ async function showTools(g, chip) {
   setTimeout(() => addEventListener('pointerdown', outside), 0);
 }
 function outside(e) { if (!e.target.closest('#tools')) closeTools(); }
+
+// picking a tool puts its button on the surface, in the group; pressing that
+// is what runs it, so a server you start every morning is one click away
+async function toolButton(g, t) {
+  const r = await fetch('/api/links', { method: 'POST', body: JSON.stringify({ tool: t.name, dir: g.dir, from: 'page' }) })
+    .catch(() => null);
+  const l = r && await r.json().catch(() => null);
+  if (!r || !r.ok || !l) return void toast('Could not add the button: ' + esc((l && l.error) || 'no answer from the server'), 4000);
+  const w = linkWin(l);
+  let at = dropAt(w.w, w.h);
+  if (!inGroup(g, [at[0] + w.w / 2, at[1] + w.h / 2])) at = [g.x + GRID, g.y + 2 * GRID];
+  addCard(l, at);
+}
+
+// a tool is run afresh each press, in a new terminal beside its button, with
+// whatever the script or .winlist-tools says now
+async function runTool(l, w) {
+  const res = await fetch('/api/tools?dir=' + encodeURIComponent(l.dir)).then(r => r.json()).catch(() => null);
+  const t = res && res.tools && res.tools.find(t => t.name === l.tool);
+  if (!t) return void toast(`No tool ${esc(l.tool)} in ${esc(shortPath(l.dir))} any more`, 4000);
+  const [x, y] = seatOf(w);
+  newTerm({ argv: t.argv, cwd: l.dir, corner: [x + w.w + GRID, y] });
+}
 function closeTools() {
   removeEventListener('pointerdown', outside);
   const m = $('#tools');
@@ -742,7 +765,7 @@ function renderGroups() {
       el.className = 'group';
       el.innerHTML = `<div class="gcap"><span class="gname" title="Double-click to rename"></span><span class="gcount"></span>`
         + `<span class="gdir" title="Folder new terminals start in (click to set)"></span>`
-        + `<span class="gtools" title="Run one of this project's tools in a new terminal here">▸ tools</span>`
+        + `<span class="gtools" title="Put a button for one of this project's tools in the group">▸ tools</span>`
         + `<span class="shut tidy" title="Tidy: pack the windows so none overlap (=)">▦</span>`
         + `<span class="shut" title="Remove the group (its windows stay)">✕</span></div>`
         + `<div class="grip" title="Drag to resize this group"></div>`;
@@ -1187,9 +1210,9 @@ function cardHost(url) {
 }
 function linkWin(l) {
   return { id: 'link:' + l.id, link: l, title: cardTitle(l),
-           app: l.image ? 'Image' : l.path ? 'Markdown' : l.note ? 'Note' : cardHost(l.url),
-           w: l.w || (l.image ? 640 : l.path ? 720 : l.note ? 360 : 320),
-           h: l.h || (l.image ? 480 : l.path ? 900 : l.note ? 300 : 76),
+           app: l.tool ? 'Tool' : l.image ? 'Image' : l.path ? 'Markdown' : l.note ? 'Note' : cardHost(l.url),
+           w: l.w || (l.image ? 640 : l.path ? 720 : l.note ? 360 : l.tool ? 240 : 320),
+           h: l.h || (l.image ? 480 : l.path ? 900 : l.note ? 300 : l.tool ? 96 : 76),
            x: 0, y: 0, z: 1e9, desktop: null };
 }
 
@@ -1334,7 +1357,8 @@ async function askGitHub() {
 // what a card shows; it is drawn again only when this changes
 function cardKey(w) {
   const gh = ghOf(w);
-  return w.link.image ? w.link.image
+  return w.link.tool ? 'tool ' + w.link.tool + ' ' + w.link.dir
+    : w.link.image ? w.link.image
     : w.link.note ? 'note ' + (noteEdit === w.id ? 'edit' : w.link.text || '')
     : w.link.path ? docKey(w) : w.link.url + (gh ? ' ' + gh.state : '') + ' ' + shownTitle(w);
 }
@@ -1362,7 +1386,18 @@ function imgCard(pic, w) {
 }
 
 
+// a tool's card is its button: press it to run the tool beside it
+function toolCard(pic, w) {
+  pic.className = 'pic card tool';
+  pic.style.cssText = '';
+  pic.innerHTML = `<button class="runbtn" title="Run ${esc(w.link.tool)} in a new terminal (or Enter)">▶ <span></span></button>`
+    + `<div class="url"></div>`;
+  pic.querySelector('.runbtn span').textContent = w.link.tool;
+  pic.querySelector('.url').textContent = [shortPath(w.link.dir), w.link.about].filter(Boolean).join(' · ');
+}
+
 function card(pic, w) {
+  if (w.link.tool) return toolCard(pic, w);
   if (w.link.image) return imgCard(pic, w);
   if (w.link.path) return docCard(pic, w);
   if (w.link.note) return noteCard(pic, w);
@@ -1387,10 +1422,10 @@ function card(pic, w) {
 
 // a card the server just made, dropped at the drop point, in view, so you see
 // it arrive
-function addCard(l) {
+function addCard(l, at) {
   const w = linkWin(l);
   if (!links.includes(l)) links.push(l);
-  layout[w.id] = clearSpot(dropAt(w.w, w.h), w.id);
+  layout[w.id] = clearSpot(at || dropAt(w.w, w.h), w.id);
   saveLayout();
   // picked if the keyboard is the page's; a terminal you are typing in keeps it
   if (!inInsert()) sel = w.id;
@@ -1943,12 +1978,14 @@ function clearSpot([x, y], exceptId) {
 // A project tool brings its own command and group: it opens in the middle of
 // that group unless the drop point is already inside it.
 const inGroup = (g, [x, y]) => x >= g.x && x <= g.x + g.w && y >= g.y && y <= g.y + g.h;
-async function newTerm({ claude, argv, group } = {}) {
-  let at = dropAt(0, 0);
+// A tool's button says exactly where: cwd and the new tile's top-left corner.
+async function newTerm({ claude, argv, group, cwd, corner } = {}) {
+  let at = corner || dropAt(0, 0);
   if (group && !inGroup(group, at)) at = [group.x + group.w / 2, group.y + group.h / 2];
   const g = group || groups.findLast(g => inGroup(g, at));
   const body = { cols: termCols(), rows: termRows() };
   if (g && g.dir) body.cwd = g.dir;
+  if (cwd) body.cwd = cwd;
   if (claude) body.argv = ['claude'];
   if (argv) body.argv = argv;
   const made = await fetch('/api/terminals', { method: 'POST', body: JSON.stringify(body) })
@@ -1971,7 +2008,7 @@ async function newTerm({ claude, argv, group } = {}) {
   await poll();                  // its size is only known once it is listed
   const w = data.windows.find(v => v.id === 'web:' + made.id);
   if (!w) return;
-  layout[w.id] = clearSpot([at[0] - w.w / 2, at[1] - w.h / 2], w.id);
+  layout[w.id] = clearSpot(corner || [at[0] - w.w / 2, at[1] - w.h / 2], w.id);
   saveLayout();
   pickIt();
 }
@@ -2026,6 +2063,8 @@ function renderCanvas(match) {
         const win = tileEls.get(w.id).win;
         if (e.target.isContentEditable) return;   // a caption being renamed is for the caret
         if (e.target.closest('.md a')) return;    // a link in a document is for following
+        // answered here for the same reason as a terminal's close button below
+        if (e.target.closest('.runbtn')) { e.preventDefault(); e.stopPropagation(); return runTool(win.link, win); }
         if (win.term) {
           // the drag takes the pointer captive, and a captured pointer's click
           // is delivered to the tile rather than to what was under it — so the
@@ -2081,7 +2120,7 @@ function renderCanvas(match) {
         && !w.title.toLowerCase().startsWith(w.app.toLowerCase()) ? w.app : '';
       el.querySelector('.ord').textContent = twins.get(w.id) || '';
       if (w.link) {
-        el.title = w.link.url || w.link.path || w.link.image;
+        el.title = w.link.url || w.link.path || w.link.image || 'Tool: ' + w.link.tool;
         const gh = ghOf(w), key = cardKey(w);
         if (gh) el.querySelector('.dot').style.background = ghColor(gh);
         const pic = el.children[1];          // the grip comes after it
@@ -2316,6 +2355,7 @@ async function activate(id) {
     if (w && w.link.note) return editNote(id);
     const dw = w && w.link.path && tileEls.get(id) && tileEls.get(id).querySelector('.docwrap');
     if (dw) dw.focus({ preventScroll: true });        // into the document: INSERT
+    else if (w && w.link.tool) runTool(w.link, w);
     else if (w && w.link.url) window.open(w.link.url, '_blank', 'noopener');
     else if (w && w.link.image) window.open(imgSrc(w.link), '_blank', 'noopener');
     return;
