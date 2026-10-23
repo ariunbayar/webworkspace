@@ -144,6 +144,9 @@ workspaces the windows came from, in order — left and right go to the nearest
 tile that way on the surface. `/` filters on every word you type, anywhere in a
 tile's title, app, running program, folder, card address or `ws2`; Enter jumps
 to the first match, `Esc` clears (then leaves the full window).
+`:` opens a palette: type any words to find an action (with its key shown, so
+you learn it), a tile or a group; `↑↓` or `Ctrl+N`/`Ctrl+P` move, Enter runs
+(a tile is picked and brought into view, a group fills the frame), `Esc` closes.
 
 A tile's caption names the app in words beside the title, numbers windows that
 would otherwise read the same (`#1`, `#2`), and for a terminal says what is

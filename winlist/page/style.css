@@ -211,6 +211,21 @@
   .linkform input { flex:1; min-width:0; font:inherit; font-size:13px; padding:6px 9px;
                     border:1px solid var(--line); border-radius:6px; background:var(--bg, var(--panel));
                     color:var(--fg) }
+  /* the palette: a search line over a list that scrolls past a dozen rows */
+  #palbox { width:min(92vw,560px); top:12vh; margin:0 auto }
+  #palq { box-sizing:border-box; width:100%; font:inherit; font-size:14px; padding:10px 13px;
+          border:0; border-bottom:1px solid var(--line); background:transparent; color:var(--fg);
+          outline:none }
+  #pallist { max-height:calc(12 * 30px); overflow:auto; padding:4px }
+  .palrow { display:flex; align-items:center; gap:10px; padding:5px 9px; border-radius:6px;
+            font-size:13px; cursor:pointer; height:20px }
+  .palrow.on { background:var(--accent); color:#fff }
+  .palkind { flex:0 0 58px; font-size:10px; text-transform:uppercase; letter-spacing:.04em;
+             color:var(--dim) }
+  .palrow.on .palkind { color:inherit; opacity:.8 }
+  .palname { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+  .palname mark { background:none; color:inherit; font-weight:700; text-decoration:underline }
+  .palnone { padding:10px; color:var(--dim); font-size:12px }
   /* every key on one card, so the bar's short list is not the only record */
   .helpbody { columns:2 260px; column-gap:26px }
   #helpq { flex:0 1 220px }
