@@ -51,8 +51,9 @@ function sendCard(l, fields) {             // fields that changed; null takes it
 let arrangeKnown = false;    // the first poll has said whether the server has one
 let arrangeAt = '';          // what the server last had
 let arrangeTimer = 0, arrangeBusy = 0, arrangeDone = 0;
-const arrangeNow = () => JSON.stringify({ groups, scales,
-  layout: Object.fromEntries(Object.entries(layout).filter(([k]) => !k.startsWith('link:'))) });
+const arrangeNow = () => JSON.stringify({ groups,   // the server's key order, so an echo compares equal
+  layout: Object.fromEntries(Object.entries(layout).filter(([k]) => !k.startsWith('link:'))), scales });
+const arrangeOf = a => JSON.stringify({ groups: a.groups, layout: a.layout, scales: a.scales });
 // the browser's own copy goes to one backup key, not away, in case the server's is wrong
 function backupLocal() {
   const had = Object.fromEntries(['groups', 'layout', 'scales'].map(k => [k, store.get(k, null)]).filter(([, v]) => v));
@@ -84,11 +85,14 @@ async function sendArrange() {
 function takeArrange(a, asked) {
   if (!arrangeKnown) {
     arrangeKnown = true;
-    if (!a) return sendArrange();      // none yet: this browser's is the first
+    if (!a) {                          // none yet: this browser's is the first, if it has one
+      if (groups.length || Object.keys(scales).length || Object.keys(layout).some(k => !k.startsWith('link:'))) return sendArrange();
+      return;
+    }
   } else if (!a || arrangeTimer || arrangeBusy || arrangeDone >= asked
              || document.querySelector('.dragging') || document.activeElement?.isContentEditable) return;
-  if (JSON.stringify(a) === arrangeAt) return;
-  arrangeAt = JSON.stringify(a);
+  if (arrangeOf(a) === arrangeAt) return;
+  arrangeAt = arrangeOf(a);
   groups = a.groups;
   scales = a.scales;
   const cards = Object.entries(layout).filter(([k]) => k.startsWith('link:'));
