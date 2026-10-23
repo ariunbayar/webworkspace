@@ -61,7 +61,7 @@ steps to the next one — `pragmata`, named after the default's face, then each
 `font-*` profile. The grid keeps its size and the tile grows or shrinks around it. Nothing there,
 or no X at all, and it falls back to its own colours.
 
-**New terminal** (or `t`) puts a shell of the page's own on the same surface,
+**New terminal** (`t`, or `:` and pick it) puts a shell of the page's own on the same surface,
 in a cell of its own past the last workspace. It is a real terminal, drawn by
 xterm.js and wired to `pty_server.py`: click into it and type. Drag it by its
 title bar rather than anywhere on it — the rest of it is for typing into — and
@@ -145,16 +145,19 @@ the footer and the margins go, and the surface is pinned to the viewport so the
 canvas is the window, the zoom still fitting until you work the slider or start
 dragging tiles. It is a layout, not F11: the browser stays a browser.
 
-"Architecture" (or `a`) draws the pieces and who talks to whom: the page, this
+Architecture (`a`, or `:` and pick it) draws the pieces and who talks to whom: the page, this
 server, X, and the terminal server that will hold shells the page starts
 itself. None of that plumbing shows on the surface, so it gets a picture.
 
 Click a window — or pick one with the arrow keys / `hjkl` and press Enter — to
 focus it, which also switches to its workspace; the arrow keys still walk the
 workspaces the windows came from, in order — left and right go to the nearest
-tile that way on the surface. `/` filters on every word you type, anywhere in a
+tile that way on the surface. `/` (or `:` Filter) opens the filter box, hidden until then; it filters on every word you type, anywhere in a
 tile's title, app, running program, folder, card address or `ws2`; Enter jumps
-to the first match, `Esc` clears (then leaves the full window).
+to the first match, `Esc` clears and hides it (then leaves the full window); it folds away when it loses focus empty.
+`:` opens a palette: type any words to find an action (with its key shown, so
+you learn it), a tile or a group; `↑↓` or `Ctrl+N`/`Ctrl+P` move, Enter runs
+(a tile is picked and brought into view, a group fills the frame), `Esc` closes.
 
 A tile's caption names the app in words beside the title, numbers windows that
 would otherwise read the same (`#1`, `#2`), and for a terminal says what is

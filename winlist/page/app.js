@@ -102,7 +102,6 @@ $('#tray').onclick = () => setBare(!bare);
 // none of the plumbing shows on the page, so it gets a picture of its own
 const archbox = $('#archbox');
 const showArch = () => { if (!archbox.open) archbox.showModal(); };
-$('#arch').onclick = showArch;
 $('#archclose').onclick = () => archbox.close();
 // the bar only has room for the common keys; ? lists them all
 // u asks for a URL; the server finds the page's title, as for one sent by curl
@@ -222,6 +221,129 @@ function markWords(tr, words) {
 }
 $('#helpq').oninput = filterHelp;
 $('#helpclose').onclick = () => helpbox.close();
+
+// ---- palette: one box to find an action, a tile or a group (:) -------------
+const palbox = $('#palbox');
+const ACTIONS = [
+  ['New terminal', 't', () => newTerm()],
+  ['Claude Code', 'c', () => newTerm({ claude: true })],
+  ['Link card', 'u', () => askLink()],
+  ['Picture', 'p', () => askImage()],
+  ['Markdown file', 'o', () => askDoc()],
+  ['Group', 'g', () => newGroup()],
+  ['Actual size', '1', () => actualSize()],
+  ['Loupe', 'z', () => setLens(!lensOn)],
+  ['Top bar', 'b', () => setBare(!bare)],
+  ['Filter', '/', () => { openQ(); }],
+  ['Architecture', 'a', () => showArch()],
+  ['Keys help', '?', () => showHelp()],
+  ['Move/size picked tile', 'Super+Enter', () => {
+    const w = selected() || data && data.windows.find(x => x.focused && visible()(x));
+    if (w) startTile(w);
+    else toast('Pick a window first: <kbd>↑↓←→</kbd>, then <kbd>Super+Enter</kbd>');
+  }],
+  ['Reset layout', '', () => {     // it asks twice, so the button is left armed
+    if (bare) setBare(false);
+    $('#reset').click();
+    toast('Click <b>Reset layout</b> again to confirm');
+  }],
+].map(([name, key, run]) => ({ kind: 'action', name, key, extra: '', run }));
+let palRows = [], palAt = 0;
+
+// the groups and tiles as they are right now, so the list is never stale
+function palItems() {
+  const gs = groups.map(g => ({ kind: 'group', name: g.name, key: '', extra: g.dir || '',
+    run: () => fitGroup(g) }));
+  const ws = (data ? data.windows : []).map(w => {
+    const t = w.term && terms.get(w.term.session);
+    return { kind: kindOf(w.id) === 'term' ? 'terminal' : kindOf(w.id), key: '',
+      name: w.title || (t && t.title) || w.app || '', extra: haystack(w),
+      run: () => { sel = w.id; render(); reveal(); } };
+  });
+  return [...ACTIONS, ...gs, ...ws];
+}
+
+// bring the group to fill the frame, as fitAll does for everything
+function fitGroup(g) {
+  const pan = $('#pan'), pad = 24;
+  zoom = clamp(Math.min((pan.clientWidth - pad * 2) / g.w, (pan.clientHeight - pad * 2) / g.h));
+  origin = [(pan.clientWidth - g.w * zoom) / 2 - g.x * zoom,
+            (pan.clientHeight - g.h * zoom) / 2 - g.y * zoom];
+  store.set('zoom', zoom);
+  store.set('origin', origin);
+  render();
+}
+
+// every word must be somewhere; a name that starts with it beats one that has
+// it at a word start, which beats one that has it inside a word
+function palScore(it, words) {
+  const name = it.name.toLowerCase(), all = name + ' ' + it.extra.toLowerCase();
+  let s = 0;
+  for (const w of words) {
+    if (name.startsWith(w)) s += 4;
+    else if (name.includes(' ' + w)) s += 3;
+    else if (name.includes(w)) s += 2;
+    else if (all.includes(' ' + w)) s += 1;
+    else if (!all.includes(w)) return -1;
+  }
+  return s;
+}
+
+const KIND_ORDER = { action: 0, group: 1 };
+function palFind() {
+  const words = $('#palq').value.toLowerCase().split(/\s+/).filter(Boolean);
+  let rows = palItems();
+  if (!words.length) rows = rows.filter(r => r.kind === 'action' || r.kind === 'group');
+  else {
+    rows.forEach(r => { r.score = palScore(r, words); });
+    rows = rows.filter(r => r.score >= 0)
+      .sort((a, b) => b.score - a.score || (KIND_ORDER[a.kind] ?? 2) - (KIND_ORDER[b.kind] ?? 2));
+  }
+  palRows = rows;
+  palAt = 0;
+  const list = $('#pallist');
+  list.textContent = '';
+  rows.forEach((r, i) => {
+    const el = document.createElement('div');
+    el.className = 'palrow';
+    el.setAttribute('role', 'option');
+    el.innerHTML = `<span class="palkind">${r.kind}</span><span class="palname">${esc(r.name)}</span>`
+      + (r.key ? `<kbd>${esc(r.key)}</kbd>` : '');
+    if (words.length) markWords(el.querySelector('.palname'), words);
+    el.onmousemove = () => palPick(i, false);
+    el.onclick = () => runPal(r);
+    list.append(el);
+  });
+  if (!rows.length) list.innerHTML = '<div class="palnone">Nothing matches</div>';
+  palPick(0);
+}
+function palPick(i, scroll = true) {
+  palAt = i;
+  [...$('#pallist').children].forEach((el, j) => el.classList.toggle('on', j === i));
+  const el = $('#pallist').children[i];
+  if (scroll && el && el.scrollIntoView) el.scrollIntoView({ block: 'nearest' });
+}
+// closed first, so a dialog the action opens does not land under this one
+function runPal(r) {
+  palbox.close();
+  r.run();
+}
+const showPalette = () => {
+  if (palbox.open) return;
+  $('#palq').value = '';
+  palFind();
+  palbox.showModal();
+  $('#palq').focus();
+};
+$('#palq').oninput = palFind;
+palbox.addEventListener('keydown', e => {
+  e.stopPropagation();               // none of these are the page's keys
+  const n = palRows.length;
+  const step = e.key === 'ArrowDown' || (e.ctrlKey && e.key === 'n') ? 1
+    : e.key === 'ArrowUp' || (e.ctrlKey && e.key === 'p') ? -1 : 0;
+  if (step) { e.preventDefault(); if (n) palPick((palAt + step + n) % n); }
+  else if (e.key === 'Enter') { e.preventDefault(); if (palRows[palAt]) runPal(palRows[palAt]); }
+});
 // squared, so the slider gives fine control down at the small end where the
 // whole surface lives and still reaches far enough in to read a window
 $('#zoom').addEventListener('input', () => {
@@ -241,7 +363,6 @@ function actualSize() {
   shift(Math.round(box.left + origin[0]) - box.left - origin[0],
         Math.round(box.top + origin[1]) - box.top - origin[1]);
 }
-$('#actual').onclick = actualSize;
 // the whole arrangement goes, so it asks once more: a second click within 3s
 let resetArmed = 0;
 $('#reset').onclick = () => {
@@ -262,6 +383,10 @@ $('#reset').onclick = () => {
 };
 addEventListener('resize', render);
 $('#q').addEventListener('input', () => { sel = null; render(); });
+// hidden until asked for (/ or the palette); stays while it holds text, folds when it empties and loses focus
+const openQ = () => { if (bare) setBare(false); $('#q').classList.add('on'); $('#q').focus(); };
+const foldQ = () => { if (!$('#q').value) $('#q').classList.remove('on'); };
+$('#q').addEventListener('blur', foldQ);
 
 // A window that has closed leaves its place behind in the layout. It is let go
 // once it has been missing for a minute of polls — not on the first, since a
@@ -1607,8 +1732,6 @@ async function newTerm({ claude, argv, group, cwd, corner } = {}) {
   saveLayout();
   pickIt();
 }
-$('#newterm').onclick = () => newTerm();
-$('#newclaude').onclick = () => newTerm({ claude: true });
 
 async function closeTerm(id) {
   await fetch('/api/terminals/' + id, { method: 'DELETE' }).catch(() => {});
@@ -1745,11 +1868,9 @@ const lensDirty = new Set();      // terminals whose rows changed since copied
 function setLens(v) {
   lensOn = v;
   store.set('lens', v);
-  $('#lens').setAttribute('aria-pressed', v);
   syncLens();
   aimLens();
 }
-$('#lens').onclick = () => setLens(!lensOn);
 
 // called from render(): tiles come, go and move, and the copy follows
 function syncLens() {
@@ -2186,9 +2307,10 @@ document.addEventListener('keydown', e => {
   if (e.ctrlKey || e.altKey || e.metaKey) return;              // the dialog handles its own Esc
   if (k === 'a') { e.preventDefault(); return showArch(); }
   if (k === '?') { e.preventDefault(); return showHelp(); }
-  if (k === '/') { e.preventDefault(); if (bare) setBare(false); $('#q').focus(); return; }
+  if (k === ':') { e.preventDefault(); return showPalette(); }
+  if (k === '/') { e.preventDefault(); openQ(); return; }
   if (k === 'Escape') {
-    if ($('#q').value || sel) { $('#q').value = ''; sel = null; return render(); }
+    if ($('#q').value || sel) { $('#q').value = ''; foldQ(); sel = null; return render(); }
     return bare ? undefined : setBare(true);
   }
   if (k === 'b') { e.preventDefault(); return setBare(!bare); }
@@ -2267,6 +2389,7 @@ actualSize = counted('actual', actualSize);
 setLens = counted('lens', setLens, v => ({ on: !!v }));
 setBare = counted('bare', setBare, v => ({ on: !!v }));
 swapFace = counted('face', swapFace);
+runPal = counted('palette', runPal, r => ({ kind: r.kind }));
 const nudged = { n: 0, grow: 0, at: 0 };
 nudge = (f => function (dx, dy, grow) {      // counted into the tile.end it belongs to
   nudged.n++;
