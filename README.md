@@ -218,6 +218,19 @@ news for 30 minutes is dropped.
 Terminals
 ---
 
+The page's terminals are remembered in `~/.local/state/winlist/terms.json`
+(folder, size, place on the surface, font, last title, whether it ran Claude).
+`pty_server.py` also keeps the last 64 KB of each one's output, and bash shells
+it opens (through `winlist/winlist_bashrc`, which sources your `~/.bashrc` and
+notes each command) their last 3 commands, in `~/.local/state/winlist/terms/`.
+After a reboot or a new `pty_server.py` each lost terminal stays on the surface
+as a **husk**: a dimmed, read-only tile in its old spot and size with its last
+title, commands and output. **Restore** starts a fresh shell in the same folder
+under the old output, in the same place and font (Claude ones `claude --resume`
+the session the hook last reported; a folder that is gone gets `~`); **Close**
+forgets it. The bar offers **Restore all** / **Dismiss all**. A terminal you
+close, or that ends, is forgotten along with its saved files.
+
 Shells the browser can hold on to, one pseudo-terminal each, stdlib only.
 `winlist_server.py` starts this when nothing is listening on its port, so there
 is normally nothing to start. It runs as a process of its own and is left

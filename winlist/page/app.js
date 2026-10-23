@@ -453,7 +453,7 @@ function forgetGone() {
   const ptyDown = !data.pty || !data.pty.on || data.pty.error;
   let changed = false;
   Object.keys(layout).forEach(id => {
-    if (here.has(id) || (ptyDown && id.startsWith('web:'))) return missing.delete(id);
+    if (here.has(id) || (id.startsWith('husk:') && husks.has(id.slice(5))) || (ptyDown && id.startsWith('web:'))) return missing.delete(id);
     const n = (missing.get(id) || 0) + 1;
     missing.set(id, n);
     if (n >= 30) { delete layout[id]; delete scales[id]; missing.delete(id); changed = true; }
@@ -479,6 +479,7 @@ async function poll() {
     // one sent from outside — a shell, an agent — is placed by the first page to see it
     links.filter(l => l.x == null && !pend.has(l.id)).forEach(l => addCard(l, null, true));
     forgetGone();
+    tellTerms();
     failures = 0;
     // restarted from its terminal: the page it served is the old one
     if (started !== null && data.started !== started) return location.reload();
@@ -771,10 +772,159 @@ function renderGroups() {
 // said over the surface, where it is seen, not only in the bar that is folded
 // away — and before the first answer too, when there is nothing else to show
 function showTrouble() {
+  const lost = restoring ? [] : (data && data.lost) || [];
   const trouble = failures >= 2 ? `Lost the server — retrying. Is it running? <code>python3 winlist/winlist_server.py</code>`
-    : data && data.error ? esc(data.error) : '';
-  $('#banner').innerHTML = trouble;
+    : data && data.error ? esc(data.error)
+    : lost.length ? `${lost.length} terminal${lost.length > 1 ? 's' : ''} did not survive the restart. `
+      + `<button data-act="restore">Restore ${lost.length > 1 ? 'all' : ''}</button> <button data-act="dismiss">Dismiss ${lost.length > 1 ? 'all' : ''}</button>`
+    : restoreNote;
+  if ($('#banner').innerHTML !== trouble) $('#banner').innerHTML = trouble;   // not under a click
   $('#banner').classList.toggle('on', !!trouble);
+}
+
+// Terminals a reboot took are remembered on the server (data.lost) and come
+// back as husks (see renderHusks): each can be restored or closed, or all at
+// once from the bar. A restored one starts in the same folder, where its tile was.
+let restoring = false, restoreNote = '';
+const going = new Set();            // husks being restored or closed right now
+const pendingOut = new Map();       // new session id -> the old one's output, for mount()
+const savedOuts = new Map();        // old session id -> promise of its saved output
+const savedOut = id => savedOuts.get(id) || savedOuts.set(id, fetch('/api/terminals/' + id + '/scrollback')
+  .then(r => r.ok ? r.arrayBuffer() : new ArrayBuffer(0)).then(b => new Uint8Array(b))
+  .catch(() => new Uint8Array(0))).get(id);
+// whatever the old screen left switched on (full screen, hidden cursor), off again
+const OUT_END = '\x1b[?1049l\x1b[?25h\x1b[0m\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1006l';   // and mouse reporting
+async function restoreTerm(r, keep) {
+  going.add(r.id);
+  renderHusks();
+  let moved = 0;
+  const out = keep ? await savedOut(r.id) : null;
+  if (keep) {
+    const body = { cols: r.cols, rows: r.rows };
+    if (r.cwd_ok) body.cwd = r.cwd;
+    if (r.claude) body.argv = r.session ? ['claude', '--resume', r.session] : ['claude'];
+    const made = await fetch('/api/terminals', { method: 'POST', body: JSON.stringify(body) })
+      .then(x => x.json()).catch(() => null);
+    if (!made || !made.id) {
+      toast('Could not restore one: ' + esc((made && made.error) || 'no answer from the server'), 4000);
+      going.delete(r.id);
+      return 0;                     // stays a husk, to try again
+    }
+    const at = layout['husk:' + r.id] || r.at;     // where the husk was dragged to
+    if (at) layout['web:' + made.id] = at;
+    if (r.face) faces[made.id] = r.face;
+    if (out.length) pendingOut.set(made.id, out);
+    if (!r.cwd_ok) moved++;
+  }
+  await fetch('/api/terminals/' + r.id, { method: 'DELETE' }).catch(() => {});   // forgets it
+  savedOuts.delete(r.id);
+  delete layout['husk:' + r.id];
+  going.delete(r.id);
+  store.set('faces', faces);
+  saveLayout();
+  poll();
+  return moved;
+}
+async function restoreTerms(keep) {
+  restoring = true;
+  showTrouble();
+  let moved = 0;
+  for (const r of (data.lost || []).slice()) moved += await restoreTerm(r, keep);
+  restoreNote = moved ? `${moved} folder${moved > 1 ? 's are' : ' is'} gone: started in ~ instead.` : '';
+  if (restoreNote) setTimeout(() => { restoreNote = ''; showTrouble(); }, 8000);
+  restoring = false;
+  poll();
+}
+$('#banner').addEventListener('click', e => {
+  const act = e.target.dataset.act;
+  if (act) restoreTerms(act === 'restore');
+});
+
+// A terminal the restart took stays on the surface as a husk: its old spot and
+// size, its last title, its last commands and its last output, dimmed and
+// read-only. Restore starts a shell in its folder; Close forgets it.
+const husks = new Map();            // old session id -> {el, t, term, key}
+function renderHusks() {
+  const lost = ((data && data.lost) || []).filter(r => !going.has(r.id));
+  const live = new Set(lost.map(r => r.id));
+  lost.forEach(r => {
+    let h = husks.get(r.id);
+    if (!h) {
+      const el = document.createElement('div');
+      el.className = 'tile husk';
+      el.innerHTML = `<div class="cap"><span class="dot"></span><span class="t2"></span><span class="note"></span></div>`
+        + `<div class="termbody"><div class="termwrap"><div class="termhost"></div></div>`
+        + `<div class="hover"><div class="hcmds"></div>`
+        + `<div class="hbtn"><button data-act="restore">Restore</button><button data-act="close">Close</button></div></div></div>`;
+      // buttons are answered in pointerdown, before a drag takes the pointer
+      // captive; the caption is the handle, as on a terminal
+      el.addEventListener('pointerdown', e => {
+        const act = e.target.dataset.act, cur = (data.lost || []).find(x => x.id === r.id) || r;
+        if (act) { e.preventDefault(); return restoreTerm(cur, act === 'restore'); }
+        if (e.target.closest('.cap')) drag(e, husks.get(r.id).w, el);
+      });
+      const ps = profiles(), face = ps.find(p => p.name === (faces[r.id] || r.face)) || ps[0] || { font: look().font, size: look().size };
+      const term = new Terminal({
+        cols: r.cols, rows: r.rows, theme: termTheme(), fontFamily: termFont(face.font),
+        fontSize: face.size || 13, lineHeight: 1.125, disableStdin: true, cursorBlink: false,
+        scrollback: 65536, convertEol: false,       // the whole of the 64 KB saved
+      });
+      $('#tiles').append(el);
+      term.open(el.querySelector('.termhost'));
+      h = { el, term, w: { id: 'husk:' + r.id, husk: r.id, w: 0, h: 0 }, t: { term, wrap: el.querySelector('.termwrap'), cap: el.querySelector('.cap') } };
+      husks.set(r.id, h);
+      savedOut(r.id).then(out => {
+        if (out.length) term.write(out);
+        term.write(OUT_END + '\x1b[?25l', () => term.scrollToBottom());
+      });
+    }
+    const { el, t } = h, key = JSON.stringify([r.title, r.cwd, r.cmds]);
+    if (h.key !== key) {                  // as text: titles and commands are whatever a program printed
+      h.key = key;
+      el.querySelector('.t2').textContent = r.title || (r.claude ? 'claude' : 'shell');
+      el.querySelector('.note').textContent = shortPath(r.cwd) + ' · gone';
+      el.querySelector('.dot').style.background = colorOf('Terminal');
+      el.title = r.cwd || '';
+      el.querySelector('.hcmds').replaceChildren(...(r.cmds || []).map(c => {
+        const d = document.createElement('div');
+        d.textContent = '$ ' + c;
+        return d;
+      }));
+    }
+    measure(t);
+    Object.assign(h.w, { at: r.at || [0, 0], w: t.natural[0], h: t.natural[1] });
+    place(el, h.w);
+  });
+  husks.forEach((h, id) => {
+    if (live.has(id)) return;
+    h.el.remove();
+    h.term.dispose();
+    husks.delete(id);
+  });
+}
+
+// The page knows where a terminal's tile sits and which face it has; the
+// server keeps them with the terminal, for after a reboot. Told when they change.
+const toldTerm = new Map();       // session id -> what the server was last told
+function tellTerms() {
+  husks.forEach((h, id) => {      // a husk dragged somewhere new
+    const at = layout[h.w.id];
+    if (!at) return;
+    const was = JSON.stringify({ at: at.map(Math.round) }), k = 'husk:' + id;
+    if (toldTerm.get(k) === was) return;
+    toldTerm.set(k, was);
+    fetch('/api/terminals/' + id, { method: 'PATCH', body: was }).then(r => { if (!r.ok) toldTerm.delete(k); }).catch(() => toldTerm.delete(k));
+  });
+  data.windows.forEach(w => {
+    if (!w.term || !w.term.alive) return;
+    const id = w.term.session, at = seatOf(w).map(Math.round), face = (profiles()[0] || {}).name;
+    const body = { at, face: faces[id] || face };
+    if (!body.face) delete body.face;
+    const was = JSON.stringify(body);
+    if (toldTerm.get(id) === was) return;
+    toldTerm.set(id, was);
+    fetch('/api/terminals/' + id, { method: 'PATCH', body: was }).then(r => { if (!r.ok) toldTerm.delete(id); }).catch(() => toldTerm.delete(id));
+  });
 }
 
 function render() {
@@ -782,6 +932,7 @@ function render() {
   const match = visible(), q = $('#q').value.trim();
   renderGroups();
   renderCanvas(match);
+  renderHusks();
   drawMark();
   status(match, q);
   syncLens();
@@ -855,7 +1006,7 @@ function seat(w) {
   return [col * (data.screen.w + GUTTER) + Math.max(0, w.x),
           row * (data.screen.h + GUTTER) + Math.max(0, w.y)];
 }
-const seatOf = w => layout[w.id] || seat(w);
+const seatOf = w => layout[w.id] || (w.husk ? w.at : seat(w));
 
 // what the windows actually cover, which is the thing worth fitting
 function bounds() {
@@ -1301,6 +1452,13 @@ function place(el, w) {
   const [x, y] = seatOf(w);
   el.style.left = x * zoom + 'px';
   el.style.top = y * zoom + 'px';
+  if (w.husk) {                      // drawn at its saved size, scaled like a terminal
+    const h = husks.get(w.husk), cap = h.t.capH;
+    el.style.width = w.w * zoom + 'px';
+    el.style.height = (w.h - cap) * zoom + cap + 'px';
+    h.t.wrap.style.transform = `scale(${zoom})`;
+    return;
+  }
   if (w.term) {
     // a terminal is drawn at its own size and scaled to match the surface, so
     // it cannot be given a floor the way a photograph can: the tile is exactly
@@ -1377,8 +1535,9 @@ function drag(e, w, el) {
       fitGrid(w, el);
       place(el, w);
     }
-    if (moved) saveLayout();
+    if (moved) { saveLayout(); if (w.husk) tellTerms(); }
     if (!settle) return;
+    if (w.husk) return;              // nothing to pick or type into
     // a click on a terminal in NORMAL only picks it: Enter is what types into it
     const typing = inInsert();
     // a card only picks on a click: opening a page is a double click's worth
@@ -1462,6 +1621,13 @@ function mount(w) {
   });
   t = { term, ws: null, wrap: null, cap: null, capH: 0, natural: null, cell: null, pad: [0, 0], read: false, title: '', prof };
   terms.set(id, t);
+  // a restored terminal opens on what the old one said, then a line, then the new prompt
+  const old = pendingOut.get(id);
+  if (old) {
+    pendingOut.delete(id);
+    term.write(old);
+    term.write(OUT_END + '\r\n\x1b[2m' + '─'.repeat(Math.min(w.term.cols, 40)) + ' restored\x1b[0m\r\n');
+  }
   // the title the shell sets (OSC 0/2) is what a desktop terminal shows, and
   // xterm.js hears it as it streams by, well before the next poll would
   term.onRender(() => termDrew(id));
@@ -2035,7 +2201,7 @@ $('#pan').addEventListener('wheel', e => {
   // far enough that nobody could read it, it is a tile again and the wheel
   // goes back to meaning zoom.
   if (zoom > 0.5 && e.target.closest('.termhost') && inInsert()) return;
-  if (zoom > 0.3 && e.target.closest('.docwrap')) return;      // a document scrolls
+  if (zoom > 0.3 && e.target.closest('.docwrap, .husk .termhost')) return;   // a document, or a husk's output, scrolls
   e.preventDefault();
   zoomAbout(zoom * Math.exp(-e.deltaY * 0.0015), e.clientX, e.clientY);
 }, { passive: false });
@@ -2258,6 +2424,7 @@ function endEdit() {
 // edges line up with the next tile's as well as its corner: a card exactly, a
 // terminal to the character, a photograph by its width, keeping its shape.
 function fitGrid(w, el) {
+  if (w.husk) return;                // its size is its old screen's
   const g = gridStep(), [x, y] = seatOf(w);
   const ww = Math.max(g, snap(w.w)), hh = Math.max(g, snap(w.h));
   if (w.link) {
@@ -2428,7 +2595,7 @@ setInterval(readDocs, 2000);
 // never a title, a URL, or anything typed into a terminal. Batched, and sent
 // when the page is let go of, to /api/usage; usage_report.py reads it back.
 const usage = [], session = newId();
-const kindOf = id => !id ? 'none' : id.startsWith('web:') ? 'term'
+const kindOf = id => !id ? 'none' : id.startsWith('web:') ? 'term' : id.startsWith('husk:') ? 'husk'
   : id.startsWith('link:') ? 'card' : 'window';
 function track(ev, props) {
   usage.push({ ev, t: Date.now(), s: session, ...props });
