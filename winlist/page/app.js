@@ -774,36 +774,58 @@ function showTrouble() {
   const trouble = failures >= 2 ? `Lost the server — retrying. Is it running? <code>python3 winlist/winlist_server.py</code>`
     : data && data.error ? esc(data.error)
     : lost.length ? `${lost.length} terminal${lost.length > 1 ? 's' : ''} did not survive the restart. `
-      + `<button data-act="restore">Restore ${lost.length}</button> <button data-act="dismiss">Dismiss</button>`
+      + `<button data-act="restore">Restore ${lost.length > 1 ? 'all' : ''}</button> <button data-act="dismiss">Dismiss ${lost.length > 1 ? 'all' : ''}</button>`
     : restoreNote;
   if ($('#banner').innerHTML !== trouble) $('#banner').innerHTML = trouble;   // not under a click
   $('#banner').classList.toggle('on', !!trouble);
 }
 
-// Terminals a reboot took are remembered on the server (data.lost); one click
-// starts them again, in the same folder, where their tiles were.
+// Terminals a reboot took are remembered on the server (data.lost) and come
+// back as husks (see renderHusks): each can be restored or closed, or all at
+// once from the bar. A restored one starts in the same folder, where its tile was.
 let restoring = false, restoreNote = '';
+const going = new Set();            // husks being restored or closed right now
+const pendingOut = new Map();       // new session id -> the old one's output, for mount()
+const savedOuts = new Map();        // old session id -> promise of its saved output
+const savedOut = id => savedOuts.get(id) || savedOuts.set(id, fetch('/api/terminals/' + id + '/scrollback')
+  .then(r => r.ok ? r.arrayBuffer() : new ArrayBuffer(0)).then(b => new Uint8Array(b))
+  .catch(() => new Uint8Array(0))).get(id);
+// whatever the old screen left switched on (full screen, hidden cursor), off again
+const OUT_END = '\x1b[?1049l\x1b[?25h\x1b[0m';
+async function restoreTerm(r, keep) {
+  going.add(r.id);
+  renderHusks();
+  let moved = 0;
+  const out = keep ? await savedOut(r.id) : null;
+  if (keep) {
+    const body = { cols: r.cols, rows: r.rows };
+    if (r.cwd_ok) body.cwd = r.cwd;
+    if (r.claude) body.argv = r.session ? ['claude', '--resume', r.session] : ['claude'];
+    const made = await fetch('/api/terminals', { method: 'POST', body: JSON.stringify(body) })
+      .then(x => x.json()).catch(() => null);
+    if (!made || !made.id) {
+      toast('Could not restore one: ' + esc((made && made.error) || 'no answer from the server'), 4000);
+      going.delete(r.id);
+      return 0;                     // stays a husk, to try again
+    }
+    if (r.at) layout['web:' + made.id] = r.at;
+    if (r.face) faces[made.id] = r.face;
+    if (out.length) pendingOut.set(made.id, out);
+    if (!r.cwd_ok) moved++;
+  }
+  await fetch('/api/terminals/' + r.id, { method: 'DELETE' }).catch(() => {});   // forgets it
+  savedOuts.delete(r.id);
+  going.delete(r.id);
+  store.set('faces', faces);
+  saveLayout();
+  poll();
+  return moved;
+}
 async function restoreTerms(keep) {
-  const lost = (data.lost || []).slice();
   restoring = true;
   showTrouble();
   let moved = 0;
-  for (const r of lost) {
-    if (keep) {
-      const body = { cols: r.cols, rows: r.rows };
-      if (r.cwd_ok) body.cwd = r.cwd;
-      if (r.claude) body.argv = r.session ? ['claude', '--resume', r.session] : ['claude'];
-      const made = await fetch('/api/terminals', { method: 'POST', body: JSON.stringify(body) })
-        .then(x => x.json()).catch(() => null);
-      if (!made || !made.id) { toast('Could not restore one: ' + esc((made && made.error) || 'no answer from the server'), 4000); continue; }
-      if (r.at) layout['web:' + made.id] = r.at;
-      if (r.face) faces[made.id] = r.face;
-      if (!r.cwd_ok) moved++;
-    }
-    await fetch('/api/terminals/' + r.id, { method: 'DELETE' }).catch(() => {});   // forgets it
-  }
-  store.set('faces', faces);
-  saveLayout();
+  for (const r of (data.lost || []).slice()) moved += await restoreTerm(r, keep);
   restoreNote = moved ? `${moved} folder${moved > 1 ? 's are' : ' is'} gone: started in ~ instead.` : '';
   if (restoreNote) setTimeout(() => { restoreNote = ''; showTrouble(); }, 8000);
   restoring = false;
@@ -813,6 +835,67 @@ $('#banner').addEventListener('click', e => {
   const act = e.target.dataset.act;
   if (act) restoreTerms(act === 'restore');
 });
+
+// A terminal the restart took stays on the surface as a husk: its old spot and
+// size, its last title, its last commands and its last output, dimmed and
+// read-only. Restore starts a shell in its folder; Close forgets it.
+const husks = new Map();            // old session id -> {el, t, term, key}
+function renderHusks() {
+  const lost = ((data && data.lost) || []).filter(r => !going.has(r.id));
+  const live = new Set(lost.map(r => r.id));
+  lost.forEach(r => {
+    let h = husks.get(r.id);
+    if (!h) {
+      const el = document.createElement('div');
+      el.className = 'tile husk';
+      el.innerHTML = `<div class="cap"><span class="dot"></span><span class="t2"></span><span class="note"></span></div>`
+        + `<div class="termbody"><div class="termwrap"><div class="termhost"></div></div>`
+        + `<div class="hover"><div class="hcmds"></div>`
+        + `<div class="hbtn"><button data-act="restore">Restore</button><button data-act="close">Close</button></div></div></div>`;
+      el.addEventListener('click', e => {
+        const act = e.target.dataset.act, cur = (data.lost || []).find(x => x.id === r.id) || r;
+        if (act) restoreTerm(cur, act === 'restore');
+      });
+      const ps = profiles(), face = ps.find(p => p.name === (faces[r.id] || r.face)) || ps[0] || { font: look().font, size: look().size };
+      const term = new Terminal({
+        cols: r.cols, rows: r.rows, theme: termTheme(), fontFamily: termFont(face.font),
+        fontSize: face.size || 13, lineHeight: 1.125, disableStdin: true, cursorBlink: false,
+        scrollback: look().scrollback || 4000, convertEol: false,
+      });
+      $('#tiles').append(el);
+      term.open(el.querySelector('.termhost'));
+      h = { el, term, t: { term, wrap: el.querySelector('.termwrap'), cap: el.querySelector('.cap') } };
+      husks.set(r.id, h);
+      savedOut(r.id).then(out => { if (out.length) term.write(out); term.write(OUT_END + '\x1b[?25l'); });
+    }
+    const { el, t } = h, key = JSON.stringify([r.title, r.cwd, r.cmds]);
+    if (h.key !== key) {                  // as text: titles and commands are whatever a program printed
+      h.key = key;
+      el.querySelector('.t2').textContent = r.title || (r.claude ? 'claude' : 'shell');
+      el.querySelector('.note').textContent = shortPath(r.cwd) + ' · gone';
+      el.querySelector('.dot').style.background = colorOf('Terminal');
+      el.title = r.cwd || '';
+      el.querySelector('.hcmds').replaceChildren(...(r.cmds || []).map(c => {
+        const d = document.createElement('div');
+        d.textContent = '$ ' + c;
+        return d;
+      }));
+    }
+    measure(t);
+    const [x, y] = r.at || [0, 0];
+    el.style.left = x * zoom + 'px';
+    el.style.top = y * zoom + 'px';
+    el.style.width = t.natural[0] * zoom + 'px';
+    el.style.height = (t.natural[1] - t.capH) * zoom + t.capH + 'px';
+    t.wrap.style.transform = `scale(${zoom})`;
+  });
+  husks.forEach((h, id) => {
+    if (live.has(id)) return;
+    h.el.remove();
+    h.term.dispose();
+    husks.delete(id);
+  });
+}
 
 // The page knows where a terminal's tile sits and which face it has; the
 // server keeps them with the terminal, for after a reboot. Told when they change.
@@ -835,6 +918,7 @@ function render() {
   const match = visible(), q = $('#q').value.trim();
   renderGroups();
   renderCanvas(match);
+  renderHusks();
   drawMark();
   status(match, q);
   syncLens();
@@ -1515,6 +1599,13 @@ function mount(w) {
   });
   t = { term, ws: null, wrap: null, cap: null, capH: 0, natural: null, cell: null, pad: [0, 0], read: false, title: '', prof };
   terms.set(id, t);
+  // a restored terminal opens on what the old one said, then a line, then the new prompt
+  const old = pendingOut.get(id);
+  if (old) {
+    pendingOut.delete(id);
+    term.write(old);
+    term.write(OUT_END + '\r\n\x1b[2m' + '─'.repeat(Math.min(w.term.cols, 40)) + ' restored\x1b[0m\r\n');
+  }
   // the title the shell sets (OSC 0/2) is what a desktop terminal shows, and
   // xterm.js hears it as it streams by, well before the next poll would
   term.onRender(() => termDrew(id));

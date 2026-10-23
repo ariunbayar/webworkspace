@@ -39,6 +39,11 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 DEFAULT_PORT = 8767
 SCROLLBACK = 256 * 1024   # bytes kept per session, enough to redraw a full screen
 MAX_SESSIONS = 32
+SAVED = 64 * 1024         # bytes of each session's output kept on disk, for after a reboot
+SAVE_EVERY = 2.0          # seconds between saves, and only of what changed
+STATE = os.path.join(os.environ.get("XDG_STATE_HOME") or os.path.expanduser("~/.local/state"), "winlist")
+TERMS_DIR = os.path.join(STATE, "terms")      # <id>.out: the output, <id>.cmds: the last commands
+RCFILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "winlist_bashrc")
 KEEP_DEAD = 600           # seconds a finished session stays readable
 READ_CHUNK = 65536
 
@@ -89,6 +94,14 @@ class Session:
         self.clients = set()            # WSConn, everyone attached right now
         self.lock = threading.Lock()
         self._tail = b""                # a title sequence split across two reads
+        self.dirty = False              # output not yet saved to TERMS_DIR
+        self.out_file = os.path.join(TERMS_DIR, sid + ".out")
+        try:                            # a leftover of an older session of that number
+            os.makedirs(TERMS_DIR, mode=0o700, exist_ok=True)
+            for ext in (".out", ".cmds"):
+                os.unlink(os.path.join(TERMS_DIR, sid + ext))
+        except OSError:
+            pass
 
         # After a fork, a process holding threads may only do what is safe to do
         # in a signal handler until it execs — and setting an environment
@@ -98,6 +111,7 @@ class Session:
         env = dict(os.environ)
         env["TERM"] = "xterm-256color"
         env["WINLIST_TERM"] = sid       # so a hook in it can ping its own tile
+        env["WINLIST_CMDS"] = os.path.join(TERMS_DIR, sid + ".cmds")   # see winlist_bashrc
         # the terminal knows its own size; a stale copy in the environment
         # would only contradict it
         env.pop("COLUMNS", None)
@@ -143,6 +157,7 @@ class Session:
             self._note_title(data)
             with self.lock:
                 self.buf += data
+                self.dirty = True
                 if len(self.buf) > SCROLLBACK:
                     self._trim()
                 watchers = list(self.clients)
@@ -160,6 +175,21 @@ class Session:
         cut = len(self.buf) - SCROLLBACK
         nl = self.buf.find(b"\n", cut, cut + 4096)
         del self.buf[:nl + 1 if nl >= 0 else cut]
+
+    def save(self):
+        """Keep the tail of the output on disk, whole or not at all."""
+        with self.lock:
+            if not self.dirty:
+                return
+            self.dirty = False
+            tail = bytes(self.buf[-SAVED:])
+        nl = tail.find(b"\n", 0, 4096) if len(tail) == SAVED else -1   # not from the middle of an escape
+        try:
+            with open(self.out_file + ".tmp", "wb") as f:
+                f.write(tail[nl + 1:])
+            os.replace(self.out_file + ".tmp", self.out_file)
+        except OSError:
+            pass
 
     def _note_title(self, data):
         # a sequence can be split across two reads, so the tail of the last one
@@ -283,16 +313,33 @@ class Session:
             pass
 
 
+def remembered():
+    """The highest session number winlist has on record. A new pty_server counts
+    from past it, so an old terminal's husk is never mistaken for a new session."""
+    top = 0
+    try:
+        with open(os.path.join(STATE, "terms.json")) as f:
+            top = max([int(k) for k in json.load(f) if k.isdigit()] or [0])
+    except (OSError, ValueError, AttributeError):
+        pass
+    return top
+
+
 class Sessions:
     def __init__(self, shell, max_sessions):
         self.shell = shell
         self.max = max_sessions
         self.by_id = {}
-        self.next_id = 1
+        self.next_id = 1 + remembered()
         self.lock = threading.Lock()
 
     def start(self, argv=None, cwd=None, cols=80, rows=24):
-        argv = argv or [self.shell]
+        if not argv:
+            # bash gets a start-up file that records each command, for the husk
+            # of this terminal after a reboot; any other shell just runs
+            argv = [self.shell]
+            if os.path.basename(self.shell) == "bash" and os.path.exists(RCFILE):
+                argv += ["--rcfile", RCFILE, "-i"]
         cwd = os.path.expanduser(cwd or "~")
         if not os.path.isdir(cwd):
             raise ValueError("no such directory: %s" % cwd)
@@ -322,6 +369,16 @@ class Sessions:
 
     def all(self):
         return [s.info() for s in list(self.by_id.values())]
+
+    def flush(self):
+        for s in list(self.by_id.values()):
+            if s.alive():
+                s.save()
+
+    def saver(self):
+        while True:
+            time.sleep(SAVE_EVERY)
+            self.flush()
 
     def sweep(self):
         """A finished session stays listed so its last words can be read, but
@@ -609,6 +666,7 @@ def serve(host="127.0.0.1", port=DEFAULT_PORT, shell=None, max_sessions=MAX_SESS
     """
     Handler.sessions = Sessions(shell or os.environ.get("SHELL", "/bin/bash"), max_sessions)
     threading.Thread(target=Handler.sessions.sweep, daemon=True).start()
+    threading.Thread(target=Handler.sessions.saver, daemon=True).start()
     srv = ThreadingHTTPServer((host, port), Handler)
     srv.daemon_threads = True
     threading.Thread(target=srv.serve_forever, daemon=True).start()
@@ -626,6 +684,7 @@ def stop(srv, grace=2.0):
     """
     srv.shutdown()
     srv.server_close()
+    Handler.sessions.flush()            # the last words, for the husks
     sessions = list(Handler.sessions.by_id.values())
     for s in sessions:
         Handler.sessions.drop(s.id)

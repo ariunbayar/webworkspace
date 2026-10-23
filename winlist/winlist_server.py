@@ -420,10 +420,12 @@ def pty(path, method="GET", body=None, timeout=0.3):
 
 # The page's terminals are remembered here, so a reboot or a new pty_server
 # can offer them back: session id -> {cwd, cols, rows, claude, at, face}. The
-# server knows the first four; the page says where a tile sits and its face.
-# Closed on purpose, or ended, and it is forgotten.
+# server knows the first four, and its last title; the page says where a tile
+# sits and its face. Closed on purpose, or ended, and it is forgotten.
+# pty_server keeps each one's last output and commands beside it, in terms/.
 TERMS_FILE = os.path.join(os.environ.get("XDG_STATE_HOME") or os.path.expanduser("~/.local/state"),
                           "winlist", "terms.json")
+TERMS_DIR = os.path.join(os.path.dirname(TERMS_FILE), "terms")
 _terms_lock = threading.Lock()
 _live = None                        # session ids pty_server holds now; None: not asked yet
 
@@ -450,6 +452,41 @@ def _save_terms():
         pass                        # still remembered, just not past a restart
 
 
+def _term_file(sid, ext):
+    """Where a session's saved output (.out) or commands (.cmds) are; None for an id that is no session's."""
+    return os.path.join(TERMS_DIR, sid + ext) if isinstance(sid, str) and re.fullmatch(r"\d{1,9}", sid) else None
+
+
+def _forget_files(sid):
+    for ext in (".out", ".cmds"):
+        try:
+            os.unlink(_term_file(sid, ext))
+        except (OSError, TypeError):
+            pass
+
+
+def _last_cmds(sid, n=3):
+    try:
+        with open(_term_file(sid, ".cmds"), "rb") as f:
+            f.seek(0, 2)
+            f.seek(max(0, f.tell() - 4096))
+            lines = f.read().decode("utf-8", "replace").splitlines()
+    except (OSError, TypeError):
+        return []
+    return [l[:300] for l in lines if l.strip()][-n:]
+
+
+def scrollback(sid):
+    """The saved output of a remembered terminal (at most 64 KB), or None."""
+    with _terms_lock:
+        known = sid in _terms
+    try:
+        with open(_term_file(sid, ".out"), "rb") as f:
+            return f.read(256 * 1024) if known else None
+    except (OSError, TypeError):
+        return None
+
+
 def note_terms(sessions):
     """What pty_server holds now: remember each live one, forget one that ended."""
     global _live
@@ -458,11 +495,14 @@ def note_terms(sessions):
         _live = {t["id"] for t in sessions}
         for t in sessions:
             if not t.get("alive"):
-                _terms.pop(t["id"], None)
+                if _terms.pop(t["id"], None) is not None:
+                    _forget_files(t["id"])
                 continue
             claude = t.get("argv") == ["claude"] or t.get("running") == "claude"
             _terms.setdefault(t["id"], {}).update(
                 cwd=t.get("cwd") or "", cols=t.get("cols", 80), rows=t.get("rows", 24), claude=claude)
+            if t.get("title"):
+                _terms[t["id"]]["title"] = t["title"][:200]
         if json.dumps(_terms, sort_keys=True) != before:
             _save_terms()
 
@@ -472,8 +512,8 @@ def lost_terms():
     with _terms_lock:
         if _live is None:
             return []
-        return [dict(v, id=k, cwd_ok=os.path.isdir(v.get("cwd") or "")) for k, v in _terms.items()
-                if k not in _live and "cwd" in v]
+        return [dict(v, id=k, cwd_ok=os.path.isdir(v.get("cwd") or ""), cmds=_last_cmds(k))
+                for k, v in _terms.items() if k not in _live and "cwd" in v]
 
 
 def term_session(window, session):
@@ -493,6 +533,7 @@ def change_term(sid, body):
         if body is None:
             if _terms.pop(sid, None) is not None:
                 _save_terms()
+            _forget_files(sid)
             return True
         if sid not in _terms:
             return False
@@ -1216,6 +1257,15 @@ class Handler(BaseHTTPRequestHandler):
         folder, _, name = self.path.lstrip("/").partition("/")
         if folder in self.FILES:
             return self._file(folder, name.split("?")[0])
+        m = re.fullmatch(r"/api/terminals/(\d{1,9})/scrollback(?:\?.*)?", self.path)
+        if m:
+            # what a terminal said is private: only this page, by a loopback name
+            if not same_page(self.headers.get("Origin"), self.headers.get("Host", ""), named=True):
+                return self._send(json.dumps({"error": "refused"}), code=403)
+            out = scrollback(m.group(1))
+            if out is None:
+                return self._send(json.dumps({"error": "nothing saved"}), code=404)
+            return self._send(out, "application/octet-stream", cache="no-store")
         if self.path.startswith("/api/windows"):
             if SHOTS_ON and "screens=1" in self.path:
                 watch_shots()
