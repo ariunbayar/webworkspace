@@ -31,7 +31,30 @@ let bare = store.get('bare', true);        // top bar folded away, the surface t
 let layout = store.get('layout', {});      // window id -> [x, y] on the virtual screen
 let zoom = store.get('zoom', 0);           // 0 until we have measured a fit
 let origin = store.get('origin', [0, 0]);  // where the surface sits in the frame
-const saveLayout = () => store.set('layout', layout);
+// The cards on the board live on the server, so every browser shows the same
+// board: where one sits and how big it is go back to it.
+let links = [];
+const pend = new Map();      // card id -> {card, seq, doneAt}: told the server, not yet seen back
+const knownAt = new Map();   // card id -> 'x,y' the server last had
+let editSeq = 0;
+function sendCard(l, fields) {             // fields that changed; null takes it off the board
+  const seq = ++editSeq;
+  pend.set(l.id, { card: fields && l, seq, doneAt: 0 });
+  fetch('/api/links/' + encodeURIComponent(l.id),
+        fields ? { method: 'PATCH', body: JSON.stringify(fields) } : { method: 'DELETE' })
+    .catch(() => {})
+    .finally(() => { const p = pend.get(l.id); if (p && p.seq === seq) p.doneAt = Date.now(); });
+}
+const saveLayout = () => {
+  store.set('layout', layout);
+  for (const l of links) {
+    const at = layout['link:' + l.id];
+    if (!at || (at[0] === l.x && at[1] === l.y)) continue;
+    [l.x, l.y] = at;
+    knownAt.set(l.id, at + '');
+    sendCard(l, { x: l.x, y: l.y });
+  }
+};
 let toastTimer = 0;
 function toast(html, ms = 2600) {
   const t = $('#toast');
@@ -98,14 +121,9 @@ linkbox.addEventListener('close', async () => {
   try {
     const r = await fetch('/api/links', { method: 'POST', body: JSON.stringify({ url }) });
     const l = await r.json();
-    if (!r.ok) return;
-    markTaken(l.id);                           // made here, so the poll leaves it be
-    takeCard(l);
+    if (r.ok) addCard(l);
   } catch {}
 });
-// whatever kind of card the server sent: a page, a document or a picture
-const takeCard = l => l.image ? addImage(l.image, l.title)
-  : l.path ? addDoc(l.path, l.title) : addLink(l.url, l.title);
 
 // p asks for a picture: a file on this machine or an image on the web
 const imgbox = $('#imgbox');
@@ -125,8 +143,7 @@ imgbox.addEventListener('close', async () => {
     const r = await fetch('/api/links', { method: 'POST', body: JSON.stringify({ image }) });
     const l = await r.json();
     if (!r.ok) return askImage('Could not open it: ' + (l.error || 'unknown error'));
-    markTaken(l.id);
-    takeCard(l);
+    addCard(l);
   } catch {}
 });
 // o asks for a markdown file; the server checks it is one before it is shown
@@ -142,10 +159,10 @@ docbox.addEventListener('close', async () => {
   const path = $('#docpath').value.trim();
   if (docbox.returnValue !== 'add' || !path) return;
   try {
-    const r = await fetch('/api/file?path=' + encodeURIComponent(path));
-    const d = await r.json();
-    if (!r.ok) return alertDoc(d.error);
-    addDoc(d.path, d.name);
+    const r = await fetch('/api/links', { method: 'POST', body: JSON.stringify({ path }) });
+    const l = await r.json();
+    if (!r.ok) return alertDoc(l.error);
+    addCard(l);
   } catch {}
 });
 function alertDoc(msg) {            // said where you were typing, not in a modal
@@ -218,6 +235,7 @@ function forgetGone() {
 }
 
 async function poll() {
+  const asked = Date.now();
   try {
     // asking for screens is what keeps the grabber awake
     const r = await fetch('/api/windows?screens=1');
@@ -226,13 +244,10 @@ async function poll() {
     if (!r.ok || !Array.isArray(got.windows)) throw new Error(got.error || r.status);
     data = got;
     data.windows.forEach(w => { if (scales[w.id]) { w.w *= scales[w.id]; w.h *= scales[w.id]; } });
+    takeLinks(data.links || [], asked);
     data.windows.push(...links.map(linkWin));
-    // a link sent from outside becomes a card once; the server keeps offering it
-    (data.links || []).forEach(l => {
-      if (taken.includes(l.id)) return;
-      markTaken(l.id);
-      takeCard(l);
-    });
+    // one sent from outside — a shell, an agent — is placed by the first page to see it
+    links.filter(l => l.x == null && !pend.has(l.id)).forEach(addCard);
     forgetGone();
     failures = 0;
     // restarted from its terminal: the page it served is the old one
@@ -641,11 +656,43 @@ function setAnchor(cx, cy) {
 }
 
 // ---- links: a page you mean to come back to, kept as a card ---------------
-let links = store.get('links', []);
-let taken = store.get('taken', []);    // ids of links sent from outside, already carded
-function markTaken(id) {
-  taken = [...taken, id].slice(-50);
-  store.set('taken', taken);
+// what the server holds, with what this page told it since the poll set out
+function takeLinks(list, asked) {
+  for (const [id, p] of pend) if (p.doneAt && p.doneAt < asked) pend.delete(id);
+  const byId = new Map(list.map(l => [l.id, l]));
+  for (const [id, p] of pend) if (p.card) byId.set(id, p.card); else byId.delete(id);
+  links = [...byId.values()];
+  // moved on another page: follow it, but never undo a drag under way here
+  for (const l of links) {
+    if (l.x == null || knownAt.get(l.id) === l.x + ',' + l.y) continue;
+    layout['link:' + l.id] = [l.x, l.y];
+    knownAt.set(l.id, l.x + ',' + l.y);
+  }
+}
+
+// Cards were once kept by each browser. Hand this one's to the server, where
+// it sat and how big, and drop what the server still had waiting from then:
+// this browser carded those already.
+async function moveCardsOut() {
+  const old = store.get('links', null);
+  if (!old) return;
+  let ok = true;
+  for (const l of old) {
+    const at = layout['link:' + l.id] || [];
+    try {
+      const r = await fetch('/api/links', { method: 'POST', body: JSON.stringify(
+        { title: l.title, keep: { ...l, x: at[0], y: at[1] } }) });
+      const got = await r.json();
+      if (!r.ok) { ok = false; continue; }
+      delete layout['link:' + l.id];
+      if (at.length) layout['link:' + got.id] = at;
+    } catch { ok = false; }
+  }
+  for (const id of store.get('taken', [])) {
+    try { await fetch('/api/links/' + encodeURIComponent(id), { method: 'DELETE' }); } catch {}
+  }
+  store.set('layout', layout);
+  if (ok) ['links', 'taken'].forEach(k => localStorage.removeItem('winlist.' + k));
 }
 
 // a card with no name of its own is called what it points at: the file's name,
@@ -718,7 +765,6 @@ function docCard(pic, w) {
   if (inside) pic.querySelector('.docwrap').focus({ preventScroll: true });
 }
 
-const addDoc = (path, name) => { addCard({ path, title: name }); readDocs(); };
 
 // a closed issue was finished, so it is purple; a closed PR was given up, so red
 const ghColor = gh => ({ open: '#1f883d', merged: '#8250df', 'not planned': '#59636e',
@@ -774,14 +820,13 @@ function imgCard(pic, w) {
     const k = Math.min(1, 960 / img.naturalWidth, 720 / img.naturalHeight);
     l.w = Math.max(GRID * 3, snap(img.naturalWidth * k));
     l.h = Math.max(GRID * 2, snap(img.naturalHeight * k + CAP_H));
-    store.set('links', links);
+    sendCard(l, { w: l.w, h: l.h });
     w.w = l.w; w.h = l.h;
     render();
   };
   img.src = imgSrc(w.link);
 }
 
-const addImage = (image, title) => { addCard({ image, title }); render(); };
 
 function card(pic, w) {
   if (w.link.image) return imgCard(pic, w);
@@ -805,23 +850,24 @@ function card(pic, w) {
   }
 }
 
-const addLink = (url, title) => { addCard({ url, title }); render(); };
-
-// dropped at the drop point, in view, so you see it arrive
-function addCard(fields) {
-  const l = { id: newId(), ...fields }, w = linkWin(l);
-  links.push(l);
-  store.set('links', links);
+// a card the server just made, dropped at the drop point, in view, so you see
+// it arrive
+function addCard(l) {
+  const w = linkWin(l);
+  if (!links.includes(l)) links.push(l);
   layout[w.id] = clearSpot(dropAt(w.w, w.h), w.id);
   saveLayout();
   // picked if the keyboard is the page's; a terminal you are typing in keeps it
   if (!inInsert()) sel = w.id;
-  if (data) data.windows.push(w);
+  if (data && !data.windows.some(v => v.id === w.id)) data.windows.push(w);
+  if (l.path) readDocs();
+  render();
 }
 
 function closeLink(id) {
-  links = links.filter(l => 'link:' + l.id !== id);
-  store.set('links', links);
+  const l = links.find(v => 'link:' + v.id === id);
+  if (l) sendCard(l, null);
+  links = links.filter(v => v !== l);
   delete layout[id];
   saveLayout();
   if (data) data.windows = data.windows.filter(w => w.id !== id);
@@ -1292,7 +1338,7 @@ function grabLink(e, w, el) {
     off();
     showGrid(false);
     const l = links.find(v => 'link:' + v.id === w.id);
-    if (l) { l.w = w.w; l.h = w.h; store.set('links', links); }
+    if (l) { l.w = w.w; l.h = w.h; sendCard(l, { w: l.w, h: l.h }); }
   });
 }
 
@@ -1799,7 +1845,7 @@ function fitGrid(w, el) {
     w.w = Math.max(90, ww);
     w.h = Math.max(60, hh);
     const l = links.find(v => 'link:' + v.id === w.id);
-    if (l) { l.w = w.w; l.h = w.h; store.set('links', links); }
+    if (l) { l.w = w.w; l.h = w.h; sendCard(l, { w: l.w, h: l.h }); }
   } else if (w.term) {
     const t = terms.get(w.term.session);
     if (t && t.cell && w.term.alive) resizeTo(w, el, t, [x + ww, y + hh]);
@@ -1827,7 +1873,7 @@ function nudge(dx, dy, grow) {
     w.h = Math.max(60, dy ? stepTo(y + w.h, dy) - y : w.h);
     place(el, w);
     const l = links.find(v => 'link:' + v.id === w.id);
-    if (l) { l.w = w.w; l.h = w.h; store.set('links', links); }
+    if (l) { l.w = w.w; l.h = w.h; sendCard(l, { w: l.w, h: l.h }); }
     return;
   }
   if (!w.term) {                     // a photograph: the edge you step, the other follows
@@ -1938,8 +1984,7 @@ document.addEventListener('keydown', e => {
 setBare(bare);
 setLens(lensOn);
 render();
-poll();
-setInterval(poll, 2000);
+moveCardsOut().finally(() => { poll(); setInterval(poll, 2000); });
 askGitHub();
 setInterval(askGitHub, 60000);
 readDocs();
