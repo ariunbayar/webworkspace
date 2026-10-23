@@ -134,6 +134,7 @@
   .group.dragging .gcap { cursor:grabbing }
   .group .gname { flex:1; min-width:0; white-space:nowrap; overflow:hidden;
                   text-overflow:ellipsis; outline:none }
+  .t2[contenteditable=true] { color:var(--fg); cursor:text; outline:none; text-overflow:clip }
   .group .gname[contenteditable=true] { color:var(--fg); cursor:text }
   .group .gdir { max-width:40%; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; cursor:pointer;
                  outline:none; padding:0 4px; border-radius:3px; opacity:.8 }

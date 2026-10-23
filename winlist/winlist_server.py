@@ -991,7 +991,7 @@ def send_link(url=None, title=None, path=None, image=None, keep=None, origin="ap
 
 
 def change_link(lid, body):
-    """A card moved or resized on some page; body None takes it off the board."""
+    """A card moved, resized or renamed on some page; body None takes it off the board."""
     with _links_lock:
         link = next((l for l in _links if l["id"] == lid), None)
         if not link:
@@ -1000,6 +1000,11 @@ def change_link(lid, body):
             _links.remove(link)
         else:
             link.update(placed(body))
+            if isinstance(body.get("label"), str):   # your own name for it; empty takes it back
+                label = body["label"].strip()[:200]
+                link["label"] = label
+                if not label:
+                    del link["label"]
         _save_links()
         return link
 

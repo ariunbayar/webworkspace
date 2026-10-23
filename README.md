@@ -170,6 +170,8 @@ A card sent from outside (`POST /api/links` without `"from": "page"`) lands in a
 The grid shows only while moving or sizing, and dragging with the mouse snaps
 to it too. Moving a tile, from the keyboard or by dragging it, also
 snaps its size to the nearest grid step, so its far edges line up as well as its corner.
+**F2** (or a double click on its title) gives the picked tile your own name; empty restores
+the original. Windows and terminals keep it in this browser, a card's goes to the server.
 Typing in a terminal, Super+Enter takes that one and hands the keyboard back after.
 In NORMAL mode the mouse only moves and resizes: it never reaches a terminal (no
 selecting, clicks or wheel-scrolling), and a click only picks it. `Enter` types into it.

@@ -28,6 +28,7 @@ const store = {
 let data = null, failures = 0, sel = null;
 let started = null;                        // which run of the server we are talking to
 let bare = store.get('bare', true);        // top bar folded away, the surface takes the page
+let labels = store.get('labels', {});      // window or terminal id -> the name you gave it (cards keep theirs on the server)
 let layout = store.get('layout', {});      // window id -> [x, y] on the virtual screen
 let zoom = store.get('zoom', 0);           // 0 until we have measured a fit
 let origin = store.get('origin', [0, 0]);  // where the surface sits in the frame
@@ -482,9 +483,10 @@ async function poll() {
 
 // every word has to be somewhere in what the tile is: its title, app, the
 // program and folder of a terminal, a card's address, its workspace as ws2
+const labelOf = w => w.link ? w.link.label : labels[w.id];
 function haystack(w) {
   const t = w.term && terms.get(w.term.session);
-  return [w.title, w.app, w.cls, t && t.title, w.term && w.term.running, w.term && w.term.cwd,
+  return [labelOf(w), w.title, w.app, w.cls, t && t.title, w.term && w.term.running, w.term && w.term.cwd,
           w.link && (w.link.url || w.link.path || w.link.image),
           w.desktop !== null && w.desktop !== undefined ? 'ws' + (w.desktop + 1) : ''
          ].filter(Boolean).join(' ').toLowerCase();
@@ -1060,6 +1062,30 @@ function setAnchor(cx, cy) {
   markTimer = setTimeout(() => m.classList.remove('on'), 1200);
 }
 
+// a double click on a tile's title, or F2, renames it as a group is: Enter,
+// Esc or leaving keeps it, and empty gives the original title back
+function renameTile(w) {
+  const t2 = tileEls.get(w.id)?.querySelector('.t2');
+  if (!t2 || t2.isContentEditable) return;
+  const was = t2.textContent;
+  t2.contentEditable = 'true';
+  t2.focus();
+  getSelection().selectAllChildren(t2);
+  t2.addEventListener('blur', () => {
+    t2.contentEditable = 'false';
+    const s = t2.textContent.trim();
+    if (s !== (labelOf(w) || was)) {
+      if (w.link) { w.link.label = s || undefined; sendCard(w.link, { label: s }); }
+      else { if (s) labels[w.id] = s; else delete labels[w.id]; store.set('labels', labels); }
+    }
+    render();
+  }, { once: true });
+  t2.onkeydown = ev => {
+    ev.stopPropagation();
+    if (ev.key === 'Enter' || ev.key === 'Escape') { ev.preventDefault(); t2.blur(); }
+  };
+}
+
 // ---- links: a page you mean to come back to, kept as a card ---------------
 // what the server holds, with what this page told it since the poll set out
 function takeLinks(list, asked) {
@@ -1182,6 +1208,8 @@ const GH_URL = /^https:\/\/github\.com\/[^/]+\/[^/]+\/(pull|issues)\/(\d+)/;
 // an issue and a PR are told apart by name and number, ahead of GitHub's own
 // title — which stands in for a bare host, or for the page's "… · GitHub" one
 function shownTitle(w) {
+  const lb = labelOf(w);
+  if (lb) return lb;
   const m = w.link && GH_URL.exec(w.link.url || '');
   if (!m) return w.title;
   const gh = ghOf(w), n = '#' + m[2], kind = m[1] === 'pull' ? 'PR' : 'Issue';
@@ -1509,7 +1537,8 @@ function mount(w) {
   term.onRender(() => termDrew(id));
   term.onTitleChange(s => {
     t.title = s;
-    if (t.cap && s) t.cap.querySelector('.t2').textContent = s;
+    const t2 = t.cap && t.cap.querySelector('.t2');
+    if (t2 && s && !labels['web:' + id] && !t2.isContentEditable) t2.textContent = s;
   });
   // what you type goes straight down the socket; nothing is echoed locally,
   // because the far end is what decides what a keystroke looks like
@@ -1662,8 +1691,9 @@ function dressTerm(el, w) {
   const cap = t.cap;
   cap.querySelector('.dot').style.background = colorOf(w.app);
   cap.querySelector('.prof').textContent = (profiles()[t.prof] || {}).name || '';
-  const title = t.title || w.term.title || w.term.running || w.title;
-  cap.querySelector('.t2').textContent = title;
+  const title = labelOf(w) || t.title || w.term.title || w.term.running || w.title;
+  const t2 = cap.querySelector('.t2');
+  if (!t2.isContentEditable) t2.textContent = title;     // not under your cursor mid-rename
   // what is running, unless the title already says so: a shell says nothing
   const run = w.term.running || '';
   cap.querySelector('.app').textContent = run && !SHELL_NAMES.has(run)
@@ -1892,6 +1922,7 @@ function renderCanvas(match) {
       }
       el.addEventListener('pointerdown', e => {
         const win = tileEls.get(w.id).win;
+        if (e.target.isContentEditable) return;   // a caption being renamed is for the caret
         if (e.target.closest('.md a')) return;    // a link in a document is for following
         if (win.term) {
           // the drag takes the pointer captive, and a captured pointer's click
@@ -1914,14 +1945,18 @@ function renderCanvas(match) {
         }
         drag(e, win, el);
       });
+      // the title text renames, whatever the tile; the rest of a card opens it
+      el.addEventListener('dblclick', e => {
+        if (e.target.closest('.t2')) { e.preventDefault(); renameTile(el.win); }
+      });
       if (w.link) el.addEventListener('dblclick', e => {
-        if (!e.target.closest('.shut, .grip')) activate(w.id);
+        if (!e.target.closest('.shut, .grip, .t2')) activate(w.id);
       });
       // a terminal is typed into on a double click, as Enter does: the one
       // click only picks it. Once it has the keyboard, a double click in it
       // is xterm's again, to select a word
       if (w.term) el.addEventListener('dblclick', e => {
-        if (!inInsert() && !e.target.closest('.shut, .grip, .prof')) activate(w.id);
+        if (!inInsert() && !e.target.closest('.shut, .grip, .prof, .t2')) activate(w.id);
       });
       tileEls.set(w.id, el);
       $('#tiles').append(el);
@@ -1936,7 +1971,8 @@ function renderCanvas(match) {
     } else {
       el.title = `${w.app} — ${w.title} · workspace ${w.desktop + 1}`;
       el.querySelector('.dot').style.background = colorOf(w.app);
-      el.querySelector('.t2').textContent = shownTitle(w);
+      const t2 = el.querySelector('.t2');
+      if (!t2.isContentEditable) t2.textContent = shownTitle(w);
       // the app is named in words, not only by the dot's colour — unless the
       // title says it already, or it is a card, whose title is what it is
       el.querySelector('.app').textContent = !w.link && w.app
@@ -2434,6 +2470,7 @@ document.addEventListener('keydown', e => {
   if (k === 'o') { e.preventDefault(); return askDoc(); }
   if (k === 'p') { e.preventDefault(); return askImage(); }
   if (k === 'g') { e.preventDefault(); return newGroup(); }
+  if (k === 'F2') { const w = selected(); if (w) { e.preventDefault(); renameTile(w); } return; }
   if (k === '1') { e.preventDefault(); return actualSize(); }
   if (k === 'z') { e.preventDefault(); return setLens(!lensOn); }
   if (k === 'Enter' || k === ' ') { const w = selected(); if (w) { e.preventDefault(); activate(w.id); } return; }
@@ -2504,6 +2541,7 @@ setLens = counted('lens', setLens, v => ({ on: !!v }));
 setBare = counted('bare', setBare, v => ({ on: !!v }));
 swapFace = counted('face', swapFace);
 runPal = counted('palette', runPal, r => ({ kind: r.kind }));
+renameTile = counted('rename', renameTile, w => ({ kind: kindOf(w.id) }));
 const nudged = { n: 0, grow: 0, at: 0 };
 nudge = (f => function (dx, dy, grow) {      // counted into the tile.end it belongs to
   nudged.n++;
