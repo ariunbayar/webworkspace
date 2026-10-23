@@ -9,6 +9,12 @@ Run:  python3 winlist_server.py           # then open http://localhost:8766
       python3 winlist_server.py --open      # and bring the page up in the browser
       python3 winlist_server.py --no-focus  # read-only, refuse focus requests
       python3 winlist_server.py --no-screens  # never photograph the screen
+      python3 winlist_server.py --install     # run it as a service from now on
+      python3 winlist_server.py --uninstall   # back to running it by hand
+
+In a terminal, r restarts it and Ctrl-C stops it. As a service it is a systemd
+user unit, winlist.service, started with the desktop session and logging to the
+journal: systemctl --user restart|stop|status winlist, journalctl --user -u winlist.
 
 Terminals the page started itself sit on the same surface as the real windows,
 drawn by xterm.js rather than photographed. pty_server.py holds them; this
@@ -23,6 +29,7 @@ import html
 import json
 import os
 import re
+import shlex
 import shutil
 import signal
 import subprocess
@@ -1228,6 +1235,66 @@ def watch_keys(srv):
     threading.Thread(target=read, daemon=True).start()
 
 
+# ---- as a service ---------------------------------------------------------
+
+UNIT = "winlist.service"
+UNIT_PATH = os.path.expanduser("~/.config/systemd/user/" + UNIT)
+
+# KillMode=process: stopping the service ends this process only, so the
+# terminal server it started stays up with your shells in it, as it does when
+# a run by hand is restarted. It needs the desktop: X for the windows, the
+# session's DISPLAY, which the user manager has once GNOME has started.
+UNIT_TEXT = """[Unit]
+Description=winlist: open windows by workspace, on %(url)s
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=%(cmd)s
+Restart=on-failure
+RestartSec=3
+KillMode=process
+
+[Install]
+WantedBy=graphical-session.target
+"""
+
+
+def systemctl(*args):
+    out = subprocess.run(("systemctl", "--user") + args, capture_output=True, text=True)
+    return out.returncode == 0, (out.stderr or out.stdout).strip()
+
+
+def service_active():
+    return systemctl("is-active", "--quiet", UNIT)[0]
+
+
+def install(argv, url):
+    """Write the unit, with the flags this was run with, and start it now and
+    with every session from here on."""
+    cmd = [sys.executable, "-u", os.path.abspath(__file__)] + argv
+    os.makedirs(os.path.dirname(UNIT_PATH), exist_ok=True)
+    with open(UNIT_PATH, "w") as f:
+        f.write(UNIT_TEXT % {"url": url, "cmd": " ".join(map(shlex.quote, cmd))})
+    systemctl("daemon-reload")
+    ok, msg = systemctl("enable", "--now", UNIT)
+    if not ok:
+        sys.exit("could not start %s: %s" % (UNIT, msg))
+    say("installed %s, serving %s" % (UNIT_PATH, url))
+    say("one already running by hand holds the port: stop it, and the service takes over within seconds")
+    say("systemctl --user restart|stop|status winlist · journalctl --user -u winlist -f")
+
+
+def uninstall():
+    if not os.path.exists(UNIT_PATH):
+        return say("no %s to remove" % UNIT_PATH)
+    systemctl("disable", "--now", UNIT)
+    os.remove(UNIT_PATH)
+    systemctl("daemon-reload")
+    say("removed %s; run it by hand again, r to restart, Ctrl-C to stop" % UNIT)
+
+
 def main():
     global SHOTS_ON, SHOT_WIDTH, PTY_PORT, PTY_ON
     ap = argparse.ArgumentParser()
@@ -1244,7 +1311,16 @@ def main():
                          "listening there is used as it stands" % PTY_PORT)
     ap.add_argument("--no-terminals", action="store_true",
                     help="do not hold terminals at all; the surface is real windows only")
+    ap.add_argument("--install", action="store_true",
+                    help="run as a systemd user service, with the other flags given here, "
+                         "from now on and with every desktop session")
+    ap.add_argument("--uninstall", action="store_true", help="stop and remove that service")
     args = ap.parse_args()
+    if args.uninstall:
+        return uninstall()
+    if args.install:
+        return install([a for a in sys.argv[1:] if a not in ("--install", "--open")],
+                       f"http://{args.host}:{args.port}/")
     Handler.allow_focus = not args.no_focus
     SHOTS_ON = not args.no_screens
     SHOT_WIDTH = max(320, args.shot_width)
@@ -1259,8 +1335,12 @@ def main():
         if args.open:
             say(f"winlist is already serving {url} — {show_page(url, args.port)}")
             return
-        say(f"cannot listen on {args.host}:{args.port} ({e}) — "
-                 f"another winlist is probably already running")
+        if service_active():
+            say(f"the winlist service is serving {url} — "
+                f"systemctl --user restart winlist, or stop it to run one here")
+        else:
+            say(f"cannot listen on {args.host}:{args.port} ({e}) — "
+                f"another winlist is probably already running")
         sys.exit(1)
     if SHOTS_ON:
         threading.Thread(target=keep_shots, daemon=True).start()

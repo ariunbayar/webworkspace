@@ -31,6 +31,17 @@ Every window there is on one surface, laid out however you like, stdlib only:
 Serves http://127.0.0.1:8766/ and brings the page up in the browser — raising
 the window that already shows it rather than opening another tab, so launching
 this twice costs nothing. Drop `--open` to just serve. The page polls every 2s.
+In the terminal it runs in, `r` restarts it and Ctrl-C stops it.
+
+Or keep it running as a service, a systemd user unit started with the desktop
+session and logging to the journal:
+
+    python3 winlist/winlist_server.py --install     # any other flags go into the unit
+    systemctl --user restart winlist                # after a server change
+    journalctl --user -u winlist -f
+    python3 winlist/winlist_server.py --uninstall   # back to running it by hand
+
+`--open` still works alongside it: the port is taken, so it just brings the page up.
 
 The page is its own three files in `winlist/page/` — `index.html`, `style.css`
 and `app.js` — read from disk on every load, so an edit to any of them shows on
