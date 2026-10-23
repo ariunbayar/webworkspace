@@ -286,7 +286,7 @@
                    border:1px solid rgba(255,255,255,.4); border-radius:4px; cursor:pointer }
   /* a terminal the restart took: dimmed, read-only, with what it was doing */
   .tile.husk { background:#12110d; border-color:#3a372c; cursor:default }
-  .husk .termhost { opacity:.45; pointer-events:none }
+  .husk .termhost { opacity:.45 }                 /* read-only, but its output scrolls */
   .husk .cap { opacity:.8 }
   .husk .hover { position:absolute; left:0; right:0; bottom:0; padding:8px 10px; display:flex; flex-direction:column; gap:8px;
                  background:linear-gradient(transparent, rgba(18,17,13,.92) 35%); color:#d9d5c8; font:12px monospace }
