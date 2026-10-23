@@ -45,8 +45,62 @@ function sendCard(l, fields) {             // fields that changed; null takes it
     .catch(() => {})
     .finally(() => { const p = pend.get(l.id); if (p && p.seq === seq) p.doneAt = Date.now(); });
 }
+// Groups, where the windows' tiles sit and how much their photos are scaled
+// live on the server too. A save waits a moment, since a drag saves often, and
+// a poll never undoes what this page has sent and not yet seen back.
+let arrangeKnown = false;    // the first poll has said whether the server has one
+let arrangeAt = '';          // what the server last had
+let arrangeTimer = 0, arrangeBusy = 0, arrangeDone = 0;
+const arrangeNow = () => JSON.stringify({ groups,   // the server's key order, so an echo compares equal
+  layout: Object.fromEntries(Object.entries(layout).filter(([k]) => !k.startsWith('link:'))), scales });
+const arrangeOf = a => JSON.stringify({ groups: a.groups, layout: a.layout, scales: a.scales });
+// the browser's own copy goes to one backup key, not away, in case the server's is wrong
+function backupLocal() {
+  const had = Object.fromEntries(['groups', 'layout', 'scales'].map(k => [k, store.get(k, null)]).filter(([, v]) => v));
+  if (!Object.keys(had).length) return;
+  if (!store.get('arrangement.backup', null)) store.set('arrangement.backup', { ...had, at: new Date().toISOString() });
+  Object.keys(had).forEach(k => { try { localStorage.removeItem('winlist.' + k); } catch {} });
+}
+function saveArrange() {
+  if (!arrangeKnown) return;           // not yet known whether the server's wins
+  clearTimeout(arrangeTimer);
+  arrangeTimer = setTimeout(sendArrange, 400);
+}
+async function sendArrange() {
+  arrangeTimer = 0;
+  const body = arrangeNow();
+  arrangeBusy++;
+  try {
+    const r = await fetch('/api/arrangement', { method: 'PUT', body });
+    if (r.ok) {
+      arrangeAt = body;
+      backupLocal();
+    }
+  } catch {}
+  arrangeBusy--;
+  arrangeDone = Date.now();
+}
+// what the server holds, unless this page has a change of its own on the way,
+// is under the pointer, or is being typed into
+function takeArrange(a, asked) {
+  if (!arrangeKnown) {
+    arrangeKnown = true;
+    if (!a) {                          // none yet: this browser's is the first, if it has one
+      if (groups.length || Object.keys(scales).length || Object.keys(layout).some(k => !k.startsWith('link:'))) return sendArrange();
+      return;
+    }
+  } else if (!a || arrangeTimer || arrangeBusy || arrangeDone >= asked
+             || document.querySelector('.dragging') || document.activeElement?.isContentEditable) return;
+  if (arrangeOf(a) === arrangeAt) return;
+  arrangeAt = arrangeOf(a);
+  groups = a.groups;
+  scales = a.scales;
+  const cards = Object.entries(layout).filter(([k]) => k.startsWith('link:'));
+  layout = { ...a.layout, ...Object.fromEntries(cards) };
+  backupLocal();
+}
 const saveLayout = () => {
-  store.set('layout', layout);
+  saveArrange();
   for (const l of links) {
     const at = layout['link:' + l.id];
     if (!at || (at[0] === l.x && at[1] === l.y)) continue;
@@ -102,7 +156,6 @@ $('#tray').onclick = () => setBare(!bare);
 // none of the plumbing shows on the page, so it gets a picture of its own
 const archbox = $('#archbox');
 const showArch = () => { if (!archbox.open) archbox.showModal(); };
-$('#arch').onclick = showArch;
 $('#archclose').onclick = () => archbox.close();
 // the bar only has room for the common keys; ? lists them all
 // u asks for a URL; the server finds the page's title, as for one sent by curl
@@ -222,6 +275,129 @@ function markWords(tr, words) {
 }
 $('#helpq').oninput = filterHelp;
 $('#helpclose').onclick = () => helpbox.close();
+
+// ---- palette: one box to find an action, a tile or a group (:) -------------
+const palbox = $('#palbox');
+const ACTIONS = [
+  ['New terminal', 't', () => newTerm()],
+  ['Claude Code', 'c', () => newTerm({ claude: true })],
+  ['Link card', 'u', () => askLink()],
+  ['Picture', 'p', () => askImage()],
+  ['Markdown file', 'o', () => askDoc()],
+  ['Group', 'g', () => newGroup()],
+  ['Actual size', '1', () => actualSize()],
+  ['Loupe', 'z', () => setLens(!lensOn)],
+  ['Top bar', 'b', () => setBare(!bare)],
+  ['Filter', '/', () => { openQ(); }],
+  ['Architecture', 'a', () => showArch()],
+  ['Keys help', '?', () => showHelp()],
+  ['Move/size picked tile', 'Super+Enter', () => {
+    const w = selected() || data && data.windows.find(x => x.focused && visible()(x));
+    if (w) startTile(w);
+    else toast('Pick a window first: <kbd>↑↓←→</kbd>, then <kbd>Super+Enter</kbd>');
+  }],
+  ['Reset layout', '', () => {     // it asks twice, so the button is left armed
+    if (bare) setBare(false);
+    $('#reset').click();
+    toast('Click <b>Reset layout</b> again to confirm');
+  }],
+].map(([name, key, run]) => ({ kind: 'action', name, key, extra: '', run }));
+let palRows = [], palAt = 0;
+
+// the groups and tiles as they are right now, so the list is never stale
+function palItems() {
+  const gs = groups.map(g => ({ kind: 'group', name: g.name, key: '', extra: g.dir || '',
+    run: () => fitGroup(g) }));
+  const ws = (data ? data.windows : []).map(w => {
+    const t = w.term && terms.get(w.term.session);
+    return { kind: kindOf(w.id) === 'term' ? 'terminal' : kindOf(w.id), key: '',
+      name: w.title || (t && t.title) || w.app || '', extra: haystack(w),
+      run: () => { sel = w.id; render(); reveal(); } };
+  });
+  return [...ACTIONS, ...gs, ...ws];
+}
+
+// bring the group to fill the frame, as fitAll does for everything
+function fitGroup(g) {
+  const pan = $('#pan'), pad = 24;
+  zoom = clamp(Math.min((pan.clientWidth - pad * 2) / g.w, (pan.clientHeight - pad * 2) / g.h));
+  origin = [(pan.clientWidth - g.w * zoom) / 2 - g.x * zoom,
+            (pan.clientHeight - g.h * zoom) / 2 - g.y * zoom];
+  store.set('zoom', zoom);
+  store.set('origin', origin);
+  render();
+}
+
+// every word must be somewhere; a name that starts with it beats one that has
+// it at a word start, which beats one that has it inside a word
+function palScore(it, words) {
+  const name = it.name.toLowerCase(), all = name + ' ' + it.extra.toLowerCase();
+  let s = 0;
+  for (const w of words) {
+    if (name.startsWith(w)) s += 4;
+    else if (name.includes(' ' + w)) s += 3;
+    else if (name.includes(w)) s += 2;
+    else if (all.includes(' ' + w)) s += 1;
+    else if (!all.includes(w)) return -1;
+  }
+  return s;
+}
+
+const KIND_ORDER = { action: 0, group: 1 };
+function palFind() {
+  const words = $('#palq').value.toLowerCase().split(/\s+/).filter(Boolean);
+  let rows = palItems();
+  if (!words.length) rows = rows.filter(r => r.kind === 'action' || r.kind === 'group');
+  else {
+    rows.forEach(r => { r.score = palScore(r, words); });
+    rows = rows.filter(r => r.score >= 0)
+      .sort((a, b) => b.score - a.score || (KIND_ORDER[a.kind] ?? 2) - (KIND_ORDER[b.kind] ?? 2));
+  }
+  palRows = rows;
+  palAt = 0;
+  const list = $('#pallist');
+  list.textContent = '';
+  rows.forEach((r, i) => {
+    const el = document.createElement('div');
+    el.className = 'palrow';
+    el.setAttribute('role', 'option');
+    el.innerHTML = `<span class="palkind">${r.kind}</span><span class="palname">${esc(r.name)}</span>`
+      + (r.key ? `<kbd>${esc(r.key)}</kbd>` : '');
+    if (words.length) markWords(el.querySelector('.palname'), words);
+    el.onmousemove = () => palPick(i, false);
+    el.onclick = () => runPal(r);
+    list.append(el);
+  });
+  if (!rows.length) list.innerHTML = '<div class="palnone">Nothing matches</div>';
+  palPick(0);
+}
+function palPick(i, scroll = true) {
+  palAt = i;
+  [...$('#pallist').children].forEach((el, j) => el.classList.toggle('on', j === i));
+  const el = $('#pallist').children[i];
+  if (scroll && el && el.scrollIntoView) el.scrollIntoView({ block: 'nearest' });
+}
+// closed first, so a dialog the action opens does not land under this one
+function runPal(r) {
+  palbox.close();
+  r.run();
+}
+const showPalette = () => {
+  if (palbox.open) return;
+  $('#palq').value = '';
+  palFind();
+  palbox.showModal();
+  $('#palq').focus();
+};
+$('#palq').oninput = palFind;
+palbox.addEventListener('keydown', e => {
+  e.stopPropagation();               // none of these are the page's keys
+  const n = palRows.length;
+  const step = e.key === 'ArrowDown' || (e.ctrlKey && e.key === 'n') ? 1
+    : e.key === 'ArrowUp' || (e.ctrlKey && e.key === 'p') ? -1 : 0;
+  if (step) { e.preventDefault(); if (n) palPick((palAt + step + n) % n); }
+  else if (e.key === 'Enter') { e.preventDefault(); if (palRows[palAt]) runPal(palRows[palAt]); }
+});
 // squared, so the slider gives fine control down at the small end where the
 // whole surface lives and still reaches far enough in to read a window
 $('#zoom').addEventListener('input', () => {
@@ -241,7 +417,6 @@ function actualSize() {
   shift(Math.round(box.left + origin[0]) - box.left - origin[0],
         Math.round(box.top + origin[1]) - box.top - origin[1]);
 }
-$('#actual').onclick = actualSize;
 // the whole arrangement goes, so it asks once more: a second click within 3s
 let resetArmed = 0;
 $('#reset').onclick = () => {
@@ -257,11 +432,14 @@ $('#reset').onclick = () => {
   layout = {};
   scales = {};
   saveLayout();
-  store.set('scales', scales);
   render();
 };
 addEventListener('resize', render);
 $('#q').addEventListener('input', () => { sel = null; render(); });
+// hidden until asked for (/ or the palette); stays while it holds text, folds when it empties and loses focus
+const openQ = () => { if (bare) setBare(false); $('#q').classList.add('on'); $('#q').focus(); };
+const foldQ = () => { if (!$('#q').value) $('#q').classList.remove('on'); };
+$('#q').addEventListener('blur', foldQ);
 
 // A window that has closed leaves its place behind in the layout. It is let go
 // once it has been missing for a minute of polls — not on the first, since a
@@ -278,7 +456,7 @@ function forgetGone() {
     missing.set(id, n);
     if (n >= 30) { delete layout[id]; delete scales[id]; missing.delete(id); changed = true; }
   });
-  if (changed) { saveLayout(); store.set('scales', scales); }
+  if (changed) saveLayout();
 }
 
 async function poll() {
@@ -290,8 +468,10 @@ async function poll() {
     // an error answer is no picture of the desktop: keep the last good one
     if (!r.ok || !Array.isArray(got.windows)) throw new Error(got.error || r.status);
     data = got;
+    takeArrange(got.arrange, asked);
     data.windows.forEach(w => { if (scales[w.id]) { w.w *= scales[w.id]; w.h *= scales[w.id]; } });
     takePings(data.pings || [], asked);
+    cstate = data.claude || {};
     takeLinks(data.links || [], asked);
     data.windows.push(...links.map(linkWin));
     // one sent from outside — a shell, an agent — is placed by the first page to see it
@@ -311,7 +491,7 @@ async function poll() {
 function haystack(w) {
   const t = w.term && terms.get(w.term.session);
   return [w.title, w.app, w.cls, t && t.title, w.term && w.term.running, w.term && w.term.cwd,
-          w.link && (w.link.url || w.link.path || w.link.image),
+          w.link && (w.link.url || w.link.path || w.link.image || w.link.tool),
           w.desktop !== null && w.desktop !== undefined ? 'ws' + (w.desktop + 1) : ''
          ].filter(Boolean).join(' ').toLowerCase();
 }
@@ -349,13 +529,13 @@ function newGroup() {
   while (used.has(n === 1 ? 'Group' : 'Group ' + n)) n++;
   const g = { id: newId(), name: n === 1 ? 'Group' : 'Group ' + n, x, y, w, h };
   groups.push(g);
-  store.set('groups', groups);
+  saveGroups();
   render();
   const el = groupEls.get(g.id);
   if (el) rename(g, el.querySelector('.gname'));
 }
 
-function saveGroups() { store.set('groups', groups); }
+const saveGroups = saveArrange;
 
 function placeGroup(el, g) {
   el.style.left = g.x * zoom + 'px';
@@ -445,6 +625,72 @@ function rename(g, name) {
   };
 }
 
+// the tools chip: what the group's folder can run, from its tmp/ scripts and
+// its .winlist-tools file, read afresh each time it is opened
+async function showTools(g, chip) {
+  closeTools();
+  const res = await fetch('/api/tools?dir=' + encodeURIComponent(g.dir))
+    .then(r => r.json()).catch(() => null);
+  if (!res || !res.tools) return void toast('Could not read the tools: ' + esc((res && res.error) || 'no answer from the server'), 4000);
+  if (!res.tools.length) return void toast(`No tools in ${esc(shortPath(g.dir))}: add executable <code>tmp/*.sh</code> scripts, or <code>Name: command</code> lines in <code>.winlist-tools</code>`, 6000);
+  const menu = document.createElement('div');
+  menu.id = 'tools';
+  menu.setAttribute('role', 'menu');
+  res.tools.forEach((t, i) => {
+    const b = document.createElement('button');
+    b.setAttribute('role', 'menuitem');
+    b.title = t.cmd;
+    b.innerHTML = `<kbd>${i + 1}</kbd><span><b>${esc(t.name)}</b>${t.about ? `<small>${esc(t.about)}</small>` : ''}</span>`;
+    b.onclick = () => { closeTools(); toolButton(g, t); };
+    menu.append(b);
+  });
+  const r = chip.getBoundingClientRect();
+  menu.style.left = Math.max(4, Math.min(r.left, innerWidth - 340)) + 'px';
+  menu.style.top = r.bottom + 4 + 'px';
+  document.body.append(menu);
+  const items = [...menu.children];
+  items[0].focus();
+  menu.addEventListener('keydown', e => {
+    e.stopPropagation();
+    const at = items.indexOf(document.activeElement);
+    if (e.key === 'Escape') { e.preventDefault(); return closeTools(); }
+    if (e.key === 'ArrowDown' || e.key === 'j') { e.preventDefault(); items[(at + 1) % items.length].focus(); }
+    if (e.key === 'ArrowUp' || e.key === 'k') { e.preventDefault(); items[(at - 1 + items.length) % items.length].focus(); }
+    const n = +e.key;
+    if (n >= 1 && n <= items.length) { e.preventDefault(); items[n - 1].click(); }
+  });
+  setTimeout(() => addEventListener('pointerdown', outside), 0);
+}
+function outside(e) { if (!e.target.closest('#tools')) closeTools(); }
+
+// picking a tool puts its button on the surface, in the group; pressing that
+// is what runs it, so a server you start every morning is one click away
+async function toolButton(g, t) {
+  const r = await fetch('/api/links', { method: 'POST', body: JSON.stringify({ tool: t.name, dir: g.dir, from: 'page' }) })
+    .catch(() => null);
+  const l = r && await r.json().catch(() => null);
+  if (!r || !r.ok || !l) return void toast('Could not add the button: ' + esc((l && l.error) || 'no answer from the server'), 4000);
+  const w = linkWin(l);
+  let at = dropAt(w.w, w.h);
+  if (!inGroup(g, [at[0] + w.w / 2, at[1] + w.h / 2])) at = [g.x + GRID, g.y + 2 * GRID];
+  addCard(l, at);
+}
+
+// a tool is run afresh each press, in a new terminal beside its button, with
+// whatever the script or .winlist-tools says now
+async function runTool(l, w) {
+  const res = await fetch('/api/tools?dir=' + encodeURIComponent(l.dir)).then(r => r.json()).catch(() => null);
+  const t = res && res.tools && res.tools.find(t => t.name === l.tool);
+  if (!t) return void toast(`No tool ${esc(l.tool)} in ${esc(shortPath(l.dir))} any more`, 4000);
+  const [x, y] = seatOf(w);
+  newTerm({ argv: t.argv, cwd: l.dir, corner: [x + w.w + GRID, y] });
+}
+function closeTools() {
+  removeEventListener('pointerdown', outside);
+  const m = $('#tools');
+  if (m) m.remove();
+}
+
 // the folder chip: click, type a path, Enter; empty clears it. A group still
 // called Group takes the folder's name, as it would have been named after it
 function setDir(g, chip) {
@@ -482,12 +728,13 @@ function renderGroups() {
       el.className = 'group';
       el.innerHTML = `<div class="gcap"><span class="gname" title="Double-click to rename"></span><span class="gcount"></span>`
         + `<span class="gdir" title="Folder new terminals start in (click to set)"></span>`
+        + `<span class="gtools" title="Put a button for one of this project's tools in the group">▸ tools</span>`
         + `<span class="shut" title="Remove the group (its windows stay)">✕</span></div>`
         + `<div class="grip" title="Drag to resize this group"></div>`;
       const cap = el.querySelector('.gcap'), name = el.querySelector('.gname');
-      const dir = el.querySelector('.gdir');
+      const dir = el.querySelector('.gdir'), tools = el.querySelector('.gtools');
       cap.addEventListener('pointerdown', e => {
-        if (name.isContentEditable || dir.isContentEditable || e.target === dir) return e.stopPropagation();
+        if (name.isContentEditable || dir.isContentEditable || e.target === dir || e.target === tools) return e.stopPropagation();
         if (e.target.closest('.shut')) {
           e.preventDefault(); e.stopPropagation();
           groups = groups.filter(v => v !== el.group);
@@ -500,6 +747,7 @@ function renderGroups() {
         if (e.target === name) rename(el.group, name);
       });
       dir.addEventListener('click', () => { if (!dir.isContentEditable) setDir(el.group, dir); });
+      tools.addEventListener('click', () => showTools(el.group, tools));
       el.querySelector('.grip').addEventListener('pointerdown', e => sizeGroup(e, el.group, el));
       groupEls.set(g.id, el);
       $('#groups').append(el);
@@ -511,6 +759,7 @@ function renderGroups() {
       dir.textContent = g.dir ? shortPath(g.dir) : '+ folder';
       dir.classList.toggle('unset', !g.dir);
     }
+    el.querySelector('.gtools').hidden = !g.dir;
     const n = data ? members(g).length : 0;
     el.querySelector('.gcount').textContent = n ? '· ' + n : '';
     placeGroup(el, g);
@@ -693,6 +942,7 @@ function shift(dx, dy) {          // slide the whole surface, no edges to run in
 // A window that wants you — Claude finished in it — pings: its triangle bobs
 // toward it, or the tile itself pulses if it is in view, until it has been in
 // view for two seconds, half of it at least, big enough to read.
+let cstate = {};             // window id -> {state, at}: what Claude is doing there
 const pings = new Set(), inViewSince = new Map();
 const unpinged = new Map();   // window id -> when the server was told it is seen; 0 while in flight
 function seenPing(id) {
@@ -894,9 +1144,9 @@ function cardHost(url) {
 }
 function linkWin(l) {
   return { id: 'link:' + l.id, link: l, title: cardTitle(l),
-           app: l.image ? 'Image' : l.path ? 'Markdown' : cardHost(l.url),
-           w: l.w || (l.image ? 640 : l.path ? 720 : 320),
-           h: l.h || (l.image ? 480 : l.path ? 900 : 76),
+           app: l.tool ? 'Tool' : l.image ? 'Image' : l.path ? 'Markdown' : cardHost(l.url),
+           w: l.w || (l.image ? 640 : l.path ? 720 : l.tool ? 240 : 320),
+           h: l.h || (l.image ? 480 : l.path ? 900 : l.tool ? 96 : 76),
            x: 0, y: 0, z: 1e9, desktop: null };
 }
 
@@ -985,7 +1235,8 @@ async function askGitHub() {
 // what a card shows; it is drawn again only when this changes
 function cardKey(w) {
   const gh = ghOf(w);
-  return w.link.image ? w.link.image
+  return w.link.tool ? 'tool ' + w.link.tool + ' ' + w.link.dir
+    : w.link.image ? w.link.image
     : w.link.path ? docKey(w) : w.link.url + (gh ? ' ' + gh.state : '') + ' ' + shownTitle(w);
 }
 
@@ -1012,7 +1263,18 @@ function imgCard(pic, w) {
 }
 
 
+// a tool's card is its button: press it to run the tool beside it
+function toolCard(pic, w) {
+  pic.className = 'pic card tool';
+  pic.style.cssText = '';
+  pic.innerHTML = `<button class="runbtn" title="Run ${esc(w.link.tool)} in a new terminal (or Enter)">▶ <span></span></button>`
+    + `<div class="url"></div>`;
+  pic.querySelector('.runbtn span').textContent = w.link.tool;
+  pic.querySelector('.url').textContent = [shortPath(w.link.dir), w.link.about].filter(Boolean).join(' · ');
+}
+
 function card(pic, w) {
+  if (w.link.tool) return toolCard(pic, w);
   if (w.link.image) return imgCard(pic, w);
   if (w.link.path) return docCard(pic, w);
   const u = new URL(w.link.url);
@@ -1036,10 +1298,10 @@ function card(pic, w) {
 
 // a card the server just made, dropped at the drop point, in view, so you see
 // it arrive
-function addCard(l) {
+function addCard(l, at) {
   const w = linkWin(l);
   if (!links.includes(l)) links.push(l);
-  layout[w.id] = clearSpot(dropAt(w.w, w.h), w.id);
+  layout[w.id] = clearSpot(at || dropAt(w.w, w.h), w.id);
   saveLayout();
   // picked if the keyboard is the page's; a terminal you are typing in keeps it
   if (!inInsert()) sel = w.id;
@@ -1339,6 +1601,19 @@ let mouseScreen = null;
     if (type === 'mouseup') mouseScreen = null;
   }, { capture: true, passive: false }));
 
+// the state chip sits in the caption after the title, added once and then kept
+function chip(el, c) {
+  const cap = el.querySelector('.cap');
+  let b = cap && cap.querySelector('.csb');
+  if (!c) return b && b.remove();
+  if (cap && !b) {
+    b = document.createElement('span');
+    b.className = 'csb';
+    cap.querySelector('.t2').after(b);
+  }
+  if (b) b.textContent = c.state;
+}
+
 function dressTerm(el, w) {
   const t = mount(w), id = w.term.session;
   if (!t.wrap) {
@@ -1544,12 +1819,19 @@ function clearSpot([x, y], exceptId) {
 // zoomed in there to work there.
 // Inside a group that has a folder, it starts there. With claude, the tile
 // goes when Claude exits, as any ended terminal does (see the 'gone' branch above).
-async function newTerm({ claude } = {}) {
-  const at = dropAt(0, 0);
-  const g = groups.findLast(g => at[0] >= g.x && at[0] <= g.x + g.w && at[1] >= g.y && at[1] <= g.y + g.h);
+// A project tool brings its own command and group: it opens in the middle of
+// that group unless the drop point is already inside it.
+const inGroup = (g, [x, y]) => x >= g.x && x <= g.x + g.w && y >= g.y && y <= g.y + g.h;
+// A tool's button says exactly where: cwd and the new tile's top-left corner.
+async function newTerm({ claude, argv, group, cwd, corner } = {}) {
+  let at = corner || dropAt(0, 0);
+  if (group && !inGroup(group, at)) at = [group.x + group.w / 2, group.y + group.h / 2];
+  const g = group || groups.findLast(g => inGroup(g, at));
   const body = { cols: termCols(), rows: termRows() };
   if (g && g.dir) body.cwd = g.dir;
+  if (cwd) body.cwd = cwd;
   if (claude) body.argv = ['claude'];
+  if (argv) body.argv = argv;
   const made = await fetch('/api/terminals', { method: 'POST', body: JSON.stringify(body) })
     .then(r => r.json()).catch(() => null);
   if (!made || !made.id) return void toast('Could not start the terminal: ' + esc((made && made.error) || 'no answer from the server'), 4000);
@@ -1570,12 +1852,10 @@ async function newTerm({ claude } = {}) {
   await poll();                  // its size is only known once it is listed
   const w = data.windows.find(v => v.id === 'web:' + made.id);
   if (!w) return;
-  layout[w.id] = clearSpot([at[0] - w.w / 2, at[1] - w.h / 2], w.id);
+  layout[w.id] = clearSpot(corner || [at[0] - w.w / 2, at[1] - w.h / 2], w.id);
   saveLayout();
   pickIt();
 }
-$('#newterm').onclick = () => newTerm();
-$('#newclaude').onclick = () => newTerm({ claude: true });
 
 async function closeTerm(id) {
   await fetch('/api/terminals/' + id, { method: 'DELETE' }).catch(() => {});
@@ -1624,6 +1904,8 @@ function renderCanvas(match) {
       el.addEventListener('pointerdown', e => {
         const win = tileEls.get(w.id).win;
         if (e.target.closest('.md a')) return;    // a link in a document is for following
+        // answered here for the same reason as a terminal's close button below
+        if (e.target.closest('.runbtn')) { e.preventDefault(); e.stopPropagation(); return runTool(win.link, win); }
         if (win.term) {
           // the drag takes the pointer captive, and a captured pointer's click
           // is delivered to the tile rather than to what was under it — so the
@@ -1659,7 +1941,8 @@ function renderCanvas(match) {
     }
     el.win = w;                       // the drag handler always wants the fresh one
     el.className = 'tile' + (w.term ? ' term' : '') + (w.link ? ' link' : '') + (w.focused ? ' focused' : '')
-      + (match(w) ? '' : ' off') + (w.id === sel ? ' sel' : '') + (pings.has(w.id) ? ' ping' : '');
+      + (match(w) ? '' : ' off') + (w.id === sel ? ' sel' : '') + (pings.has(w.id) ? ' ping' : '')
+      + (cstate[w.id] ? ' cs-' + cstate[w.id].state : '');
     if (w.term) {
       el.title = [w.term.running, w.term.cwd, w.title].filter(Boolean).join(' — ') + ` · pid ${w.pid}`;
       dressTerm(el, w);
@@ -1673,7 +1956,7 @@ function renderCanvas(match) {
         && !w.title.toLowerCase().startsWith(w.app.toLowerCase()) ? w.app : '';
       el.querySelector('.ord').textContent = twins.get(w.id) || '';
       if (w.link) {
-        el.title = w.link.url || w.link.path || w.link.image;
+        el.title = w.link.url || w.link.path || w.link.image || 'Tool: ' + w.link.tool;
         const gh = ghOf(w), key = cardKey(w);
         if (gh) el.querySelector('.dot').style.background = ghColor(gh);
         const pic = el.children[1];          // the grip comes after it
@@ -1683,6 +1966,7 @@ function renderCanvas(match) {
         }
       } else dress(el.lastElementChild, w);
     }
+    chip(el, cstate[w.id]);          // after dressing: a new terminal has no caption before
     place(el, w);
   });
   tileEls.forEach((el, id) => {
@@ -1710,11 +1994,9 @@ const lensDirty = new Set();      // terminals whose rows changed since copied
 function setLens(v) {
   lensOn = v;
   store.set('lens', v);
-  $('#lens').setAttribute('aria-pressed', v);
   syncLens();
   aimLens();
 }
-$('#lens').onclick = () => setLens(!lensOn);
 
 // called from render(): tiles come, go and move, and the copy follows
 function syncLens() {
@@ -1906,6 +2188,7 @@ async function activate(id) {
     const w = data.windows.find(x => x.id === id);
     const dw = w && w.link.path && tileEls.get(id) && tileEls.get(id).querySelector('.docwrap');
     if (dw) dw.focus({ preventScroll: true });        // into the document: INSERT
+    else if (w && w.link.tool) runTool(w.link, w);
     else if (w && w.link.url) window.open(w.link.url, '_blank', 'noopener');
     else if (w && w.link.image) window.open(imgSrc(w.link), '_blank', 'noopener');
     return;
@@ -2043,7 +2326,7 @@ function fitGrid(w, el) {
     w.w = w.w / s0 * s;
     w.h = w.h / s0 * s;
     if (Math.abs(s - 1) < 0.001) delete scales[w.id]; else scales[w.id] = s;
-    store.set('scales', scales);
+    saveArrange();
   }
 }
 function nudge(dx, dy, grow) {
@@ -2072,7 +2355,7 @@ function nudge(dx, dy, grow) {
     w.w = w.w / s0 * s;
     w.h = w.h / s0 * s;
     if (Math.abs(s - 1) < 0.001) delete scales[w.id]; else scales[w.id] = s;
-    store.set('scales', scales);
+    saveArrange();
     place(el, w);
     return;
   }
@@ -2085,6 +2368,19 @@ function nudge(dx, dy, grow) {
     edge = [dx ? stepTo(edge[0], dx) : edge[0], dy ? stepTo(edge[1], dy) : edge[1]];
     if (resizeTo(w, el, t, edge)) break;
   }
+}
+// pan, never zoom, just far enough that the tile in hand is back in the frame
+function keepInView() {
+  const w = selected(), pan = $('#pan');
+  if (!w) return;
+  const [x, y] = seatOf(w), m = GRID * zoom;
+  const fit = (o, at, len, view) => {  // how far to slide along one axis
+    const lo = o + at * zoom, hi = lo + len * zoom;
+    return lo < m || hi + m > view && len * zoom + 2 * m > view ? m - lo
+      : hi + m > view ? view - m - hi : 0;
+  };
+  const dx = fit(origin[0], x, w.w, pan.clientWidth), dy = fit(origin[1], y, w.h, pan.clientHeight);
+  if (dx || dy) shift(dx, dy);
 }
 // Super+Enter moves and sizes, the way gTile's keys do: the arrows move the
 // tile a grid cell, Shift with them sizes it, Enter or Esc leaves. Typing in a
@@ -2143,16 +2439,17 @@ document.addEventListener('keydown', e => {
     if (k === 'Escape' || k === 'Enter') return endEdit();
     const step = { ArrowUp: [0, -1], k: [0, -1], ArrowDown: [0, 1], j: [0, 1],
                    ArrowLeft: [-1, 0], h: [-1, 0], ArrowRight: [1, 0], l: [1, 0] }[k.length === 1 ? k.toLowerCase() : k];
-    if (step) nudge(...step, e.shiftKey);
+    if (step) { nudge(...step, e.shiftKey); keepInView(); }
     return;
   }
   // the page's own keys are bare letters: anything held with them is the browser's
   if (e.ctrlKey || e.altKey || e.metaKey) return;              // the dialog handles its own Esc
   if (k === 'a') { e.preventDefault(); return showArch(); }
   if (k === '?') { e.preventDefault(); return showHelp(); }
-  if (k === '/') { e.preventDefault(); if (bare) setBare(false); $('#q').focus(); return; }
+  if (k === ':') { e.preventDefault(); return showPalette(); }
+  if (k === '/') { e.preventDefault(); openQ(); return; }
   if (k === 'Escape') {
-    if ($('#q').value || sel) { $('#q').value = ''; sel = null; return render(); }
+    if ($('#q').value || sel) { $('#q').value = ''; foldQ(); sel = null; return render(); }
     return bare ? undefined : setBare(true);
   }
   if (k === 'b') { e.preventDefault(); return setBare(!bare); }
@@ -2231,6 +2528,7 @@ actualSize = counted('actual', actualSize);
 setLens = counted('lens', setLens, v => ({ on: !!v }));
 setBare = counted('bare', setBare, v => ({ on: !!v }));
 swapFace = counted('face', swapFace);
+runPal = counted('palette', runPal, r => ({ kind: r.kind }));
 const nudged = { n: 0, grow: 0, at: 0 };
 nudge = (f => function (dx, dy, grow) {      // counted into the tile.end it belongs to
   nudged.n++;
