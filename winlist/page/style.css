@@ -238,6 +238,7 @@
   .palkind { flex:0 0 58px; font-size:10px; text-transform:uppercase; letter-spacing:.04em;
              color:var(--dim) }
   .palrow.on .palkind { color:inherit; opacity:.8 }
+  .palrow.on kbd { color:var(--fg) }
   .palname { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
   .palname mark { background:none; color:inherit; font-weight:700; text-decoration:underline }
   .palnone { padding:10px; color:var(--dim); font-size:12px }
