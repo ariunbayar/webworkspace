@@ -187,9 +187,37 @@ function filterHelp() {
     s.querySelectorAll('tr').forEach(tr => {
       const hit = words.every(w => tr.textContent.toLowerCase().includes(w));
       tr.hidden = !hit;
+      if (hit) markWords(tr, words);
       any = any || hit;
     });
     s.hidden = !any;
+  });
+}
+
+// the row starts again from its own markup each time, then each text node has
+// the words wrapped where they fall; kbd and the rest stay as they were
+function markWords(tr, words) {
+  if (tr.plain === undefined) tr.plain = tr.innerHTML;
+  tr.innerHTML = tr.plain;
+  if (!words.length) return;
+  const re = new RegExp(words.map(w => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|'), 'gi');
+  const walk = document.createTreeWalker(tr, NodeFilter.SHOW_TEXT);
+  const texts = [];
+  while (walk.nextNode()) texts.push(walk.currentNode);
+  texts.forEach(t => {
+    if (!re.test(t.data)) return;
+    re.lastIndex = 0;
+    const frag = document.createDocumentFragment();
+    let at = 0;
+    for (const m of t.data.matchAll(re)) {
+      frag.append(t.data.slice(at, m.index));
+      const mk = document.createElement('mark');
+      mk.textContent = m[0];
+      frag.append(mk);
+      at = m.index + m[0].length;
+    }
+    frag.append(t.data.slice(at));
+    t.replaceWith(frag);
   });
 }
 $('#helpq').oninput = filterHelp;

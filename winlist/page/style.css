@@ -214,6 +214,7 @@
   /* every key on one card, so the bar's short list is not the only record */
   .helpbody { columns:2 260px; column-gap:26px }
   #helpq { flex:0 1 220px }
+  .helpbody mark { background:var(--accent); color:#fff; border-radius:2px }
   .helpbody section { break-inside:avoid; margin:0 0 12px }
   .helpbody h3 { font-size:11px; margin:0 0 5px; color:var(--dim); font-weight:600;
                  text-transform:uppercase; letter-spacing:.04em }
