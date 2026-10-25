@@ -172,7 +172,7 @@ linkbox.addEventListener('close', async () => {
   if (linkbox.returnValue !== 'add' || !url) return;
   if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
   try {
-    const r = await fetch('/api/links', { method: 'POST', body: JSON.stringify({ url }) });
+    const r = await fetch('/api/links', { method: 'POST', body: JSON.stringify({ from: 'page', url }) });
     const l = await r.json();
     if (r.ok) addCard(l);
   } catch {}
@@ -193,7 +193,7 @@ imgbox.addEventListener('close', async () => {
   const image = $('#imgsrc').value.trim();
   if (imgbox.returnValue !== 'add' || !image) return;
   try {
-    const r = await fetch('/api/links', { method: 'POST', body: JSON.stringify({ image }) });
+    const r = await fetch('/api/links', { method: 'POST', body: JSON.stringify({ from: 'page', image }) });
     const l = await r.json();
     if (!r.ok) return askImage('Could not open it: ' + (l.error || 'unknown error'));
     addCard(l);
@@ -212,7 +212,7 @@ docbox.addEventListener('close', async () => {
   const path = $('#docpath').value.trim();
   if (docbox.returnValue !== 'add' || !path) return;
   try {
-    const r = await fetch('/api/links', { method: 'POST', body: JSON.stringify({ path }) });
+    const r = await fetch('/api/links', { method: 'POST', body: JSON.stringify({ from: 'page', path }) });
     const l = await r.json();
     if (!r.ok) return alertDoc(l.error);
     addCard(l);
@@ -476,8 +476,8 @@ async function poll() {
     cstate = data.claude || {};
     takeLinks(data.links || [], asked);
     data.windows.push(...links.map(linkWin));
-    // one sent from outside — a shell, an agent — is placed by the first page to see it
-    links.filter(l => l.x == null && !pend.has(l.id)).forEach(l => addCard(l, null, true));
+    // one sent from outside — a shell, an agent — is placed by the first page to see it, in the Inbox
+    links.filter(l => l.x == null && !pend.has(l.id)).forEach(l => l.origin === 'api' ? arrivedCard(l) : addCard(l, null, true));
     forgetGone();
     tellTerms();
     failures = 0;
@@ -1079,10 +1079,15 @@ function drawEdges() {
       const px = origin[0] + x * zoom, py = origin[1] + y * zoom;
       const pw = w.term || isCard(w) ? w.w * zoom : Math.max(90, w.w * zoom);
       const ph = w.term || isCard(w) ? w.h * zoom : Math.max(60, w.h * zoom);
-      const ping = pings.has(w.id);
-      if (ping && lookedAt(w, px, py, pw, ph, W, H)) {
+      const arrived = arrivals.has(w.id), ping = pings.has(w.id) || arrived;
+      // a new card is small: wholly in view is enough, whatever the zoom
+      const looked = arrived ? px >= 0 && py >= 0 && px + pw <= W && py + ph <= H : lookedAt(w, px, py, pw, ph, W, H);
+      if (ping && looked) {
         if (!inViewSince.has(w.id)) inViewSince.set(w.id, now);
-        else if (now - inViewSince.get(w.id) >= 2000) { seenPing(w.id); seen = true; }
+        else if (now - inViewSince.get(w.id) >= 2000) {
+          if (arrived) arrivals.delete(w.id); else seenPing(w.id);
+          seen = true;
+        }
       } else inViewSince.delete(w.id);
       if (px < W && px + pw > 0 && py < H && py + ph > 0) return;   // some of it shows
       const dx = px + pw / 2 - cx, dy = py + ph / 2 - cy;
@@ -1405,6 +1410,70 @@ function addCard(l, at, placed) {      // placed: found on the server, not added
   // picked if the keyboard is the page's; a terminal you are typing in keeps it
   if (!inInsert()) sel = w.id;
   if (data && !data.windows.some(v => v.id === w.id)) data.windows.push(w);
+  if (l.path) readDocs();
+  render();
+}
+
+// Cards that just arrived from outside pulse, and so does their mark on the
+// edge, until you have had them in view for a moment, as a ping does.
+const arrivals = new Set();
+function announce(id) {
+  arrivals.add(id);
+}
+
+// A card sent from outside names where it came from, or is left in the Inbox:
+// beside the terminal it says (WINLIST_TERM), else in the group whose folder
+// holds its cwd, the deepest folder first. Either way the view is not moved.
+function arrivedCard(l) {
+  const w = linkWin(l);
+  const t = l.term && data.windows.find(v => v.term && v.term.session === l.term);
+  const dir = p => String(p || '').replace(/\/+$/, '');
+  const cwd = dir(l.cwd);
+  const g = !t && cwd && groups.filter(v => v.dir && (cwd === dir(v.dir) || cwd.startsWith(dir(v.dir) + '/')))
+    .sort((a, b) => dir(b.dir).length - dir(a.dir).length)[0];
+  if (!t && !g) return inboxCard(l);
+  if (!data.windows.some(v => v.id === w.id)) data.windows.push(w);
+  let to = g, at;
+  if (t) {
+    const [x, y] = seatOf(t);
+    to = groups.findLast(v => inGroup(v, [x, y]));
+    at = [x + t.w + GRID, y];
+  } else at = [g.x + GRID, g.y + GRID * 2];     // the caption takes the top row
+  layout[w.id] = clearSpot(at, w.id);
+  saveLayout();
+  announce(w.id);
+  toast(`New card ${t ? 'beside its terminal' : 'in'}${to ? ' in ' + esc(to.name) : ''}: ${esc(cardTitle(l))}`);
+  if (l.path) readDocs();
+  render();
+}
+
+// A card sent from outside lands in the Inbox group, newest at the top left, so
+// it never covers your work. Only cards still inside it are arranged: one you
+// dragged out stays where you put it. The view is not moved; a toast says so.
+function inboxCard(l) {
+  const w = linkWin(l);
+  let g = groups.find(v => v.name === 'Inbox');
+  if (!g) {
+    const [, y0, x1] = bounds();
+    g = { id: newId(), name: 'Inbox', x: snap(x1 + GRID * 2), y: snap(y0), w: GRID * 36, h: GRID * 12 };
+    groups.push(g);
+  }
+  if (!data.windows.some(v => v.id === w.id)) data.windows.push(w);
+  const age = v => links.findIndex(k => 'link:' + k.id === v.id);
+  const mine = [w, ...members(g).filter(v => v.id !== w.id && v.link && v.link.origin === 'api')]
+    .sort((a, b) => age(b) - age(a));
+  let x = g.x + GRID, y = g.y + GRID * 2, row = 0;   // the caption takes the top row
+  for (const v of mine) {
+    if (x > g.x + GRID && x + v.w > g.x + g.w - GRID) { x = g.x + GRID; y += row + GRID; row = 0; }
+    layout[v.id] = [x, y];
+    x = snap(x + v.w + GRID - 1);
+    row = Math.max(row, snap(v.h + GRID - 1) - GRID);
+  }
+  g.h = Math.max(g.h, snap(y + row + GRID * 2 - g.y));
+  saveGroups();
+  saveLayout();
+  announce(w.id);
+  toast('New card in Inbox: ' + esc(cardTitle(l)));
   if (l.path) readDocs();
   render();
 }
@@ -2057,7 +2126,7 @@ function renderCanvas(match) {
     }
     el.win = w;                       // the drag handler always wants the fresh one
     el.className = 'tile' + (w.term ? ' term' : '') + (w.link ? ' link' : '') + (w.focused ? ' focused' : '')
-      + (match(w) ? '' : ' off') + (w.id === sel ? ' sel' : '') + (pings.has(w.id) ? ' ping' : '')
+      + (match(w) ? '' : ' off') + (w.id === sel ? ' sel' : '') + (pings.has(w.id) ? ' ping' : '') + (arrivals.has(w.id) ? ' arrive' : '')
       + (cstate[w.id] ? ' cs-' + cstate[w.id].state : '');
     if (w.term) {
       el.title = [w.term.running, w.term.cwd, w.title].filter(Boolean).join(' — ') + ` · pid ${w.pid}`;
