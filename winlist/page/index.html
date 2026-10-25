@@ -12,15 +12,10 @@
     <input type="search" id="q" placeholder="Filter: title, app, program, folder, ws2 … ( / )">
     <span class="ctl" id="ctl">
       <input type="range" id="zoom" min="2" max="100" step="1" title="Zoom"><span id="zpct" title="Zoom"></span>
-      <button id="actual" class="btn" title="Actual size: terminals at their own pixels, sharpest text (1)">1:1</button>
-      <button id="lens" class="btn" aria-pressed="false" title="Show what is under the pointer at actual size (z)">Loupe</button>
       <button id="reset" class="btn" title="Put every tile back where the desktop has it (asks once more)">Reset layout</button>
-      <button id="newterm" class="btn" title="Start a terminal on this surface (t)">New terminal</button>
-      <button id="newclaude" class="btn" title="Start Claude Code on this surface (c)">Claude</button>
-      <button id="arch" class="btn" title="How this fits together (a)">Architecture</button>
     </span>
     <span class="mode" id="mode" title="NORMAL: keys move about the surface · INSERT: typing into a terminal or document · TILE: moving and sizing (Super+Enter)"></span>
-    <span class="keys"><kbd>↑↓←→</kbd> pick · <kbd>Enter</kbd> focus · <kbd>/</kbd> filter ·
+    <span class="keys"><kbd>↑↓←→</kbd> pick · <kbd>Enter</kbd> focus · <kbd>/</kbd> filter · <kbd>:</kbd> palette ·
       <kbd>Super+Enter</kbd> move/size · <kbd>t</kbd> terminal · <kbd>c</kbd> Claude ·
       <kbd>Ctrl+Space</kbd> leave a terminal · <kbd>?</kbd> all keys</span>
   </div>
@@ -47,6 +42,10 @@
     <button class="btn" value="add">Open</button>
   </form>
 </dialog>
+<dialog id="palbox">
+  <input type="text" id="palq" placeholder="Action, window or group …" autocomplete="off" spellcheck="false">
+  <div id="pallist" role="listbox"></div>
+</dialog>
 <dialog id="helpbox">
   <div class="archhead">
     <h2>Keys</h2><input type="search" id="helpq" placeholder="Filter keys …" autocomplete="off" spellcheck="false"><span class="grow"></span>
@@ -56,8 +55,9 @@
     <section><h3>Getting about</h3><table>
       <tr><td><kbd>↑↓←→</kbd> <kbd>hjkl</kbd></td><td>pick the next window</td></tr>
       <tr><td><kbd>Enter</kbd> <kbd>Space</kbd></td><td>focus it: type into a terminal, open a card</td></tr>
-      <tr><td><kbd>/</kbd></td><td>filter by title or app</td></tr>
-      <tr><td><kbd>Esc</kbd></td><td>clear the filter and the pick, then fold the top bar</td></tr>
+      <tr><td><kbd>/</kbd></td><td>show the filter box (hidden until then) and filter by title or app; it folds away when empty and unfocused</td></tr>
+      <tr><td><kbd>:</kbd></td><td>palette: find an action, window or group by name; <kbd>↑↓</kbd> <kbd>Enter</kbd></td></tr>
+      <tr><td><kbd>Esc</kbd></td><td>clear and hide the filter and the pick, then fold the top bar</td></tr>
       <tr><td><kbd>1</kbd></td><td>actual size about the picked window</td></tr>
       <tr><td><kbd>z</kbd></td><td>loupe on or off</td></tr>
       <tr><td><kbd>b</kbd></td><td>top bar in or out</td></tr>
@@ -72,6 +72,7 @@
       <tr><td><kbd>u</kbd></td><td>link card: type or paste a URL</td></tr>
       <tr><td><kbd>p</kbd></td><td>picture: an image file or image URL; double-click opens it full size</td></tr>
       <tr><td><kbd>o</kbd></td><td>open a markdown file; it follows your saves. <kbd>Enter</kbd> to scroll it (<kbd>jk</kbd> <kbd>du</kbd>), <kbd>Esc</kbd> back out</td></tr>
+      <tr><td>▸ tools</td><td>on a group with a folder: put a button for one of the project's tools (<code>tmp/*.sh</code>, <code>.winlist-tools</code>) in the group; <kbd>1</kbd>–<kbd>9</kbd> pick. Press <kbd>▶</kbd> on it (or <kbd>Enter</kbd>) to run it in a new terminal beside it</td></tr>
       <tr><td><kbd>g</kbd></td><td>group: drag its caption to carry the windows wholly inside</td></tr>
     </table></section>
     <section><h3>In a terminal</h3><table>
@@ -84,6 +85,7 @@
       <tr><td>drag the background</td><td>pan, or slide two fingers</td></tr>
       <tr><td>one finger on a terminal</td><td>scroll it</td></tr>
       <tr><td>drag a corner</td><td>resize a terminal or a card</td></tr>
+      <tr><td>Inbox group</td><td>cards sent from outside (a shell, Claude) land here, newest first; drag one out to keep it</td></tr>
       <tr><td>double-click a card</td><td>open its page</td></tr>
       <tr><td>double-click a terminal</td><td>type into it (INSERT)</td></tr>
       <tr><td>click the background</td><td>new cards and terminals (<kbd>p</kbd> <kbd>u</kbd> <kbd>t</kbd> <kbd>c</kbd> <kbd>o</kbd>) open centred there</td></tr>
