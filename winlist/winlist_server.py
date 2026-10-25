@@ -418,6 +418,135 @@ def pty(path, method="GET", body=None, timeout=0.3):
         return None
 
 
+# The page's terminals are remembered here, so a reboot or a new pty_server
+# can offer them back: session id -> {cwd, cols, rows, claude, at, face}. The
+# server knows the first four, and its last title; the page says where a tile
+# sits and its face. Closed on purpose, or ended, and it is forgotten.
+# pty_server keeps each one's last output and commands beside it, in terms/.
+TERMS_FILE = os.path.join(os.environ.get("XDG_STATE_HOME") or os.path.expanduser("~/.local/state"),
+                          "winlist", "terms.json")
+TERMS_DIR = os.path.join(os.path.dirname(TERMS_FILE), "terms")
+_terms_lock = threading.Lock()
+_live = None                        # session ids pty_server holds now; None: not asked yet
+
+
+def _load_terms():
+    try:
+        with open(TERMS_FILE) as f:
+            return {k: v for k, v in json.load(f).items() if isinstance(v, dict)}
+    except (OSError, ValueError, AttributeError):
+        return {}
+
+
+_terms = _load_terms()
+
+
+def _save_terms():
+    """Called holding _terms_lock."""
+    try:
+        os.makedirs(os.path.dirname(TERMS_FILE), exist_ok=True)
+        with open(TERMS_FILE + ".tmp", "w") as f:
+            json.dump(_terms, f)
+        os.replace(TERMS_FILE + ".tmp", TERMS_FILE)
+    except OSError:
+        pass                        # still remembered, just not past a restart
+
+
+def _term_file(sid, ext):
+    """Where a session's saved output (.out) or commands (.cmds) are; None for an id that is no session's."""
+    return os.path.join(TERMS_DIR, sid + ext) if isinstance(sid, str) and re.fullmatch(r"\d{1,9}", sid) else None
+
+
+def _forget_files(sid):
+    for ext in (".out", ".cmds"):
+        try:
+            os.unlink(_term_file(sid, ext))
+        except (OSError, TypeError):
+            pass
+
+
+def _last_cmds(sid, n=3):
+    try:
+        with open(_term_file(sid, ".cmds"), "rb") as f:
+            f.seek(0, 2)
+            f.seek(max(0, f.tell() - 4096))
+            lines = f.read().decode("utf-8", "replace").splitlines()
+    except (OSError, TypeError):
+        return []
+    return [l[:300] for l in lines if l.strip()][-n:]
+
+
+def scrollback(sid):
+    """The saved output of a remembered terminal (at most 64 KB), or None."""
+    with _terms_lock:
+        known = sid in _terms
+    try:
+        with open(_term_file(sid, ".out"), "rb") as f:
+            return f.read(256 * 1024) if known else None
+    except (OSError, TypeError):
+        return None
+
+
+def note_terms(sessions):
+    """What pty_server holds now: remember each live one, forget one that ended."""
+    global _live
+    with _terms_lock:
+        before = json.dumps(_terms, sort_keys=True)
+        _live = {t["id"] for t in sessions}
+        for t in sessions:
+            if not t.get("alive"):
+                if _terms.pop(t["id"], None) is not None:
+                    _forget_files(t["id"])
+                continue
+            claude = t.get("argv") == ["claude"] or t.get("running") == "claude"
+            _terms.setdefault(t["id"], {}).update(
+                cwd=t.get("cwd") or "", cols=t.get("cols", 80), rows=t.get("rows", 24), claude=claude)
+            if t.get("title"):
+                _terms[t["id"]]["title"] = t["title"][:200]
+        if json.dumps(_terms, sort_keys=True) != before:
+            _save_terms()
+
+
+def lost_terms():
+    """Remembered terminals whose sessions are gone: the new pty_server never had them."""
+    with _terms_lock:
+        if _live is None:
+            return []
+        return [dict(v, id=k, cwd_ok=os.path.isdir(v.get("cwd") or ""), cmds=_last_cmds(k))
+                for k, v in _terms.items() if k not in _live and "cwd" in v]
+
+
+def term_session(window, session):
+    """Remember which Claude session a page terminal runs, for --resume."""
+    sid = window[4:] if isinstance(window, str) and window.startswith("web:") else None
+    if not sid or not isinstance(session, str) or not re.fullmatch(r"[A-Za-z0-9-]{1,64}", session):
+        return
+    with _terms_lock:
+        if sid in _terms and _terms[sid].get("session") != session:
+            _terms[sid]["session"] = session
+            _save_terms()
+
+
+def change_term(sid, body):
+    """Where the page has a terminal's tile and which face; body None forgets it."""
+    with _terms_lock:
+        if body is None:
+            if _terms.pop(sid, None) is not None:
+                _save_terms()
+            _forget_files(sid)
+            return True
+        if sid not in _terms:
+            return False
+        at, face = body.get("at"), body.get("face")
+        if (isinstance(at, list) and len(at) == 2
+                and all(isinstance(v, (int, float)) and not isinstance(v, bool) and abs(v) < 1e7 for v in at)):
+            _terms[sid]["at"] = [round(v) for v in at]
+        if isinstance(face, str):
+            _terms[sid]["face"] = face[:100]
+        _save_terms()
+        return True
+
+
 # A terminal has no rectangle on any screen, so it needs a size to start with.
 # The page measures the real one as soon as xterm.js has laid a session out and
 # says so; until then this is only enough to put a tile somewhere sensible.
@@ -437,6 +566,8 @@ def terminals(desktop, across):
     answer = pty("/sessions") if PTY_ON else None
     if not answer:
         return []
+    if isinstance(answer.get("sessions"), list):    # an error answer is no list of sessions
+        note_terms(answer["sessions"])
     out, x, y, tall = [], 0, 0, 0
     for i, t in enumerate(answer.get("sessions", [])):
         name = t.get("title") or t.get("running") or "shell"
@@ -648,7 +779,10 @@ def sample():
         "pty": {"on": PTY_ON, "port": PTY_PORT, "cell": n_desktops, "error": _pty_error},
         "look": LOOK,          # what your xterm looks like, for ours to match
         "links": board(),       # the cards on the board, the same in every browser
+        "arrange": arrangement(),  # its groups and tile places; None until a page sends one
+        "lost": lost_terms(),   # terminals a reboot took, for the page to offer back
         "pings": pinged(),      # windows that want you, the same in every browser
+        "claude": claude_states({w["id"] for w in windows}),  # what Claude is up to in each
     }
 
 
@@ -805,6 +939,64 @@ def _save_links():
         pass                            # still on the board, just not past a restart
 
 
+# The groups and where the tiles sit are kept beside the cards, for the same
+# reason. None until a page sends the first one, which is how a page knows to
+# hand over what its browser held.
+ARRANGE_FILE = os.path.join(os.path.dirname(LINKS_FILE), "arrangement.json")
+
+
+def _load_arrangement():
+    try:
+        with open(ARRANGE_FILE) as f:
+            return tidy(json.load(f))
+    except (OSError, ValueError):
+        return None
+
+
+def tidy(body):
+    """groups, layout and scales from what a page sent, or None if it is no arrangement."""
+    if not isinstance(body, dict):
+        return None
+    groups = [g for g in body.get("groups") or [] if isinstance(g, dict) and isinstance(g.get("id"), str)]
+    layout = body.get("layout")
+    scales = body.get("scales")
+    num = lambda v: isinstance(v, (int, float)) and not isinstance(v, bool) and abs(v) < 1e7
+    return {
+        "groups": groups[:200],
+        # cards place themselves through the cards, so only windows are kept here
+        "layout": {k: v for k, v in (layout.items() if isinstance(layout, dict) else ())
+                   if isinstance(v, list) and len(v) == 2 and all(map(num, v)) and not k.startswith("link:")},
+        "scales": {k: v for k, v in (scales.items() if isinstance(scales, dict) else ()) if num(v)},
+    }
+
+
+_arrange = _load_arrangement()
+_arrange_lock = threading.Lock()
+
+
+def arrangement():
+    with _arrange_lock:
+        return _arrange
+
+
+def set_arrangement(body):
+    """Last write wins. None, and why, if it is no arrangement."""
+    global _arrange
+    new = tidy(body)
+    if not new:
+        return None
+    with _arrange_lock:
+        _arrange = new
+        try:
+            os.makedirs(os.path.dirname(ARRANGE_FILE), exist_ok=True)
+            with open(ARRANGE_FILE + ".tmp", "w") as f:
+                json.dump(new, f)
+            os.replace(ARRANGE_FILE + ".tmp", ARRANGE_FILE)
+        except OSError:
+            pass                        # still held, just not past a restart
+    return new
+
+
 CARD_PLACE = ("x", "y", "w", "h")
 
 
@@ -815,9 +1007,12 @@ def placed(body):
             and abs(body[k]) < 1e7}
 
 
-def send_link(url=None, title=None, path=None, image=None, keep=None, origin="api"):
-    """A card for the board: a web page (url), a markdown file (path) or a
-    picture (image: a path or an http(s) URL). None, and why, if it won't do.
+def send_link(url=None, title=None, path=None, image=None, keep=None, tool=None, folder=None, origin="api"):
+    """A card for the board: a web page (url), a markdown file (path), a
+    picture (image: a path or an http(s) URL) or a button for one of a
+    project's tools (tool, by name, in folder). None, and why, if it won't do.
+    A tool card holds the name only: what it runs is looked up when pressed,
+    so an edit to the script, or to .winlist-tools, is what runs next.
     keep is a card a browser held from before the board lived here: taken as
     it was, file or no file, with its place. origin is "page" when a page
     added it by hand; anything else is "api": sent from outside, to the Inbox."""
@@ -828,6 +1023,15 @@ def send_link(url=None, title=None, path=None, image=None, keep=None, origin="ap
             return None, "give a url, a path to a markdown file, or an image"
         card = {kind: keep[kind], "title": title or keep[kind]}
         card.update(placed(keep))
+    elif tool:
+        tools, err = project_tools(folder or "")
+        if err:
+            return None, err
+        found = next((t for t in tools if t["name"] == tool), None)
+        if not found:
+            return None, "no tool %s in %s" % (tool, folder)
+        card = {"tool": tool, "dir": os.path.expanduser(folder), "about": found["about"],
+                "title": title or tool}
     elif image:
         if not re.match(r"https?://[^/\s]+", image):
             image, _, err = image_file(image)
@@ -887,6 +1091,36 @@ def ping(wid, on=True):
 def pinged():
     with _pings_lock:
         return sorted(_pings)
+
+
+# What Claude Code is doing in a window — working, waiting on you, or done —
+# is reported by the same hook, one call per event, and the latest wins. Like
+# pings, in memory only.
+CLAUDE_STATES = ("working", "waiting", "done")
+CLAUDE_STALE = 30 * 60                  # a "working" this old lost its Stop: let it go
+_claude = {}                            # window id -> (state, when)
+_claude_lock = threading.Lock()
+
+
+def claude_state(wid, state):
+    """Note what Claude is doing in a window. False if the id or state is not one we use."""
+    if state not in CLAUDE_STATES or not isinstance(wid, str) \
+            or not (wid.startswith("web:") or WIN_ID.match(wid)):
+        return False
+    wid = wid if wid.startswith("web:") else wid.lower()
+    with _claude_lock:
+        _claude[wid] = (state, time.time())
+    return True
+
+
+def claude_states(live):
+    """{window id: {state, at}} for windows still there, minus a stale 'working'."""
+    now = time.time()
+    with _claude_lock:
+        for wid, (state, at) in list(_claude.items()):
+            if wid not in live or (state == "working" and now - at > CLAUDE_STALE):
+                del _claude[wid]
+        return {wid: {"state": st, "at": at} for wid, (st, at) in _claude.items()}
 
 
 def focus(wid):
@@ -1024,6 +1258,15 @@ class Handler(BaseHTTPRequestHandler):
         folder, _, name = self.path.lstrip("/").partition("/")
         if folder in self.FILES:
             return self._file(folder, name.split("?")[0])
+        m = re.fullmatch(r"/api/terminals/(\d{1,9})/scrollback(?:\?.*)?", self.path)
+        if m:
+            # what a terminal said is private: only this page, by a loopback name
+            if not same_page(self.headers.get("Origin"), self.headers.get("Host", ""), named=True):
+                return self._send(json.dumps({"error": "refused"}), code=403)
+            out = scrollback(m.group(1))
+            if out is None:
+                return self._send(json.dumps({"error": "nothing saved"}), code=404)
+            return self._send(out, "application/octet-stream", cache="no-store")
         if self.path.startswith("/api/windows"):
             if SHOTS_ON and "screens=1" in self.path:
                 watch_shots()
@@ -1053,6 +1296,14 @@ class Handler(BaseHTTPRequestHandler):
             if os.path.isdir(path):
                 return self._send(json.dumps({"ok": True, "path": path}))
             self._send(json.dumps({"error": "no such folder"}), code=404)
+        elif self.path.startswith("/api/tools?"):
+            # the commands come back to be run, so only this page may ask
+            if not same_page(None, self.headers.get("Host", ""), named=True):
+                return self._send(json.dumps({"error": "refused"}), code=403)
+            q = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
+            tools, err = project_tools(q.get("dir", [""])[0])
+            self._send(json.dumps({"tools": tools} if tools is not None else {"error": err}),
+                       code=200 if tools is not None else 404)
         elif self.path.startswith("/api/image?"):
             if not same_page(None, self.headers.get("Host", ""), named=True):
                 return self._send(json.dumps({"error": "refused"}), code=403)
@@ -1129,6 +1380,16 @@ class Handler(BaseHTTPRequestHandler):
             if not isinstance(body, dict) or not ping(body.get("window")):
                 return self._send(json.dumps({"error": "give a window id"}), code=400)
             return self._send(json.dumps({"ok": True}))
+        if self.path.startswith("/api/claude"):
+            try:
+                n = int(self.headers.get("Content-Length", 0))
+                body = json.loads(self.rfile.read(min(n, 4096)) or b"{}")
+            except (ValueError, json.JSONDecodeError):
+                return self._send(json.dumps({"error": "bad request"}), code=400)
+            if not isinstance(body, dict) or not claude_state(body.get("window"), body.get("state")):
+                return self._send(json.dumps({"error": "give a window id and a state"}), code=400)
+            term_session(body.get("window"), body.get("session"))
+            return self._send(json.dumps({"ok": True}))
         if self.path.startswith("/api/links"):
             try:
                 n = int(self.headers.get("Content-Length", 0))
@@ -1136,7 +1397,7 @@ class Handler(BaseHTTPRequestHandler):
             except (ValueError, json.JSONDecodeError):
                 return self._send(json.dumps({"error": "bad request"}), code=400)
             link, err = send_link(body.get("url"), body.get("title"), body.get("path"),
-                                  body.get("image"), body.get("keep"),
+                                  body.get("image"), body.get("keep"), body.get("tool"), body.get("dir"),
                                   "page" if body.get("from") == "page" or body.get("keep") else "api")
             if not link:
                 return self._send(json.dumps({"error": err}), code=400)
@@ -1150,10 +1411,26 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(json.dumps({"error": "no such card"}), code=404)
         self._send(json.dumps(link))
 
+    def do_PUT(self):
+        if not self._guard():
+            return
+        if self.path.split("?")[0] != "/api/arrangement":
+            return self._send(json.dumps({"error": "not found"}), code=404)
+        try:
+            n = int(self.headers.get("Content-Length", 0))
+            body = json.loads(self.rfile.read(n) or b"{}")
+        except (ValueError, json.JSONDecodeError):
+            return self._send(json.dumps({"error": "bad request"}), code=400)
+        new = set_arrangement(body)
+        if not new:
+            return self._send(json.dumps({"error": "bad request"}), code=400)
+        self._send(json.dumps(new))
+
     def do_PATCH(self):
         if not self._guard():
             return
-        if not self.path.startswith("/api/links/"):
+        terms = self.path.startswith("/api/terminals/")
+        if not terms and not self.path.startswith("/api/links/"):
             return self._send(json.dumps({"error": "not found"}), code=404)
         try:
             n = int(self.headers.get("Content-Length", 0))
@@ -1162,6 +1439,10 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(json.dumps({"error": "bad request"}), code=400)
         if not isinstance(body, dict):
             return self._send(json.dumps({"error": "bad request"}), code=400)
+        if terms:
+            sid = self.path[len("/api/terminals/"):].split("?")[0]
+            ok = change_term(sid, body)
+            return self._send(json.dumps({"ok": ok}), code=200 if ok else 404)
         self._card(body)
 
     def do_DELETE(self):
@@ -1175,6 +1456,7 @@ class Handler(BaseHTTPRequestHandler):
         if not self.path.startswith("/api/terminals/"):
             return self._send(json.dumps({"error": "not found"}), code=404)
         sid = self.path[len("/api/terminals/"):].split("?")[0]
+        change_term(sid, None)              # shut on purpose: not offered back
         gone = pty("/sessions/" + sid, "DELETE", timeout=5)
         if gone is None:
             return self._send(json.dumps({"error": _pty_error}), code=502)
@@ -1261,6 +1543,67 @@ KillMode=process
 [Install]
 WantedBy=graphical-session.target
 """
+
+
+# ---- project tools: what a group's folder knows how to run -----------------
+
+TOOLS_FILE = ".winlist-tools"
+LEAD = re.compile(r"^#\s*\S+\s+[—-]+\s+(.+)$")   # "# dev-server.sh — what it does"
+
+
+def script_about(path):
+    """The one-line summary a script gives in its opening comment, if any."""
+    try:
+        with open(path, errors="replace") as f:
+            for _, line in zip(range(12), f):
+                m = LEAD.match(line.strip())
+                if m:
+                    return m.group(1).strip().rstrip(".")
+    except OSError:
+        pass
+    return ""
+
+
+def project_tools(folder):
+    """[{name, about, argv}] for a project folder, or an error.
+
+    Two sources, as the action selector reads them: executable scripts at the
+    top of the folder's tmp/ (dev-server.sh, deploy.sh), and a .winlist-tools
+    file of `Name: command` lines for anything else. Each runs in bash and
+    leaves a shell behind, so Ctrl-C stops a server without losing its tile:
+    the trap is a handler, not an ignore, so the tool itself still gets the
+    Ctrl-C while bash lives on past it.
+    """
+    folder = os.path.expanduser(folder)
+    if not os.path.isdir(folder):
+        return None, "no such folder"
+    shell = os.environ.get("SHELL", "/bin/bash")
+    found = []
+
+    def add(name, cmd, about):
+        found.append({"name": name, "about": about, "cmd": cmd,
+                      "argv": ["bash", "-c", "trap : INT\n%s\nexec %s -i" % (cmd, shlex.quote(shell))]})
+
+    try:
+        with open(os.path.join(folder, TOOLS_FILE)) as f:
+            for line in f:
+                line = line.strip()
+                name, sep, cmd = line.partition(":")
+                if line and not line.startswith("#") and sep and cmd.strip():
+                    add(name.strip(), cmd.strip(), "from " + TOOLS_FILE)
+    except OSError:
+        pass
+    tmp = os.path.join(folder, "tmp")
+    try:
+        names = sorted(os.listdir(tmp))
+    except OSError:
+        names = []
+    for n in names:
+        path = os.path.join(tmp, n)
+        if n.endswith(".sh") and os.path.isfile(path) and os.access(path, os.X_OK):
+            add(n[:-3].replace("-", " ").replace("_", " ").capitalize(),
+                "./tmp/" + shlex.quote(n), script_about(path))
+    return found, None
 
 
 def systemctl(*args):
