@@ -1079,10 +1079,15 @@ function drawEdges() {
       const px = origin[0] + x * zoom, py = origin[1] + y * zoom;
       const pw = w.term || isCard(w) ? w.w * zoom : Math.max(90, w.w * zoom);
       const ph = w.term || isCard(w) ? w.h * zoom : Math.max(60, w.h * zoom);
-      const ping = pings.has(w.id);
-      if (ping && lookedAt(w, px, py, pw, ph, W, H)) {
+      const arrived = arrivals.has(w.id), ping = pings.has(w.id) || arrived;
+      // a new card is small: wholly in view is enough, whatever the zoom
+      const looked = arrived ? px >= 0 && py >= 0 && px + pw <= W && py + ph <= H : lookedAt(w, px, py, pw, ph, W, H);
+      if (ping && looked) {
         if (!inViewSince.has(w.id)) inViewSince.set(w.id, now);
-        else if (now - inViewSince.get(w.id) >= 2000) { seenPing(w.id); seen = true; }
+        else if (now - inViewSince.get(w.id) >= 2000) {
+          if (arrived) arrivals.delete(w.id); else seenPing(w.id);
+          seen = true;
+        }
       } else inViewSince.delete(w.id);
       if (px < W && px + pw > 0 && py < H && py + ph > 0) return;   // some of it shows
       const dx = px + pw / 2 - cx, dy = py + ph / 2 - cy;
@@ -1409,11 +1414,11 @@ function addCard(l, at, placed) {      // placed: found on the server, not added
   render();
 }
 
-// Cards that just arrived from outside pulse for a few seconds, as a ping does.
+// Cards that just arrived from outside pulse, and so does their mark on the
+// edge, until you have had them in view for a moment, as a ping does.
 const arrivals = new Set();
 function announce(id) {
   arrivals.add(id);
-  setTimeout(() => { arrivals.delete(id); render(); }, 4500);
 }
 
 // A card sent from outside names where it came from, or is left in the Inbox:

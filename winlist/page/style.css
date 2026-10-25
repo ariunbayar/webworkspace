@@ -321,7 +321,7 @@
   .cs-waiting { box-shadow:0 0 0 5px var(--cs-wait) }
   .cs-done { box-shadow:0 0 0 4px var(--cs-done) }
   .tile.ping { animation:ping-tile 1.4s ease-out infinite }
-  .tile.arrive { animation:ping-tile 1.4s ease-out 3 }
+  .tile.arrive { animation:ping-tile 1.4s ease-out infinite }
   @keyframes ping-tile {
     0%   { box-shadow:0 0 0 0 rgba(242,165,22,.9) }
     100% { box-shadow:0 0 0 18px rgba(242,165,22,0) } }
