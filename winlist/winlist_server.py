@@ -1007,7 +1007,8 @@ def placed(body):
             and abs(body[k]) < 1e7}
 
 
-def send_link(url=None, title=None, path=None, image=None, keep=None, tool=None, folder=None, origin="api"):
+def send_link(url=None, title=None, path=None, image=None, keep=None, tool=None, folder=None, origin="api",
+              term=None, cwd=None):
     """A card for the board: a web page (url), a markdown file (path), a
     picture (image: a path or an http(s) URL) or a button for one of a
     project's tools (tool, by name, in folder). None, and why, if it won't do.
@@ -1015,7 +1016,9 @@ def send_link(url=None, title=None, path=None, image=None, keep=None, tool=None,
     so an edit to the script, or to .winlist-tools, is what runs next.
     keep is a card a browser held from before the board lived here: taken as
     it was, file or no file, with its place. origin is "page" when a page
-    added it by hand; anything else is "api": sent from outside, to the Inbox."""
+    added it by hand; anything else is "api": sent from outside, to the Inbox.
+    term (a WINLIST_TERM id) and cwd (a folder) say where it came from, so a
+    page can put it beside that terminal, or in the group of that folder."""
     title = (title or "").strip()
     if keep:
         kind = next((k for k in ("image", "path", "url") if isinstance(keep.get(k), str) and keep[k]), None)
@@ -1049,6 +1052,9 @@ def send_link(url=None, title=None, path=None, image=None, keep=None, tool=None,
         return None, "give a url, a path to a markdown file, or an image"
     with _links_lock:
         link = dict(card, id="%x" % time.time_ns(), origin="page" if origin == "page" else "api")
+        for k, v in (("term", term), ("cwd", cwd)):
+            if isinstance(v, str) and 0 < len(v) <= 4096:
+                link[k] = v
         _links.append(link)
         _save_links()
     return link, None
@@ -1398,7 +1404,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(json.dumps({"error": "bad request"}), code=400)
             link, err = send_link(body.get("url"), body.get("title"), body.get("path"),
                                   body.get("image"), body.get("keep"), body.get("tool"), body.get("dir"),
-                                  "page" if body.get("from") == "page" or body.get("keep") else "api")
+                                  "page" if body.get("from") == "page" or body.get("keep") else "api",
+                                  body.get("term"), body.get("cwd"))
             if not link:
                 return self._send(json.dumps({"error": err}), code=400)
             return self._send(json.dumps(link), code=201)

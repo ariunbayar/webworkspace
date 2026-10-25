@@ -477,7 +477,7 @@ async function poll() {
     takeLinks(data.links || [], asked);
     data.windows.push(...links.map(linkWin));
     // one sent from outside — a shell, an agent — is placed by the first page to see it, in the Inbox
-    links.filter(l => l.x == null && !pend.has(l.id)).forEach(l => l.origin === 'api' ? inboxCard(l) : addCard(l, null, true));
+    links.filter(l => l.x == null && !pend.has(l.id)).forEach(l => l.origin === 'api' ? arrivedCard(l) : addCard(l, null, true));
     forgetGone();
     tellTerms();
     failures = 0;
@@ -1409,6 +1409,39 @@ function addCard(l, at, placed) {      // placed: found on the server, not added
   render();
 }
 
+// Cards that just arrived from outside pulse for a few seconds, as a ping does.
+const arrivals = new Set();
+function announce(id) {
+  arrivals.add(id);
+  setTimeout(() => { arrivals.delete(id); render(); }, 4500);
+}
+
+// A card sent from outside names where it came from, or is left in the Inbox:
+// beside the terminal it says (WINLIST_TERM), else in the group whose folder
+// holds its cwd, the deepest folder first. Either way the view is not moved.
+function arrivedCard(l) {
+  const w = linkWin(l);
+  const t = l.term && data.windows.find(v => v.term && v.term.session === l.term);
+  const dir = p => String(p || '').replace(/\/+$/, '');
+  const cwd = dir(l.cwd);
+  const g = !t && cwd && groups.filter(v => v.dir && (cwd === dir(v.dir) || cwd.startsWith(dir(v.dir) + '/')))
+    .sort((a, b) => dir(b.dir).length - dir(a.dir).length)[0];
+  if (!t && !g) return inboxCard(l);
+  if (!data.windows.some(v => v.id === w.id)) data.windows.push(w);
+  let to = g, at;
+  if (t) {
+    const [x, y] = seatOf(t);
+    to = groups.findLast(v => inGroup(v, [x, y]));
+    at = [x + t.w + GRID, y];
+  } else at = [g.x + GRID, g.y + GRID * 2];     // the caption takes the top row
+  layout[w.id] = clearSpot(at, w.id);
+  saveLayout();
+  announce(w.id);
+  toast(`New card ${t ? 'beside its terminal' : 'in'}${to ? ' in ' + esc(to.name) : ''}: ${esc(cardTitle(l))}`);
+  if (l.path) readDocs();
+  render();
+}
+
 // A card sent from outside lands in the Inbox group, newest at the top left, so
 // it never covers your work. Only cards still inside it are arranged: one you
 // dragged out stays where you put it. The view is not moved; a toast says so.
@@ -1434,6 +1467,7 @@ function inboxCard(l) {
   g.h = Math.max(g.h, snap(y + row + GRID * 2 - g.y));
   saveGroups();
   saveLayout();
+  announce(w.id);
   toast('New card in Inbox: ' + esc(cardTitle(l)));
   if (l.path) readDocs();
   render();
@@ -2087,7 +2121,7 @@ function renderCanvas(match) {
     }
     el.win = w;                       // the drag handler always wants the fresh one
     el.className = 'tile' + (w.term ? ' term' : '') + (w.link ? ' link' : '') + (w.focused ? ' focused' : '')
-      + (match(w) ? '' : ' off') + (w.id === sel ? ' sel' : '') + (pings.has(w.id) ? ' ping' : '')
+      + (match(w) ? '' : ' off') + (w.id === sel ? ' sel' : '') + (pings.has(w.id) ? ' ping' : '') + (arrivals.has(w.id) ? ' arrive' : '')
       + (cstate[w.id] ? ' cs-' + cstate[w.id].state : '');
     if (w.term) {
       el.title = [w.term.running, w.term.cwd, w.title].filter(Boolean).join(' — ') + ` · pid ${w.pid}`;

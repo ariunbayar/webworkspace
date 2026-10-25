@@ -321,12 +321,14 @@
   .cs-waiting { box-shadow:0 0 0 5px var(--cs-wait) }
   .cs-done { box-shadow:0 0 0 4px var(--cs-done) }
   .tile.ping { animation:ping-tile 1.4s ease-out infinite }
+  .tile.arrive { animation:ping-tile 1.4s ease-out 3 }
   @keyframes ping-tile {
     0%   { box-shadow:0 0 0 0 rgba(242,165,22,.9) }
     100% { box-shadow:0 0 0 18px rgba(242,165,22,0) } }
   @media (prefers-reduced-motion: reduce) {
     .edge.ping { animation:none }
-    .tile.ping { animation:none; box-shadow:0 0 0 6px #f2a516 } }
+    .tile.ping { animation:none; box-shadow:0 0 0 6px #f2a516 }
+    .tile.arrive { animation:none; box-shadow:0 0 0 6px #f2a516 } }
   /* a window onto the surface at actual size, whatever the zoom: what is under
      the pointer, one virtual pixel to one screen pixel. It never takes a click */
   #loupe { position:absolute; left:10px; bottom:10px; width:min(720px,80%); height:min(240px,40%);
