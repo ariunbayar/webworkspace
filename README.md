@@ -132,6 +132,17 @@ runs free from 2% to 400%. "Fit" brings everything back into view.
 Its text is kept on the server with the other cards (`PATCH /api/links/<id>`
 with `{"text": ...}`), and the `/` filter matches it.
 
+`y` hands the picked tile to Claude: it copies a link like
+`http://localhost:8766/api/what?ref=wl:note:<id>` to paste into any prompt.
+Asked, the server says what the tile is and how to get at it, as JSON: a note's
+text and the command that changes it, a file card's path, a link's URL, a
+terminal's folder, shell process, last commands and saved output, a desktop
+window's process, folder and command line. A closed tile answers `gone`.
+`/api/what` with no ref lists every tile. From a shell,
+`winlist/winlist_what.sh [<ref>]` does the same, and
+`winlist/winlist_what.sh <note ref> --set < file` replaces a note's text; every
+page shows it at its next look.
+
 A photo is of a whole workspace, so cutting one window's rectangle out of it
 also cuts out anything that was lying on top. The stacking order at the moment
 of the shutter says exactly which parts those are, so they are struck out with
