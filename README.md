@@ -166,7 +166,8 @@ you learn it), a tile or a group; `↑↓` or `Ctrl+N`/`Ctrl+P` move, Enter runs
 
 A tile's caption names the app in words beside the title, numbers windows that
 would otherwise read the same (`#1`, `#2`), and for a terminal says what is
-running and a short `~/…/folder`. While moving/sizing or typing in a terminal,
+running and a short `~/…/folder`. A terminal's caption starts with its project,
+dimmed: the name of the group it sits in, else its folder's last part. While moving/sizing or typing in a terminal,
 the keys for that mode show at the bottom, and the mode itself (NORMAL, INSERT, TILE) in a badge at the bottom-left; a failed focus, a lost server and the
 like say so over the surface.
 **Super+Enter** moves and sizes the picked tile, the way gTile's keys do: the arrow keys

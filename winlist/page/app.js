@@ -1940,10 +1940,17 @@ function chip(el, c) {
   if (b) b.textContent = c.state;
 }
 
+function projectOf(w) {
+  const s = seatOf(w), c = [s[0] + w.w / 2, s[1] + w.h / 2];
+  const g = groups.findLast(g => inGroup(g, c));
+  if (g) return g.name;
+  const last = shortPath(w.term.cwd).split('/').pop();
+  return last === '~' ? '' : last;           // home says nothing about a project
+}
 function dressTerm(el, w) {
   const t = mount(w), id = w.term.session;
   if (!t.wrap) {
-    el.innerHTML = `<div class="cap"><span class="dot"></span><span class="app"></span><span class="t2"></span>` +
+    el.innerHTML = `<div class="cap"><span class="dot"></span><span class="pre"></span><span class="app"></span><span class="t2"></span>` +
                    `<span class="note"></span>` +
                    `<span class="prof" title="Switch font (Ctrl+Alt+F)"></span>` +
                    `<span class="shut" title="Close">✕</span></div>` +
@@ -2001,6 +2008,10 @@ function dressTerm(el, w) {
   cap.querySelector('.prof').textContent = (profiles()[t.prof] || {}).name || '';
   const title = t.title || w.term.title || w.term.running || w.title;
   cap.querySelector('.t2').textContent = title;
+  // which project it is, said for you: its group's name, else its folder's
+  // last part. Worked out each render, so a tile carried into a group follows
+  const pre = projectOf(w);
+  cap.querySelector('.pre').textContent = pre && !title.toLowerCase().startsWith(pre.toLowerCase()) ? pre : '';
   // what is running, unless the title already says so: a shell says nothing
   const run = w.term.running || '';
   cap.querySelector('.app').textContent = run && !SHELL_NAMES.has(run)
