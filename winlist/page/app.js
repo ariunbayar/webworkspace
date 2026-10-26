@@ -230,7 +230,7 @@ function droppedPath(dt) {
   if (!s.startsWith('file://')) return s;
   try { return decodeURIComponent(new URL(s).pathname); } catch { return null; }
 }
-docbox.addEventListener('dragover', e => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; });
+docbox.addEventListener('dragover', e => { e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = 'copy'; });
 async function foundPath(f) {
   if (!f) return null;
   try {
@@ -241,6 +241,7 @@ async function foundPath(f) {
 }
 docbox.addEventListener('drop', async e => {
   e.preventDefault();
+  e.stopPropagation();
   const file = e.dataTransfer.files[0];
   let path = droppedPath(e.dataTransfer);
   if (!path && file) {
@@ -251,6 +252,39 @@ docbox.addEventListener('drop', async e => {
   if (!path) return toast('Could not find ' + esc(file ? file.name : 'that file') + ' under home: paste its path instead', 4000);
   $('#docpath').value = path;
   docbox.close('add');
+});
+// A file dragged over the page shows where it can go, and dropped anywhere it
+// opens as a card right there, if the text viewer can read it; else it says so
+const carriesFile = dt => [...dt.types].some(t => t === 'Files' || t === 'text/uri-list');
+let dragDepth = 0;
+const dropzone = on => { if (!on) dragDepth = 0; $('#dropzone').hidden = !on; };
+window.addEventListener('dragenter', e => {
+  if (!carriesFile(e.dataTransfer) || docbox.open) return;
+  dragDepth++;
+  dropzone(true);
+});
+window.addEventListener('dragleave', () => { if (dragDepth && --dragDepth === 0) dropzone(false); });
+window.addEventListener('dragover', e => {
+  if (!carriesFile(e.dataTransfer)) return;
+  e.preventDefault();                // else the browser leaves the board to show the file
+  e.dataTransfer.dropEffect = 'copy';
+});
+window.addEventListener('drop', async e => {
+  if (!carriesFile(e.dataTransfer)) return;
+  e.preventDefault();
+  dropzone(false);
+  const file = e.dataTransfer.files[0], name = file ? file.name : 'that file';
+  const box = $('#pan').getBoundingClientRect();
+  const at = [(e.clientX - box.left - origin[0]) / zoom, (e.clientY - box.top - origin[1]) / zoom];
+  const path = droppedPath(e.dataTransfer) || await foundPath(file);
+  if (!path) return toast('Could not find ' + esc(name) + ' under home, so it cannot be opened', 4000);
+  try {
+    const r = await fetch('/api/links', { method: 'POST', body: JSON.stringify({ from: 'page', path }) });
+    const l = await r.json();
+    if (!r.ok) return toast('The text viewer cannot open ' + esc(name) + ': ' + esc(l.error || 'unknown error'), 4000);
+    const w = linkWin(l);
+    addCard(l, [at[0] - w.w / 2, at[1] - w.h / 2]);
+  } catch {}
 });
 function alertDoc(msg) {            // said where you were typing, not in a modal
   askDoc();
