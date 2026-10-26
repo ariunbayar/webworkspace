@@ -61,13 +61,24 @@ steps to the next one — `pragmata`, named after the default's face, then each
 `font-*` profile. The grid keeps its size and the tile grows or shrinks around it. Nothing there,
 or no X at all, and it falls back to its own colours.
 
-**New terminal** (or `t`) puts a shell of the page's own on the same surface,
+**New terminal** (`t`, or `:` and pick it) puts a shell of the page's own on the same surface,
 in a cell of its own past the last workspace. It is a real terminal, drawn by
 xterm.js and wired to `pty_server.py`: click into it and type. Drag it by its
 title bar rather than anywhere on it — the rest of it is for typing into — and
 `✕` closes it. Everything else about a tile still holds: it scales with the
 surface, so zoom out and the terminal goes small with the photographs, zoom in
 and you can read it.
+
+A group (`g`) can carry a folder: click `+ folder` in its caption and type a
+path. A terminal (`t`) or Claude Code (`c`) opened inside that group starts
+there, and `▸ tools` in the caption lists what the project can run: the
+executable `tmp/*.sh` scripts at the top of the folder, named from the file
+and described by the script's opening `# name — what it does` comment, plus
+any `Name: command` lines in a `.winlist-tools` file there. Picking one puts
+its button on the surface, in the group, a card like any other: press `▶`
+(or pick it and press Enter) and the tool runs in a new terminal beside it.
+Each press is a fresh run of whatever the script says now; Ctrl-C stops it and
+leaves a shell in its tile.
 
 A shell that exits leaves its tile behind, greyed, with its last words still
 in it and the reason it went in the title bar. **new shell** there starts
@@ -105,7 +116,7 @@ and not used, since it is far taller than any browser window and mostly empty �
 and from there you drag each window wherever you want it. **Dragging moves the tile and nothing else**: the window
 manager is never touched, so this is a place to arrange your windows as you
 think about them rather than as the desktop has them. The arrangement is
-remembered in the browser (per window), "Reset layout" puts it back, the wheel
+kept on the server (per window), so every browser shows it (zoom and pan stay per browser), "Reset layout" puts it back, the wheel
 and the slider zoom, dragging the background with the mouse carries the whole
 surface with it,
 and clicking a window still focuses it for real.
@@ -139,16 +150,19 @@ the footer and the margins go, and the surface is pinned to the viewport so the
 canvas is the window, the zoom still fitting until you work the slider or start
 dragging tiles. It is a layout, not F11: the browser stays a browser.
 
-"Architecture" (or `a`) draws the pieces and who talks to whom: the page, this
+Architecture (`a`, or `:` and pick it) draws the pieces and who talks to whom: the page, this
 server, X, and the terminal server that will hold shells the page starts
 itself. None of that plumbing shows on the surface, so it gets a picture.
 
 Click a window — or pick one with the arrow keys / `hjkl` and press Enter — to
 focus it, which also switches to its workspace; the arrow keys still walk the
 workspaces the windows came from, in order — left and right go to the nearest
-tile that way on the surface. `/` filters on every word you type, anywhere in a
+tile that way on the surface. `/` (or `:` Filter) opens the filter box, hidden until then; it filters on every word you type, anywhere in a
 tile's title, app, running program, folder, card address or `ws2`; Enter jumps
-to the first match, `Esc` clears (then leaves the full window).
+to the first match, `Esc` clears and hides it (then leaves the full window); it folds away when it loses focus empty.
+`:` opens a palette: type any words to find an action (with its key shown, so
+you learn it), a tile or a group; `↑↓` or `Ctrl+N`/`Ctrl+P` move, Enter runs
+(a tile is picked and brought into view, a group fills the frame), `Esc` closes.
 
 A tile's caption names the app in words beside the title, numbers windows that
 would otherwise read the same (`#1`, `#2`), and for a terminal says what is
@@ -159,6 +173,8 @@ like say so over the surface.
 (or `hjkl`) move the picked tile one grid cell, Shift with them sizes it, and
 Enter or Esc (or Super+Enter again) finishes. A terminal sizes by its
 characters, a card by the grid, and a photo is scaled, keeping its shape.
+A card sent from outside (`POST /api/links` without `"from": "page"`) lands in an
+**Inbox** group, newest first, instead of on top of your work; drag it out to keep it.
 The grid shows only while moving or sizing, and dragging with the mouse snaps
 to it too. Moving a tile, from the keyboard or by dragging it, also
 snaps its size to the nearest grid step, so its far edges line up as well as its corner.
@@ -179,8 +195,48 @@ anything typed. `python3 winlist/usage_report.py` reads it back per day;
 `--split YYYY-MM-DD` compares the rates before and from a date, `--days N`
 keeps to the last N days.
 
+Claude status
+---
+
+A window running Claude Code (an X terminal, or a terminal tile here) shows a
+chip in its caption, and a ring in the same colour that still reads when the
+tile is tiny:
+
+- **working** (blue): you sent a prompt, or a tool is running.
+- **waiting** (amber): it needs you — a permission prompt or a question.
+- **done** (green): it finished its turn and is idle. This one also pings, as before.
+
+Claude Code's hooks report it, through `winlist/ping_hook.sh`, which reads the
+event from the hook's JSON and finds its window from `$WINLIST_TERM` (a page
+terminal) or `$WINDOWID` (xterm). Stop was the only hook before; add the rest
+to the `hooks` of `~/.claude/settings.json`, with the same command as Stop
+(the path is where this checkout is):
+
+    "UserPromptSubmit": [{"hooks": [{"type": "command", "command": "/path/to/winlist/ping_hook.sh"}]}],
+    "PostToolUse":      [{"hooks": [{"type": "command", "command": "/path/to/winlist/ping_hook.sh"}]}],
+    "Notification":     [{"hooks": [{"type": "command", "command": "/path/to/winlist/ping_hook.sh"}]}]
+
+`PostToolUse` is what turns waiting back into working once you have answered;
+`PreToolUse` would do the same, but is not needed. The idle reminder
+(`idle_prompt`) is ignored, so a finished window stays done. A state is kept in
+the server's memory only: it goes with the window, and a working one with no
+news for 30 minutes is dropped.
+
 Terminals
 ---
+
+The page's terminals are remembered in `~/.local/state/winlist/terms.json`
+(folder, size, place on the surface, font, last title, whether it ran Claude).
+`pty_server.py` also keeps the last 64 KB of each one's output, and bash shells
+it opens (through `winlist/winlist_bashrc`, which sources your `~/.bashrc` and
+notes each command) their last 3 commands, in `~/.local/state/winlist/terms/`.
+After a reboot or a new `pty_server.py` each lost terminal stays on the surface
+as a **husk**: a dimmed, read-only tile in its old spot and size with its last
+title, commands and output. **Restore** starts a fresh shell in the same folder
+under the old output, in the same place and font (Claude ones `claude --resume`
+the session the hook last reported; a folder that is gone gets `~`); **Close**
+forgets it. The bar offers **Restore all** / **Dismiss all**. A terminal you
+close, or that ends, is forgotten along with its saved files.
 
 Shells the browser can hold on to, one pseudo-terminal each, stdlib only.
 `winlist_server.py` starts this when nothing is listening on its port, so there

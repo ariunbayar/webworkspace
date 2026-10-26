@@ -1,0 +1,26 @@
+# Start-up file for the bash that pty_server.py opens (--rcfile): your own
+# ~/.bashrc, then a note of each command as it is run, kept in $WINLIST_CMDS
+# (the last three) so a terminal lost in a reboot can show what it was doing.
+[ -f ~/.bashrc ] && . ~/.bashrc
+
+__winlist_last=
+__winlist_cmd() {
+  local s=$? n c
+  read -r n c <<< "$(HISTTIMEFORMAT= history 1)"
+  if [ -n "$WINLIST_CMDS" ] && [ "$n" != "$__winlist_last" ]; then   # Enter on nothing is no command
+    [ -n "$__winlist_last" ] && {
+      { tail -n 2 "$WINLIST_CMDS" 2>/dev/null; printf '%s\n' "${c:0:300}"; } > "$WINLIST_CMDS.t" \
+        && mv -f "$WINLIST_CMDS.t" "$WINLIST_CMDS"
+    }
+    __winlist_last=$n
+  fi
+  return $s
+}
+# what the history ends on now was typed in an earlier shell
+read -r __winlist_last _ <<< "$(HISTTIMEFORMAT= history 1)"
+: "${__winlist_last:=0}"
+if [[ "$(declare -p PROMPT_COMMAND 2>/dev/null)" == "declare -a"* ]]; then
+  PROMPT_COMMAND+=(__winlist_cmd)
+else
+  PROMPT_COMMAND="${PROMPT_COMMAND:+$PROMPT_COMMAND;}__winlist_cmd"
+fi
