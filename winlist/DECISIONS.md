@@ -178,6 +178,15 @@ Each entry:
 
 ## Claude and terminals
 
+### #34 Pointing Claude at a tile
+- Q: How do you hand a tile (a note, a terminal, a window) to Claude?
+- A: `y` copies a link to `/api/what?ref=wl:<kind>:<id>` for the picked tile.
+  Claude asks it and gets what the tile is and how to get at it. A note can
+  be read and changed this way, through the server, since it is not a file.
+- Why: it works with any Claude, inside winlist or not, with nothing to
+  remember. The link explains itself where a bare id would not.
+- Status: built 2026-10-26
+
 ### Claude status
 - Q: How do you see what Claude is doing?
 - A: A chip and ring on its tile (working, waiting, done), fed by Claude Code

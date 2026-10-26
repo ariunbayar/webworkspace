@@ -352,6 +352,7 @@ const ACTIONS = [
   ['Link card', 'u', () => askLink()],
   ['Picture', 'p', () => askImage()],
   ['Markdown file', 'o', () => askDoc()],
+  ['Copy ref for Claude', 'y', () => copyRef()],
   ['Group', 'g', () => newGroup()],
   ['Actual size', '1', () => actualSize()],
   ['Loupe', 'z', () => setLens(!lensOn)],
@@ -1462,6 +1463,31 @@ function editNote(id) {
   render();
   const ta = tileEls.get(id) && tileEls.get(id).querySelector('.notetxt');
   if (ta) { ta.focus({ preventScroll: true }); ta.setSelectionRange(ta.value.length, ta.value.length); }
+}
+// y hands the picked tile to Claude: a link it can ask winlist about, which
+// says what the tile is and how to get at it (a note's text and how to change
+// it, a file's path, a terminal's folder and output, a window's process)
+function refOf(id) {
+  if (id.startsWith('link:')) {
+    const l = links.find(v => 'link:' + v.id === id);
+    if (!l) return null;
+    const kind = l.note ? 'note' : l.path ? 'doc' : l.image ? 'img' : l.tool ? 'tool' : l.diff ? 'diff' : 'url';
+    return `wl:${kind}:${l.id}`;
+  }
+  if (id.startsWith('web:')) return 'wl:term:' + id.slice(4);
+  return /^0x[0-9a-f]+$/i.test(id) ? 'wl:win:' + id : null;
+}
+async function copyRef() {
+  const ref = sel && refOf(sel);
+  if (!ref) return toast('Pick a tile first, then <kbd>y</kbd> copies its ref for Claude');
+  const text = `${location.origin}/api/what?ref=${ref}`;
+  try {
+    await navigator.clipboard.writeText(text);
+    toast('Copied for Claude: ' + esc(text), 3000);
+  } catch {
+    toast('Copy this for Claude: ' + esc(text), 8000);
+  }
+  track('ref.copy', { kind: ref.split(':')[1] });
 }
 async function newNote() {
   try {
@@ -2887,6 +2913,7 @@ document.addEventListener('keydown', e => {
   if (k === 'o') { e.preventDefault(); return askDoc(); }
   if (k === 'p') { e.preventDefault(); return askImage(); }
   if (k === 'n') { e.preventDefault(); return void newNote(); }
+  if (k === 'y') { e.preventDefault(); return void copyRef(); }
   if (k === 'g') { e.preventDefault(); return newGroup(); }
   if (k === '1') { e.preventDefault(); return actualSize(); }
   if (k === 'z') { e.preventDefault(); return setLens(!lensOn); }

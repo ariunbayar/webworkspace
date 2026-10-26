@@ -1173,6 +1173,106 @@ def change_link(lid, body):
         return link
 
 
+# A tile can be handed to Claude as a ref: wl:<kind>:<id>, where kind is note,
+# doc, img, url, tool or diff for a card, term for a page terminal and win for
+# a desktop window. Claude asks GET /api/what?ref=… and is told what is behind
+# it and how to get at it: a file's path, a note's text and how to change it,
+# a terminal's folder and saved output, a window's process.
+REF = re.compile(r"(?:.*[?&]ref=)?wl:([a-z]+):([0-9A-Za-z]{1,64})")
+
+
+def card_kind(link):
+    return next((k for k, v in (("note", "note"), ("path", "doc"), ("image", "img"), ("tool", "tool"),
+                                ("diff", "diff")) if link.get(k)), "url")
+
+
+def proc_of(pid):
+    """What /proc says of a process: its folder and command line (None where it won't say)."""
+    out = {"pid": pid or None, "cwd": None, "cmdline": None}
+    if not pid:
+        return out
+    try:
+        out["cwd"] = os.readlink("/proc/%d/cwd" % pid)
+    except OSError:
+        pass
+    try:
+        with open("/proc/%d/cmdline" % pid, "rb") as f:
+            out["cmdline"] = [a.decode("utf-8", "replace") for a in f.read().split(b"\0") if a]
+    except OSError:
+        pass
+    return out
+
+
+def what(ref, base="http://localhost:8766"):
+    """What a ref points at, as a dict, or None if there is no such tile (any more)."""
+    m = REF.fullmatch((ref or "").strip())
+    if not m:
+        return None
+    kind, key = m.groups()
+    out = {"ref": "wl:%s:%s" % (kind, key)}
+    if kind == "term":
+        answer = pty("/sessions") if PTY_ON else None
+        t = next((t for t in (answer or {}).get("sessions", []) if t.get("id") == key), None)
+        if not t:
+            return None
+        with _terms_lock:
+            known = dict(_terms.get(key, {}))
+        out.update(kind="terminal", title=t.get("title", ""), running=t.get("running", ""),
+                   cwd=t.get("cwd", ""), alive=t.get("alive", False), shell=proc_of(t.get("pid", 0)),
+                   claude_session=known.get("session"), last_commands=_last_cmds(key),
+                   saved_output=_term_file(key, ".out"),
+                   read_output="curl -s %s/api/terminals/%s/scrollback" % (base, key))
+        return out
+    if kind == "win":
+        wid = "0x" + key.lower().removeprefix("0x")
+        if not WIN_ID.match(wid) or wid not in re.findall(r"0x[0-9a-f]+", sh("xprop", "-root", "_NET_CLIENT_LIST")):
+            return None
+        p = sh("xprop", "-id", wid, "_NET_WM_NAME", "WM_NAME", "WM_CLASS", "_NET_WM_PID", "_NET_WM_DESKTOP")
+        try:
+            pid = int(prop(p, "_NET_WM_PID"))
+        except ValueError:
+            pid = 0
+        try:
+            desktop = int(prop(p, "_NET_WM_DESKTOP")) + 1
+        except ValueError:
+            desktop = None
+        cls = unquote(prop(p, "WM_CLASS").split(",")[-1])
+        out.update(kind="window", window=wid, title=unquote(prop(p, "_NET_WM_NAME") or prop(p, "WM_NAME")),
+                   app=resolve_app(cls, pid), cls=cls, workspace=desktop, process=proc_of(pid))
+        return out
+    with _links_lock:
+        link = next((dict(l) for l in _links if l["id"] == key), None)
+    if not link:
+        return None
+    out.update(kind=card_kind(link), title=link.get("title", ""))
+    for k in ("url", "path", "image", "tool", "dir", "about", "diff", "term", "cwd"):
+        if link.get(k):
+            out[k] = link[k]
+    if link.get("note"):
+        out["text"] = link.get("text", "")
+        # a note lives in links.json, not a file: it is changed through the server,
+        # and every page shows the new text at its next look
+        out["change"] = ("curl -s -X PATCH %s/api/links/%s -H 'Content-Type: application/json' "
+                         "-d \"$(jq -Rs '{text: .}' < NEW_TEXT_FILE)\"" % (base, key))
+        out["or"] = "%s %s --set < NEW_TEXT_FILE" % (os.path.join(HERE, "winlist_what.sh"), out["ref"])
+    elif link.get("path"):
+        out["note"] = "a file on disk: read or edit it there; the card follows saves"
+    return out
+
+
+def refs():
+    """Every tile there is now, as ref and title: the cards, the page's terminals and the desktop's windows."""
+    with _links_lock:
+        out = [{"ref": "wl:%s:%s" % (card_kind(l), l["id"]), "title": l.get("title", "")} for l in _links]
+    for t in ((pty("/sessions") if PTY_ON else None) or {}).get("sessions", []):
+        if t.get("alive"):
+            out.append({"ref": "wl:term:" + t["id"], "title": t.get("title") or t.get("running") or "shell"})
+    for wid in re.findall(r"0x[0-9a-f]+", sh("xprop", "-root", "_NET_CLIENT_LIST")):
+        title = unquote(prop(sh("xprop", "-id", wid, "_NET_WM_NAME"), "_NET_WM_NAME"))
+        if title:
+            out.append({"ref": "wl:win:" + wid, "title": title})
+    return out
+
 # A window that wants you — Claude finished in it — is pinged from outside, by
 # a hook, and stays pinged until some page has seen it looked at. Kept here so
 # every browser shows the same pings; in memory only, a restart forgets them.
@@ -1289,6 +1389,7 @@ def show_page(url, port):
 # The page itself is winlist/page/: index.html, style.css and app.js, served
 # from disk as they stand, so an edit there shows on the next reload without
 # restarting anything. index.html carries the two blanks filled in per port.
+HERE = os.path.dirname(os.path.abspath(__file__))
 PAGE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "page")
 
 
@@ -1401,6 +1502,19 @@ class Handler(BaseHTTPRequestHandler):
             if os.path.isdir(path):
                 return self._send(json.dumps({"ok": True, "path": path}))
             self._send(json.dumps({"error": "no such folder"}), code=404)
+        elif self.path.split("?")[0] == "/api/what":
+            # what a tile handed to Claude is: note text and paths, so only by a loopback name
+            if not same_page(None, self.headers.get("Host", ""), named=True):
+                return self._send(json.dumps({"error": "refused"}), code=403)
+            q = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
+            ref = q.get("ref", [""])[0]
+            if not ref:
+                return self._send(json.dumps({"tiles": refs()}))
+            found = what(ref, "http://" + self.headers.get("Host", "localhost:8766"))
+            if not found:
+                return self._send(json.dumps({"ref": ref, "gone": True,
+                                              "error": "no such tile, or it has been closed"}), code=404)
+            self._send(json.dumps(found))
         elif self.path.startswith("/api/find?"):
             # a file dropped from a file manager comes without its path
             if not same_page(None, self.headers.get("Host", ""), named=True):
