@@ -121,7 +121,7 @@ and the slider zoom, dragging the background with the mouse carries the whole
 surface with it,
 and clicking a window still focuses it for real.
 A click on the background — not a drag — picks where the next picture, link,
-markdown file or terminal opens: it is centred on that spot, and a crosshair
+text file or terminal opens: it is centred on that spot, and a crosshair
 shows there for a moment. Pan or zoom the spot out of view and new ones go back
 to the middle of what you are looking at. The surface is placed rather
 than scrolled, so it has no edges: you can drag it as far as you like, and zoom

@@ -199,7 +199,7 @@ imgbox.addEventListener('close', async () => {
     addCard(l);
   } catch {}
 });
-// o asks for a markdown file; the server checks it is one before it is shown
+// o asks for a text file; the server checks it is one before it is shown
 const docbox = $('#docbox');
 function askDoc() {
   if (docbox.open) return;
@@ -1248,14 +1248,15 @@ function cardHost(url) {
 const isCard = w => w.link && !w.link.image && !w.link.path;   // link or tool card
 function linkWin(l) {
   return { id: 'link:' + l.id, link: l, title: cardTitle(l),
-           app: l.tool ? 'Tool' : l.image ? 'Image' : l.path ? 'Markdown' : cardHost(l.url),
+           app: l.tool ? 'Tool' : l.image ? 'Image' : l.path ? (isMdPath(l.path) ? 'Markdown' : 'Text') : cardHost(l.url),
            w: l.w || (l.image ? 640 : l.path ? 720 : l.tool ? 240 : 320),
            h: l.h || (l.image ? 480 : l.path ? 900 : l.tool ? 96 : 76),
            x: 0, y: 0, z: 1e9, desktop: null };
 }
 
-// ---- docs: a markdown file kept on the surface, read again when it changes --
-const docs = new Map();             // path -> {mtime, html} or {error}
+// ---- docs: a text file kept on the surface, read again when it changes -------
+const isMdPath = p => /\.(md|markdown)$/i.test(p);
+const docs = new Map();             // path -> {mtime, html, md, at} or {error}
 const md = new marked.Marked({ gfm: true });
 md.use({ renderer: {
   // a file can carry HTML, and this page can type into terminals: none of it runs
@@ -1271,13 +1272,16 @@ async function readDocs() {
   for (const l of links) {
     if (!l.path) continue;
     const had = docs.get(l.path);
+    if (had && had.at && Date.now() - had.at < 1000) continue;   // a busy file is redrawn once a second at most
     const q = 'path=' + encodeURIComponent(l.path) + (had && had.mtime ? '&since=' + had.mtime : '');
     try {
       const r = await fetch('/api/file?' + q), d = await r.json();
       if (!r.ok) {
         if (!had || !had.error) { docs.set(l.path, { error: d.error }); changed = true; }
       } else if ('text' in d) {
-        docs.set(l.path, { mtime: d.mtime, html: md.parse(d.text) });
+        const isMd = d.kind ? d.kind === 'md' : isMdPath(l.path);
+        docs.set(l.path, { mtime: d.mtime, md: isMd, at: Date.now(),
+                           html: isMd ? md.parse(d.text) : `<pre class="txt">${esc(d.text)}</pre>` });
         changed = true;
       }
     } catch {}
@@ -1297,7 +1301,9 @@ function docCard(pic, w) {
   pic.className = 'pic card doc';
   pic.style.cssText = '';
   pic.innerHTML = `<div class="docwrap" tabindex="-1"><div class="md"></div></div>`;
-  pic.querySelector('.md').innerHTML = !d ? '<p>Reading…</p>'
+  const body = pic.querySelector('.md');
+  if (d && !d.error && !d.md) body.className = 'txtwrap';
+  body.innerHTML = !d ? '<p>Reading…</p>'
     : d.error ? `<p class="gone">${esc(w.link.path)}: ${esc(d.error)}</p>` : d.html;
   pic.querySelector('.docwrap').scrollTop = top;   // a save keeps your place
   if (inside) pic.querySelector('.docwrap').focus({ preventScroll: true });

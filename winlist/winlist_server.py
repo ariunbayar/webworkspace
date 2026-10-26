@@ -882,21 +882,36 @@ def gh_state(url):
     return answer
 
 
-# A markdown file shown on the surface is read from disk each time it changes,
-# so it reads like the editor it was written in. Only text files, and only to
+# A text file shown on the surface is read from disk each time it changes,
+# so it reads like the editor it was written in. Any text file, and only to
 # this page: the answer is the file itself, unlike anything else here.
-DOC_EXT = (".md", ".markdown", ".txt")
+MD_EXT = (".md", ".markdown")
+
+
+def is_text(path):
+    # binary if the start has a NUL or is not utf-8; a character cut by the
+    # 8 KB boundary is fine, so a cut-off tail is not held against it
+    with open(path, "rb") as f:
+        head = f.read(8192)
+    if b"\0" in head:
+        return False
+    try:
+        head.decode("utf-8")
+    except UnicodeDecodeError as e:
+        return len(head) == 8192 and e.start >= len(head) - 3 and e.reason == "unexpected end of data"
+    return True
 
 
 def read_doc(path, since=None):
     path = os.path.abspath(os.path.expanduser(path or ""))
-    if not path.lower().endswith(DOC_EXT):
-        return None, "only .md, .markdown or .txt files"
     try:
         st = os.stat(path)
         if not os.path.isfile(path) or st.st_size > 2 << 20:
             return None, "not a file, or over 2 MB"
-        out = {"path": path, "name": os.path.basename(path), "mtime": st.st_mtime_ns}
+        if not is_text(path):
+            return None, "not a text file"
+        out = {"path": path, "name": os.path.basename(path), "mtime": st.st_mtime_ns,
+               "kind": "md" if path.lower().endswith(MD_EXT) else "text"}
         if str(st.st_mtime_ns) != since:
             with open(path, encoding="utf-8", errors="replace") as f:
                 out["text"] = f.read()
@@ -1023,7 +1038,7 @@ def send_link(url=None, title=None, path=None, image=None, keep=None, tool=None,
     if keep:
         kind = next((k for k in ("image", "path", "url") if isinstance(keep.get(k), str) and keep[k]), None)
         if not kind:
-            return None, "give a url, a path to a markdown file, or an image"
+            return None, "give a url, a path to a text file, or an image"
         card = {kind: keep[kind], "title": title or keep[kind]}
         card.update(placed(keep))
     elif tool:
