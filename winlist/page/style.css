@@ -257,7 +257,9 @@
   .helpbody td:first-child { white-space:nowrap; padding-right:12px; width:1% }
   .archbody b { color:var(--fg); font-weight:600 }
   footer { color:var(--dim); font-size:11px; margin-top:18px; border-top:1px solid var(--line); padding-top:9px }
-  .mode { font:600 10.5px ui-monospace,monospace; padding:2px 7px; border-radius:3px;
+  /* which mode you are in, in the corner whether the bar is shown or not */
+  .mode { position:fixed; left:8px; bottom:6px; z-index:98; pointer-events:none;
+          font:600 10.5px ui-monospace,monospace; padding:2px 7px; border-radius:3px;
           background:var(--chip); color:var(--dim) }
   .mode.insert { background:var(--accent); color:#fff }
   .mode.grid { background:#d9a300; color:#111 }

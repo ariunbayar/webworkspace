@@ -140,6 +140,14 @@ Each entry:
 
 ## Palette and help
 
+### Mode badge (#32)
+- Q: Where does the mode (NORMAL / INSERT / TILE) show?
+- A: In a small fixed badge in the bottom-left corner, above tiles and cards,
+  not in the top bar. It shows with the bar collapsed too.
+- Why: the user's request (2026-10-26): see the mode at a glance, and keep the
+  collapsible bar free of it.
+- Status: done
+
 ### Command palette
 - Q: Which top-bar buttons does the palette replace?
 - A: 1:1, Loupe, New terminal, Claude and Architecture are gone. The filter
