@@ -190,8 +190,11 @@
   .md pre code { background:none; padding:0 }
   .md blockquote { border-left:3px solid var(--line); padding-left:10px; color:var(--dim) }
   .md table { border-collapse:collapse } .md td, .md th { border:1px solid var(--line); padding:3px 8px }
-  .notetxt { width:100%; height:100%; box-sizing:border-box; resize:none; border:0; outline:0;
-             background:transparent; color:var(--fg); font:13px/1.5 ui-monospace, monospace }
+  /* typing a note looks like reading it: the same font, and the textarea grows
+     with the text so only the card scrolls, never a second bar inside it */
+  .notetxt { display:block; width:100%; min-height:100%; box-sizing:border-box; resize:none;
+             border:0; outline:0; padding:0; overflow:hidden; background:transparent;
+             color:var(--fg); font:14px/1.55 system-ui, sans-serif }
   .md a { color:var(--accent) } .md img { max-width:100% }
   .md .gone { color:var(--accent) }
   /* a PR's diff: monospace, one line per row, coloured by what the line does */

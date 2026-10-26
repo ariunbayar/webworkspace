@@ -1511,7 +1511,13 @@ function noteCard(pic, w) {
   pic.innerHTML = `<div class="docwrap" tabindex="-1"><textarea class="notetxt" spellcheck="false"></textarea></div>`;
   const ta = pic.querySelector('.notetxt');
   ta.value = w.link.text || '';
+  const fit = () => { ta.style.height = 'auto'; ta.style.height = ta.scrollHeight + 'px'; };
+  requestAnimationFrame(() => {      // grown once it is on the page; keep the caret in sight
+    fit();
+    if (document.activeElement === ta) ta.parentNode.scrollTop = ta.parentNode.scrollHeight;
+  });
   ta.addEventListener('input', () => {
+    fit();
     // the poll may have swapped the card for the server's copy: write to the live one
     noteText.set(id, ta.value);
     (links.find(v => v.id === id) || w.link).text = ta.value;

@@ -225,3 +225,9 @@ Each entry:
 - A: Both: the page logs nothing when `navigator.webdriver` is true or the URL has `?nolog`; usage_report.py drops one page's events of one kind when it logs 300+ in a minute, says how many it ignored, and `--all` shows everything. The poll never counted cards after PR #88 (placed cards are not adds).
 - Why: card adds looked like the top action. 300, not 100: fast key repeat reaches ~200 a minute in real use; the loop made 480-620.
 - Status: done (PR)
+
+### Note editor looks like the note
+- Q: Should typing a note look different from reading it?
+- A: No: the editor uses the note's own font (14px system-ui), and it grows with the text so the card is the only thing that scrolls.
+- Why: the user saw two scrollbars and the font switch to monospace when editing (2026-10-26).
+- Status: done (PR)
