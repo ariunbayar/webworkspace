@@ -214,6 +214,12 @@ Each entry:
 - A: Merged.
 - Status: done (PR #83)
 
+### #9 Where a closed note goes
+- Q: Where do closed notes go?
+- A: Nowhere: a note is a card in `~/.local/state/winlist/links.json`, its text kept on the card. Closing it sends DELETE /api/links/<id>, and the server drops the card and rewrites the file. No trash, archive or undo; only a backup of links.json brings one back.
+- Why: the user asked (2026-10-26) and turned down a "closed notes" bin.
+- Status: done
+
 ### #29 One session fills the usage log with fake card adds
 - Q: How do old loop entries (one page logged 1584 card adds) stop skewing the usage report?
 - A: Both: the page logs nothing when `navigator.webdriver` is true or the URL has `?nolog`; usage_report.py drops one page's events of one kind when it logs 300+ in a minute, says how many it ignored, and `--all` shows everything. The poll never counted cards after PR #88 (placed cards are not adds).
