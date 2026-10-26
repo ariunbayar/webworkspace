@@ -113,7 +113,8 @@ Each entry:
   of each caption automatically.
 - Why: consistent, with nothing to remember. No instruction to Claude is
   involved.
-- Status: queued
+- Status: built 2026-10-26 (Claude's pick: group name, else folder). Terminal
+  and Claude tiles only; desktop windows get none.
 
 ### #7 Renaming tiles
 - Q: Rename tiles by hand (F2, double-click the title)?

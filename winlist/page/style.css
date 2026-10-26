@@ -75,6 +75,11 @@
   .cap { display:flex; align-items:center; gap:7px; padding:0 9px; flex:none; height:28px;
          box-sizing:border-box; border-bottom:1px solid var(--line); background:var(--panel) }
   .cap .t2 { font-size:12.5px }
+  /* the project prefix gives way first on a narrow tile, then the title */
+  .cap .pre { flex:0 1000 auto; min-width:0; max-width:40%; overflow:hidden; text-overflow:ellipsis;
+              white-space:nowrap; font-size:12px; opacity:.6 }
+  .cap .pre:empty { display:none }
+  .cap .pre:not(:empty)::after { content:" ·" }
   .pic { position:relative; flex:1; min-height:0; background-repeat:no-repeat;
          background-origin:border-box }
   .pic.none { display:flex; align-items:center; justify-content:center; color:#fff;
