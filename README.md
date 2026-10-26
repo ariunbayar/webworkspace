@@ -77,6 +77,11 @@ and described by the script's opening `# name — what it does` comment, plus
 any `Name: command` lines in a `.winlist-tools` file there. Picking one puts
 its button on the surface, in the group, a card like any other: press `▶`
 (or pick it and press Enter) and the tool runs in a new terminal beside it.
+A GitHub PR card has a `Diff` button: it puts a diff card beside the PR's, with
+the files changed (and their + and − counts) on top and the coloured changes
+below, fetched with `gh pr diff` (so private repos work). It is read again when
+the PR gets a new commit; a diff over 1 MB is cut and says so.
+
 Each press is a fresh run of whatever the script says now; Ctrl-C stops it and
 leaves a shell in its tile.
 

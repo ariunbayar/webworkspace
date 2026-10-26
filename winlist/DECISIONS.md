@@ -137,6 +137,15 @@ Each entry:
 - Why: the sender knows where it came from; cards shouldn't pile up somewhere random.
 - Status: done (PR #81)
 
+### #31 See a PR's diff from its card
+- Q: How does the user see what a PR changes without leaving the board?
+- A: A PR card has a Diff button; it opens a diff card beside it (files with
+  + and − counts on top, then coloured lines, scrollable like a document),
+  from `gh pr diff` via `GET /api/diff`. It refetches only when the PR's head
+  commit changes; over 1 MB is cut. Stored as a card with `diff: <PR url>`.
+- Why: the user's idea, greenlit 2026-10-26.
+- Status: done (PR open)
+
 ### Sending a card
 - Q: How does Claude send a card?
 - A: `curl -s localhost:8766/api/links -d "{\"url\":\"...\",\"title\":\"...\",\"term\":\"$WINLIST_TERM\",\"cwd\":\"$PWD\"}"`.
