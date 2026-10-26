@@ -1275,9 +1275,35 @@ def refs():
 
 # A window that wants you — Claude finished in it — is pinged from outside, by
 # a hook, and stays pinged until some page has seen it looked at. Kept here so
-# every browser shows the same pings; in memory only, a restart forgets them.
-_pings = {}                             # window id -> when it was pinged
+# every browser shows the same pings, and in pings.json so a restart keeps
+# them. A week-old one is let go: its window is likely long gone.
+PINGS_FILE = os.path.join(os.path.dirname(LINKS_FILE), "pings.json")
+PING_KEEP = 7 * 24 * 3600
 _pings_lock = threading.Lock()
+
+
+def _load_pings():
+    try:
+        with open(PINGS_FILE) as f:
+            old = time.time() - PING_KEEP
+            return {k: v for k, v in json.load(f).items()
+                    if isinstance(v, (int, float)) and v > old}
+    except (OSError, ValueError, AttributeError):
+        return {}
+
+
+_pings = _load_pings()                  # window id -> when it was pinged
+
+
+def _save_pings():
+    """Called holding _pings_lock."""
+    try:
+        os.makedirs(os.path.dirname(PINGS_FILE), exist_ok=True)
+        with open(PINGS_FILE + ".tmp", "w") as f:
+            json.dump(_pings, f)
+        os.replace(PINGS_FILE + ".tmp", PINGS_FILE)
+    except OSError:
+        pass                            # still pinged, just not past a restart
 
 
 def ping(wid, on=True):
@@ -1288,8 +1314,9 @@ def ping(wid, on=True):
     with _pings_lock:
         if on:
             _pings[wid] = time.time()
-        else:
-            _pings.pop(wid, None)
+        elif _pings.pop(wid, None) is None:
+            return True
+        _save_pings()
     return True
 
 
@@ -1299,8 +1326,8 @@ def pinged():
 
 
 # What Claude Code is doing in a window — working, waiting on you, or done —
-# is reported by the same hook, one call per event, and the latest wins. Like
-# pings, in memory only.
+# is reported by the same hook, one call per event, and the latest wins. In
+# memory only.
 CLAUDE_STATES = ("working", "waiting", "done")
 CLAUDE_STALE = 30 * 60                  # a "working" this old lost its Stop: let it go
 _claude = {}                            # window id -> (state, when)
