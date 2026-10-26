@@ -121,6 +121,12 @@ Each entry:
 - Why: names are only for the user, and the prefix (#30) covers the need.
 - Status: dropped (PR #82 closed, branch rename-tile kept)
 
+### #10 Tidy a group
+- Q: Pack a group's windows into a neat layout with one key?
+- A: No.
+- Why: the user would almost never use it.
+- Status: dropped (PR #84 closed, branch tidy-group kept)
+
 ## Cards
 
 ### #6 Cards sent from outside
