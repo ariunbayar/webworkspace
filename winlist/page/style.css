@@ -277,6 +277,13 @@
   #legend { bottom:14px; display:none }
   #legend.on { display:block }
   #legend kbd, #toast kbd { color:#fff; background:#3a3a3a; border-color:#555 }
+  /* the page threw: in the corner, above everything, in bare mode too */
+  #errmark { position:fixed; top:8px; right:8px; z-index:99; max-width:min(560px, calc(100vw - 16px));
+             padding:4px 9px; border:0; border-radius:4px; background:#c0392b; color:#fff;
+             font:600 11px ui-monospace,monospace; text-align:left; cursor:pointer;
+             box-shadow:0 4px 16px rgba(0,0,0,.35) }
+  #errmark ol { margin:6px 0 2px; padding-left:18px; font-weight:400; white-space:pre-wrap;
+                max-height:40vh; overflow:auto }
   #nomatch { position:absolute; left:50%; top:40%; transform:translate(-50%,-50%); z-index:84;
              display:none; padding:10px 16px; border-radius:8px; background:var(--panel);
              border:1px solid var(--line); color:var(--dim); pointer-events:none }

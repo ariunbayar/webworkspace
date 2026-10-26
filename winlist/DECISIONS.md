@@ -53,6 +53,12 @@ Each entry:
 - Why: one big file hid the PR #85 name clash.
 - Status: queued
 
+### — Page errors show a mark
+- Q: When the page throws (e.g. an unknown card kind stopped every render, so INSERT could not be entered), how do you find out?
+- A: Every uncaught error or rejection, and a script that fails to load, shows a red "⚠ N errors" mark in the top-right corner, in bare mode too. Clicking it lists them, counted. Missing images (favicons) are not errors.
+- Why: The user asked on 2026-10-26 after the page silently broke INSERT; an unknown card kind is also drawn as its title rather than thrown on (PR #93).
+- Status: done (PR)
+
 ## Layout and moving
 
 ### Fit and the 0 key
@@ -172,5 +178,5 @@ Each entry:
 
 ### #9 Sticky notes
 - Q: Merge PR #83?
-- A: Waiting for the user to test it.
-- Status: needs the user (PR #83 open)
+- A: Merged.
+- Status: done (PR #83)
