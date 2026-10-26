@@ -218,6 +218,24 @@ docbox.addEventListener('close', async () => {
     addCard(l);
   } catch {}
 });
+// a file dropped on the box fills in its path: a file manager hands it over as
+// a file:// URI, a terminal or an editor as plain text. A browser keeps the
+// path of a bare File to itself, so that one can only be said, not opened
+function droppedPath(dt) {
+  const s = (dt.getData('text/uri-list') || dt.getData('text/plain') || '')
+    .split(/\r?\n/).map(l => l.trim()).find(l => l && !l.startsWith('#'));
+  if (!s) return null;
+  if (!s.startsWith('file://')) return s;
+  try { return decodeURIComponent(new URL(s).pathname); } catch { return null; }
+}
+docbox.addEventListener('dragover', e => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; });
+docbox.addEventListener('drop', e => {
+  e.preventDefault();
+  const path = droppedPath(e.dataTransfer);
+  if (!path) return toast('That drop carried no path: paste the path instead', 4000);
+  $('#docpath').value = path;
+  docbox.close('add');
+});
 function alertDoc(msg) {            // said where you were typing, not in a modal
   askDoc();
   $('#docpath').value = '';
