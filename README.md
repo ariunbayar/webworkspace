@@ -127,6 +127,11 @@ to the middle of what you are looking at. The surface is placed rather
 than scrolled, so it has no edges: you can drag it as far as you like, and zoom
 runs free from 2% to 400%. "Fit" brings everything back into view.
 
+`n` drops a sticky note at that spot and puts you straight into it: type markdown,
+`Esc` (or `Ctrl+Space`) reads it rendered, `Enter` or a double click writes again.
+Its text is kept on the server with the other cards (`PATCH /api/links/<id>`
+with `{"text": ...}`), and the `/` filter matches it.
+
 A photo is of a whole workspace, so cutting one window's rectangle out of it
 also cuts out anything that was lying on top. The stacking order at the moment
 of the shutter says exactly which parts those are, so they are struck out with
@@ -162,7 +167,7 @@ you learn it), a tile or a group; `↑↓` or `Ctrl+N`/`Ctrl+P` move, Enter runs
 A tile's caption names the app in words beside the title, numbers windows that
 would otherwise read the same (`#1`, `#2`), and for a terminal says what is
 running and a short `~/…/folder`. While moving/sizing or typing in a terminal,
-the keys for that mode show at the bottom; a failed focus, a lost server and the
+the keys for that mode show at the bottom, and the mode itself (NORMAL, INSERT, TILE) in a badge at the bottom-left; a failed focus, a lost server and the
 like say so over the surface.
 **Super+Enter** moves and sizes the picked tile, the way gTile's keys do: the arrow keys
 (or `hjkl`) move the picked tile one grid cell, Shift with them sizes it, and

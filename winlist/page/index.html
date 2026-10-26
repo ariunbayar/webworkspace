@@ -1,6 +1,46 @@
 <!doctype html>
 <meta charset="utf-8">
 <title>__TITLE__</title>
+<script>
+// Any error the page throws shows as a mark in the corner, so a page that has
+// quietly stopped working says so. Here, before everything else, so it is
+// there even when app.js itself cannot load; clicking it says what went wrong.
+(() => {
+  const seen = new Map();             // message → how many times
+  let mark;
+  function note(msg, where) {
+    msg = String(msg || 'Unknown error') + (where ? ' (' + where + ')' : '');
+    seen.set(msg, (seen.get(msg) || 0) + 1);
+    if (!mark) {
+      mark = document.createElement('button');
+      mark.id = 'errmark';
+      mark.onclick = () => {
+        const list = mark.querySelector('ol') || mark.appendChild(document.createElement('ol'));
+        list.hidden = !list.hidden;
+      };
+    }
+    if (!mark.isConnected) (document.body || document.documentElement).append(mark);
+    let n = 0;
+    seen.forEach(c => n += c);
+    const open = mark.querySelector('ol') && !mark.querySelector('ol').hidden;
+    mark.innerHTML = '<b>⚠ ' + n + (n === 1 ? ' error' : ' errors') + '</b><ol' + (open ? '' : ' hidden') + '></ol>';
+    const list = mark.querySelector('ol');
+    seen.forEach((c, m) => {
+      const li = list.appendChild(document.createElement('li'));
+      li.textContent = (c > 1 ? c + '× ' : '') + m;
+    });
+    mark.title = 'The page hit an error; click for what. Reload once it is fixed.';
+  }
+  addEventListener('error', e => {
+    if (e.target !== window) {        // a favicon that is not there is not an error; a script is
+      if (/^(SCRIPT|LINK)$/.test(e.target.tagName)) note('Could not load ' + (e.target.src || e.target.href));
+      return;
+    }
+    note(e.message, e.filename && e.filename.split('/').pop() + ':' + e.lineno);
+  }, true);
+  addEventListener('unhandledrejection', e => note(e.reason && e.reason.message || e.reason));
+})();
+</script>
 <link rel="stylesheet" href="/vendor/xterm.css">
 <script src="/vendor/xterm.js"></script>
 <script src="/vendor/marked.min.js"></script>
@@ -14,12 +54,12 @@
       <input type="range" id="zoom" min="2" max="100" step="1" title="Zoom"><span id="zpct" title="Zoom"></span>
       <button id="reset" class="btn" title="Put every tile back where the desktop has it (asks once more)">Reset layout</button>
     </span>
-    <span class="mode" id="mode" title="NORMAL: keys move about the surface · INSERT: typing into a terminal or document · TILE: moving and sizing (Super+Enter)"></span>
     <span class="keys"><kbd>↑↓←→</kbd> pick · <kbd>Enter</kbd> focus · <kbd>/</kbd> filter · <kbd>:</kbd> palette ·
       <kbd>Super+Enter</kbd> move/size · <kbd>t</kbd> terminal · <kbd>c</kbd> Claude ·
       <kbd>Ctrl+Space</kbd> leave a terminal · <kbd>?</kbd> all keys</span>
   </div>
   <div class="pan" id="pan"><div class="canvas" id="canvas"><div id="groups"></div><div id="tiles"></div><div id="mark"></div></div><div id="grid"></div><div id="edges"></div><div id="loupe"><div class="lens"></div></div><div id="nomatch"></div><div id="banner"></div></div>
+<span class="mode" id="mode" title="NORMAL: keys move about the surface · INSERT: typing into a terminal or document · TILE: moving and sizing (Super+Enter)"></span>
 <div id="legend"></div><div id="toast"></div>
   <footer id="foot"></footer>
 </div>
@@ -71,6 +111,7 @@
       <tr><td><kbd>u</kbd></td><td>link card: type or paste a URL</td></tr>
       <tr><td><kbd>p</kbd></td><td>picture: an image file or image URL; double-click opens it full size</td></tr>
       <tr><td><kbd>o</kbd></td><td>open any text file (markdown is formatted); it follows your saves. <kbd>Enter</kbd> to scroll it (<kbd>jk</kbd> <kbd>du</kbd>), <kbd>Esc</kbd> back out</td></tr>
+      <tr><td><kbd>n</kbd></td><td>note: type markdown on a card; <kbd>Esc</kbd> reads it, <kbd>Enter</kbd> writes again</td></tr>
       <tr><td>▸ tools</td><td>on a group with a folder: put a button for one of the project's tools (<code>tmp/*.sh</code>, <code>.winlist-tools</code>) in the group; <kbd>1</kbd>–<kbd>9</kbd> pick. Press <kbd>▶</kbd> on it (or <kbd>Enter</kbd>) to run it in a new terminal beside it</td></tr>
       <tr><td><kbd>g</kbd></td><td>group: drag its caption to carry the windows wholly inside</td></tr>
     </table></section>

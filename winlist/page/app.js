@@ -493,7 +493,7 @@ async function poll() {
 function haystack(w) {
   const t = w.term && terms.get(w.term.session);
   return [w.title, w.app, w.cls, t && t.title, w.term && w.term.running, w.term && w.term.cwd,
-          w.link && (w.link.url || w.link.path || w.link.image || w.link.tool),
+          w.link && (w.link.url || w.link.path || w.link.image || w.link.tool || w.link.text),
           w.desktop !== null && w.desktop !== undefined ? 'ws' + (w.desktop + 1) : ''
          ].filter(Boolean).join(' ').toLowerCase();
 }
@@ -1199,6 +1199,7 @@ function takeLinks(list, asked) {
   const byId = new Map(list.map(l => [l.id, l]));
   for (const [id, p] of pend) if (p.card) byId.set(id, p.card); else byId.delete(id);
   links = [...byId.values()];
+  for (const l of links) if (noteText.has(l.id)) l.text = noteText.get(l.id);
   // moved on another page: follow it, but never undo a drag under way here
   for (const l of links) {
     if (l.x == null || knownAt.get(l.id) === l.x + ',' + l.y) continue;
@@ -1245,12 +1246,12 @@ function cardTitle(l) {
 function cardHost(url) {
   try { return new URL(url).host.replace(/^www\./, ''); } catch { return 'Link'; }
 }
-const isCard = w => w.link && !w.link.image && !w.link.path;   // link or tool card
+const isCard = w => w.link && !w.link.image && !w.link.path && !w.link.note;   // link or tool card
 function linkWin(l) {
   return { id: 'link:' + l.id, link: l, title: cardTitle(l),
-           app: l.tool ? 'Tool' : l.image ? 'Image' : l.path ? (isMdPath(l.path) ? 'Markdown' : 'Text') : cardHost(l.url),
-           w: l.w || (l.image ? 640 : l.path ? 720 : l.tool ? 240 : 320),
-           h: l.h || (l.image ? 480 : l.path ? 900 : l.tool ? 96 : 76),
+           app: l.tool ? 'Tool' : l.image ? 'Image' : l.path ? (isMdPath(l.path) ? 'Markdown' : 'Text') : l.note ? 'Note' : cardHost(l.url),
+           w: l.w || (l.image ? 640 : l.path ? 720 : l.tool ? 240 : l.note ? 360 : 320),
+           h: l.h || (l.image ? 480 : l.path ? 900 : l.tool ? 96 : l.note ? 300 : 76),
            x: 0, y: 0, z: 1e9, desktop: null };
 }
 
@@ -1309,6 +1310,63 @@ function docCard(pic, w) {
   if (inside) pic.querySelector('.docwrap').focus({ preventScroll: true });
 }
 
+// ---- notes: markdown typed on the card itself, kept with the cards ----------
+let noteEdit = null;                // id of the note being typed into
+const noteSave = new Map();         // card id -> timer of the text not yet sent
+const noteText = new Map();         // card id -> that text: a poll swaps the card objects, never this
+function sendNote(id) {
+  clearTimeout(noteSave.get(id)); noteSave.delete(id);
+  const l = links.find(v => v.id === id), text = noteText.get(id);
+  noteText.delete(id);
+  if (l && text != null) { l.text = text; sendCard(l, { text }); }
+}
+function leaveNote(id) {
+  if (noteEdit !== id) return;      // a redraw drops the textarea and blurs it too
+  noteEdit = null;
+  if (noteSave.has(id)) sendNote(id);
+  render();
+}
+function editNote(id) {
+  noteEdit = id;
+  render();
+  const ta = tileEls.get(id) && tileEls.get(id).querySelector('.notetxt');
+  if (ta) { ta.focus({ preventScroll: true }); ta.setSelectionRange(ta.value.length, ta.value.length); }
+}
+async function newNote() {
+  try {
+    const r = await fetch('/api/links', { method: 'POST', body: JSON.stringify({ note: true, from: 'page' }) });
+    const l = await r.json();
+    if (!r.ok) return;
+    addCard(l);
+    editNote('link:' + l.id);
+  } catch {}
+}
+function noteCard(pic, w) {
+  const id = w.link.id;
+  pic.className = 'pic card doc';
+  pic.style.cssText = '';
+  if (noteEdit !== 'link:' + id) {
+    pic.innerHTML = `<div class="docwrap" tabindex="-1"><div class="md"></div></div>`;
+    pic.querySelector('.md').innerHTML = w.link.text ? md.parse(w.link.text)
+      : '<p class="gone">Empty note — Enter to write</p>';
+    return;
+  }
+  pic.innerHTML = `<div class="docwrap" tabindex="-1"><textarea class="notetxt" spellcheck="false"></textarea></div>`;
+  const ta = pic.querySelector('.notetxt');
+  ta.value = w.link.text || '';
+  ta.addEventListener('input', () => {
+    // the poll may have swapped the card for the server's copy: write to the live one
+    noteText.set(id, ta.value);
+    (links.find(v => v.id === id) || w.link).text = ta.value;
+    clearTimeout(noteSave.get(id));
+    noteSave.set(id, setTimeout(() => sendNote(id), 600));
+  });
+  ta.addEventListener('keydown', e => {
+    if (e.key === 'Escape' || (e.code === 'Space' && e.ctrlKey)) { e.preventDefault(); ta.blur(); }
+  });
+  ta.addEventListener('blur', () => leaveNote('link:' + id));
+}
+
 
 // a closed issue was finished, so it is purple; a closed PR was given up, so red
 const ghColor = gh => ({ open: '#1f883d', merged: '#8250df', 'not planned': '#59636e',
@@ -1347,6 +1405,7 @@ function cardKey(w) {
   const gh = ghOf(w);
   return w.link.tool ? 'tool ' + w.link.tool + ' ' + w.link.dir
     : w.link.image ? w.link.image
+    : w.link.note ? 'note ' + (noteEdit === w.id ? 'edit' : w.link.text || '')
     : w.link.path ? docKey(w) : w.link.url + (gh ? ' ' + gh.state : '') + ' ' + shownTitle(w);
 }
 
@@ -1387,9 +1446,17 @@ function card(pic, w) {
   if (w.link.tool) return toolCard(pic, w);
   if (w.link.image) return imgCard(pic, w);
   if (w.link.path) return docCard(pic, w);
-  const u = new URL(w.link.url);
+  if (w.link.note) return noteCard(pic, w);
   pic.className = 'pic card';
   pic.style.cssText = '';
+  // a kind this page does not know (from a newer branch) is just its title:
+  // throwing here would stop every render, and with it the way into a terminal
+  let u;
+  try { u = new URL(w.link.url); } catch {
+    pic.innerHTML = `<div class="ttl"><span></span></div>`;
+    pic.querySelector('.ttl span').textContent = w.link.title || 'Card';
+    return;
+  }
   pic.innerHTML = `<div class="ttl"><img alt=""><span></span></div><div class="url"></div>`;
   const img = pic.querySelector('img');
   img.onerror = () => img.remove();
@@ -1551,7 +1618,7 @@ function place(el, w) {
   const fl = isCard(w) ? 0 : 1;
   el.style.width = Math.max(90 * fl, w.w * zoom) + 'px';
   el.style.height = Math.max(60 * fl, w.h * zoom) + 'px';
-  const dw = w.link && w.link.path && el.querySelector('.docwrap');
+  const dw = w.link && (w.link.path || w.link.note) && el.querySelector('.docwrap');
   if (dw) {                          // the caption stays at screen size
     dw.style.width = w.w + 'px';
     dw.style.height = Math.max(0, Math.max(60, w.h * zoom) - CAP_H) / zoom + 'px';
@@ -2377,6 +2444,7 @@ async function activate(id) {
   render();
   if (id.startsWith('link:')) {
     const w = data.windows.find(x => x.id === id);
+    if (w && w.link.note) return editNote(id);
     const dw = w && w.link.path && tileEls.get(id) && tileEls.get(id).querySelector('.docwrap');
     if (dw) dw.focus({ preventScroll: true });        // into the document: INSERT
     else if (w && w.link.tool) runTool(w.link, w);
@@ -2582,7 +2650,7 @@ let editBack = null;                       // the tile to type into again once d
 const tileKey = e => e.key === 'Enter' && e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey;
 function startTile(w) {
   const typing = document.activeElement && document.activeElement.closest('.termhost, .docwrap');
-  if (typing) typing.closest('.docwrap') ? typing.blur() : terms.get(w.id.slice(4))?.term.blur();
+  if (typing) typing.closest('.docwrap') ? document.activeElement.blur() : terms.get(w.id.slice(4))?.term.blur();
   sel = w.id;
   render();
   editBack = typing ? w.id : null;
@@ -2650,6 +2718,7 @@ document.addEventListener('keydown', e => {
   if (k === 'u') { e.preventDefault(); return askLink(); }
   if (k === 'o') { e.preventDefault(); return askDoc(); }
   if (k === 'p') { e.preventDefault(); return askImage(); }
+  if (k === 'n') { e.preventDefault(); return void newNote(); }
   if (k === 'g') { e.preventDefault(); return newGroup(); }
   if (k === '1') { e.preventDefault(); return actualSize(); }
   if (k === 'z') { e.preventDefault(); return setLens(!lensOn); }
@@ -2714,7 +2783,7 @@ activate = counted('activate', activate, id => ({ kind: kindOf(id) }));
 newTerm = counted('term.new', newTerm);
 closeTerm = counted('term.close', closeTerm);
 // a card the poll finds unplaced is placed again every poll until the server holds it: not an add
-addCard = counted('card.add', addCard, (f, at, placed) => placed ? null : { kind: f.image ? 'image' : f.path ? 'doc' : 'url' });
+addCard = counted('card.add', addCard, (f, at, placed) => placed ? null : { kind: f.image ? 'image' : f.path ? 'doc' : f.note ? 'note' : 'url' });
 closeLink = counted('card.close', closeLink);
 newGroup = counted('group.new', newGroup);
 actualSize = counted('actual', actualSize);
