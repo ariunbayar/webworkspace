@@ -544,6 +544,7 @@ async function poll() {
     takePings(data.pings || [], asked);
     cstate = data.claude || {};
     takeLinks(data.links || [], asked);
+    if (links.some(l => l.diff && !diffs.has(l.diff))) readDiffs();   // a diff card from before a reload
     data.windows.push(...links.map(linkWin));
     // one sent from outside — a shell, an agent — is placed by the first page to see it, in the Inbox
     links.filter(l => l.x == null && !pend.has(l.id)).forEach(l => l.origin === 'api' ? arrivedCard(l) : addCard(l, null, true));
@@ -562,7 +563,7 @@ async function poll() {
 function haystack(w) {
   const t = w.term && terms.get(w.term.session);
   return [w.title, w.app, w.cls, t && t.title, w.term && w.term.running, w.term && w.term.cwd,
-          w.link && (w.link.url || w.link.path || w.link.image || w.link.tool || w.link.text),
+          w.link && (w.link.url || w.link.path || w.link.image || w.link.tool || w.link.diff || w.link.text),
           w.desktop !== null && w.desktop !== undefined ? 'ws' + (w.desktop + 1) : ''
          ].filter(Boolean).join(' ').toLowerCase();
 }
@@ -1315,12 +1316,12 @@ function cardTitle(l) {
 function cardHost(url) {
   try { return new URL(url).host.replace(/^www\./, ''); } catch { return 'Link'; }
 }
-const isCard = w => w.link && !w.link.image && !w.link.path && !w.link.note;   // link or tool card
+const isCard = w => w.link && !w.link.image && !w.link.path && !w.link.note && !w.link.diff;   // link or tool card
 function linkWin(l) {
   return { id: 'link:' + l.id, link: l, title: cardTitle(l),
-           app: l.tool ? 'Tool' : l.image ? 'Image' : l.path ? (isMdPath(l.path) ? 'Markdown' : 'Text') : l.note ? 'Note' : cardHost(l.url),
-           w: l.w || (l.image ? 640 : l.path ? 720 : l.tool ? 240 : l.note ? 360 : 320),
-           h: l.h || (l.image ? 480 : l.path ? 900 : l.tool ? 96 : l.note ? 300 : 76),
+           app: l.tool ? 'Tool' : l.diff ? 'Diff' : l.image ? 'Image' : l.path ? (isMdPath(l.path) ? 'Markdown' : 'Text') : l.note ? 'Note' : cardHost(l.url),
+           w: l.w || (l.image ? 640 : l.path || l.diff ? 720 : l.tool ? 240 : l.note ? 360 : 320),
+           h: l.h || (l.image ? 480 : l.path || l.diff ? 900 : l.tool ? 96 : l.note ? 300 : 76),
            x: 0, y: 0, z: 1e9, desktop: null };
 }
 
@@ -1377,6 +1378,68 @@ function docCard(pic, w) {
     : d.error ? `<p class="gone">${esc(w.link.path)}: ${esc(d.error)}</p>` : d.html;
   pic.querySelector('.docwrap').scrollTop = top;   // a save keeps your place
   if (inside) pic.querySelector('.docwrap').focus({ preventScroll: true });
+}
+
+// ---- diffs: what a PR changes, drawn on a card of its own beside the PR's ---
+const diffs = new Map();            // PR url -> {sha, files, text, cut} or {error}
+let diffBusy = false;
+async function readDiffs(only) {    // only: the one just asked for; else every diff card, as the PR polls do
+  if (diffBusy) return;
+  diffBusy = true;
+  let changed = false;
+  for (const l of links) {
+    if (!l.diff || (only && l.diff !== only)) continue;
+    const had = diffs.get(l.diff);
+    try {
+      const d = await (await fetch('/api/diff?url=' + encodeURIComponent(l.diff)
+        + (had && had.sha ? '&since=' + had.sha : ''))).json();
+      if (d.same) continue;
+      if (!had || had.sha !== d.sha || had.error !== d.error) { diffs.set(l.diff, d); changed = true; }
+    } catch {}
+  }
+  diffBusy = false;
+  if (changed) render();
+}
+const diffKey = w => 'diff ' + (diffs.has(w.link.diff) ? diffs.get(w.link.diff).sha || diffs.get(w.link.diff).error : '');
+
+function diffCard(pic, w) {
+  const old = pic.querySelector('.docwrap'), top = old ? old.scrollTop : 0;
+  const inside = old && old.contains(document.activeElement);
+  const d = diffs.get(w.link.diff);
+  pic.className = 'pic card doc';
+  pic.style.cssText = '';
+  pic.innerHTML = `<div class="docwrap" tabindex="-1"><div class="diff"></div></div>`;
+  const body = pic.querySelector('.diff');
+  if (!d || d.error) body.innerHTML = `<p class="gone">${d ? esc(d.error) : 'Reading…'}</p>`;
+  else {
+    const add = d.files.reduce((n, f) => n + f.additions, 0), del = d.files.reduce((n, f) => n + f.deletions, 0);
+    body.innerHTML = `<div class="dfiles"><b>${d.files.length} file${d.files.length === 1 ? '' : 's'} changed</b> `
+      + `<span class="dadd">+${add}</span> <span class="ddel">−${del}</span>`
+      + d.files.map(f => `<div><span class="dadd">+${f.additions}</span> <span class="ddel">−${f.deletions}</span> ${esc(f.path)}</div>`).join('')
+      + `</div>` + d.text.split('\n').map(ln => {
+        const c = /^(\+\+\+|---) /.test(ln) || /^(diff |index |new file|deleted file|similarity|rename |old mode|new mode)/.test(ln) ? 'dmeta'
+          : ln[0] === '+' ? 'dadd' : ln[0] === '-' ? 'ddel' : ln[0] === '@' ? 'dhunk' : '';
+        return `<div class="dl ${c}">${esc(ln) || ' '}</div>`;
+      }).join('')
+      + (d.cut ? `<p class="gone">Cut at 1 MB: the rest of the diff is on GitHub.</p>` : '');
+  }
+  pic.querySelector('.docwrap').scrollTop = top;   // a new commit keeps your place
+  if (inside) pic.querySelector('.docwrap').focus({ preventScroll: true });
+}
+
+// the Diff button on a PR card: a diff card beside it, or the one already there
+function openDiff(w) {
+  const had = links.find(l => l.diff === w.link.url);
+  if (had) { sel = 'link:' + had.id; render(); return void toast('Its diff is already on the board'); }
+  fetch('/api/links', { method: 'POST', body: JSON.stringify({ diff: w.link.url, from: 'page' }) })
+    .then(r => r.json().then(l => ({ ok: r.ok, l })))
+    .then(({ ok, l }) => {
+      if (!ok) return toast('Could not add the diff: ' + esc(l.error || 'unknown error'), 4000);
+      const [x, y] = seatOf(w);
+      addCard(l, [x + w.w + GRID, y]);
+      readDiffs(l.diff);
+    })
+    .catch(() => toast('Could not add the diff: no answer from the server', 4000));
 }
 
 // ---- notes: markdown typed on the card itself, kept with the cards ----------
@@ -1491,6 +1554,7 @@ async function askGitHub() {
       if (st) ghStates.set(l.url, st);
     } catch {}
   }
+  readDiffs();                     // a PR with a new commit gets its diff again
   render();
 }
 
@@ -1500,6 +1564,7 @@ function cardKey(w) {
   return w.link.tool ? 'tool ' + w.link.tool + ' ' + w.link.dir
     : w.link.image ? w.link.image
     : w.link.note ? 'note ' + (noteEdit === w.id ? 'edit' : w.link.text || '')
+    : w.link.diff ? diffKey(w)
     : w.link.path ? docKey(w) : w.link.url + (gh ? ' ' + gh.state : '') + ' ' + shownTitle(w);
 }
 
@@ -1540,6 +1605,7 @@ function card(pic, w) {
   if (w.link.tool) return toolCard(pic, w);
   if (w.link.image) return imgCard(pic, w);
   if (w.link.path) return docCard(pic, w);
+  if (w.link.diff) return diffCard(pic, w);
   if (w.link.note) return noteCard(pic, w);
   pic.className = 'pic card';
   pic.style.cssText = '';
@@ -1564,6 +1630,13 @@ function card(pic, w) {
     b.textContent = gh.state;
     b.style.background = ghColor(gh);
     pic.querySelector('.url').prepend(b);
+  }
+  if (/^https:\/\/github\.com\/[^/]+\/[^/]+\/pull\/\d+/.test(w.link.url)) {
+    const b = document.createElement('button');
+    b.className = 'diffbtn';
+    b.title = 'Show what this PR changes, on a card beside it';
+    b.textContent = 'Diff';
+    pic.append(b);
   }
 }
 
@@ -1712,7 +1785,7 @@ function place(el, w) {
   const fl = isCard(w) ? 0 : 1;
   el.style.width = Math.max(90 * fl, w.w * zoom) + 'px';
   el.style.height = Math.max(60 * fl, w.h * zoom) + 'px';
-  const dw = w.link && (w.link.path || w.link.note) && el.querySelector('.docwrap');
+  const dw = w.link && (w.link.path || w.link.note || w.link.diff) && el.querySelector('.docwrap');
   if (dw) {                          // the caption stays at screen size
     dw.style.width = w.w + 'px';
     dw.style.height = Math.max(0, Math.max(60, w.h * zoom) - CAP_H) / zoom + 'px';
@@ -1966,10 +2039,17 @@ function chip(el, c) {
   if (b) b.textContent = c.state;
 }
 
+function projectOf(w) {
+  const s = seatOf(w), c = [s[0] + w.w / 2, s[1] + w.h / 2];
+  const g = groups.findLast(g => inGroup(g, c));
+  if (g) return g.name;
+  const last = shortPath(w.term.cwd).split('/').pop();
+  return last === '~' ? '' : last;           // home says nothing about a project
+}
 function dressTerm(el, w) {
   const t = mount(w), id = w.term.session;
   if (!t.wrap) {
-    el.innerHTML = `<div class="cap"><span class="dot"></span><span class="app"></span><span class="t2"></span>` +
+    el.innerHTML = `<div class="cap"><span class="dot"></span><span class="pre"></span><span class="app"></span><span class="t2"></span>` +
                    `<span class="note"></span>` +
                    `<span class="prof" title="Switch font (Ctrl+Alt+F)"></span>` +
                    `<span class="shut" title="Close">✕</span></div>` +
@@ -2027,6 +2107,10 @@ function dressTerm(el, w) {
   cap.querySelector('.prof').textContent = (profiles()[t.prof] || {}).name || '';
   const title = t.title || w.term.title || w.term.running || w.title;
   cap.querySelector('.t2').textContent = title;
+  // which project it is, said for you: its group's name, else its folder's
+  // last part. Worked out each render, so a tile carried into a group follows
+  const pre = projectOf(w);
+  cap.querySelector('.pre').textContent = pre && !title.toLowerCase().startsWith(pre.toLowerCase()) ? pre : '';
   // what is running, unless the title already says so: a shell says nothing
   const run = w.term.running || '';
   cap.querySelector('.app').textContent = run && !SHELL_NAMES.has(run)
@@ -2258,6 +2342,7 @@ function renderCanvas(match) {
         if (e.target.closest('.md a')) return;    // a link in a document is for following
         // answered here for the same reason as a terminal's close button below
         if (e.target.closest('.runbtn')) { e.preventDefault(); e.stopPropagation(); return runTool(win.link, win); }
+        if (e.target.closest('.diffbtn')) { e.preventDefault(); e.stopPropagation(); return openDiff(win); }
         if (win.term) {
           // the drag takes the pointer captive, and a captured pointer's click
           // is delivered to the tile rather than to what was under it — so the
@@ -2308,7 +2393,7 @@ function renderCanvas(match) {
         && !w.title.toLowerCase().startsWith(w.app.toLowerCase()) ? w.app : '';
       el.querySelector('.ord').textContent = twins.get(w.id) || '';
       if (w.link) {
-        el.title = w.link.url || w.link.path || w.link.image || 'Tool: ' + w.link.tool;
+        el.title = w.link.url || w.link.path || w.link.image || w.link.diff || 'Tool: ' + w.link.tool;
         const gh = ghOf(w), key = cardKey(w);
         if (gh) el.querySelector('.dot').style.background = ghColor(gh);
         const pic = el.children[1];          // the grip comes after it
@@ -2539,7 +2624,7 @@ async function activate(id) {
   if (id.startsWith('link:')) {
     const w = data.windows.find(x => x.id === id);
     if (w && w.link.note) return editNote(id);
-    const dw = w && w.link.path && tileEls.get(id) && tileEls.get(id).querySelector('.docwrap');
+    const dw = w && (w.link.path || w.link.diff) && tileEls.get(id) && tileEls.get(id).querySelector('.docwrap');
     if (dw) dw.focus({ preventScroll: true });        // into the document: INSERT
     else if (w && w.link.tool) runTool(w.link, w);
     else if (w && w.link.url) window.open(w.link.url, '_blank', 'noopener');
@@ -2837,9 +2922,11 @@ setInterval(readDocs, 2000);
 // never a title, a URL, or anything typed into a terminal. Batched, and sent
 // when the page is let go of, to /api/usage; usage_report.py reads it back.
 const usage = [], session = newId();
+const nolog = navigator.webdriver || /[?&]nolog\b/.test(location.search);    // a robot or ?nolog is not use
 const kindOf = id => !id ? 'none' : id.startsWith('web:') ? 'term' : id.startsWith('husk:') ? 'husk'
   : id.startsWith('link:') ? 'card' : 'window';
 function track(ev, props) {
+  if (nolog) return;
   usage.push({ ev, t: Date.now(), s: session, ...props });
   if (usage.length >= 200) sendUsage();
 }

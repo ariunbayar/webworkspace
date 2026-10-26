@@ -75,6 +75,11 @@
   .cap { display:flex; align-items:center; gap:7px; padding:0 9px; flex:none; height:28px;
          box-sizing:border-box; border-bottom:1px solid var(--line); background:var(--panel) }
   .cap .t2 { font-size:12.5px }
+  /* the project prefix gives way first on a narrow tile, then the title */
+  .cap .pre { flex:0 1000 auto; min-width:0; max-width:40%; overflow:hidden; text-overflow:ellipsis;
+              white-space:nowrap; font-size:12px; opacity:.6 }
+  .cap .pre:empty { display:none }
+  .cap .pre:not(:empty)::after { content:" ·" }
   .pic { position:relative; flex:1; min-height:0; background-repeat:no-repeat;
          background-origin:border-box }
   .pic.none { display:flex; align-items:center; justify-content:center; color:#fff;
@@ -189,6 +194,23 @@
              background:transparent; color:var(--fg); font:13px/1.5 ui-monospace, monospace }
   .md a { color:var(--accent) } .md img { max-width:100% }
   .md .gone { color:var(--accent) }
+  /* a PR's diff: monospace, one line per row, coloured by what the line does */
+  .diffbtn { position:absolute; right:8px; bottom:6px; font:inherit; font-size:11px; font-weight:600;
+             color:#fff; background:var(--accent); border:0; border-radius:5px; padding:2px 9px; cursor:pointer }
+  .diffbtn:hover { filter:brightness(1.12) }
+  .diff { font:12px/1.5 ui-monospace, monospace; color:var(--fg); width:max-content; min-width:100% }
+  .diff .gone { color:var(--accent) }
+  .dfiles { border-bottom:1px solid var(--line); padding-bottom:8px; margin-bottom:8px }
+  .dfiles div { color:var(--dim) }
+  .dl { white-space:pre; padding:0 6px }
+  .dadd { color:#1a7f37 } .ddel { color:#cf222e }
+  .dl.dadd { background:rgba(46,160,67,.15); color:var(--fg) }
+  .dl.ddel { background:rgba(248,81,73,.15); color:var(--fg) }
+  .dl.dhunk { color:#0969da; background:rgba(84,174,255,.12) }
+  .dl.dmeta { color:var(--dim); font-weight:600 }
+  @media (prefers-color-scheme: dark) {
+    .dadd { color:#3fb950 } .ddel { color:#f85149 } .dl.dhunk { color:#79c0ff }
+  }
   /* any other text file: as it is, in monospace, scrolling sideways rather than wrapping */
   .txtwrap { color:var(--fg) }
   .txt { margin:0; font:12.5px/1.5 ui-monospace, monospace; white-space:pre; tab-size:4 }

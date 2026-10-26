@@ -882,6 +882,55 @@ def gh_state(url):
     return answer
 
 
+# A diff card shows what a PR changes. The head commit is asked for at most
+# every 30 seconds, and the diff itself only when that commit has changed, so
+# the page's polling costs GitHub next to nothing. Over a megabyte is cut.
+_diffs = {}
+DIFF_MAX = 1 << 20
+PR_URL = r"https://github\.com/([^/]+)/([^/]+)/pull/(\d+)"
+
+
+def _gh_run(args, timeout):
+    out = subprocess.run(["gh"] + args, capture_output=True, text=True, timeout=timeout)
+    if out.returncode:
+        raise ValueError((out.stderr.strip().splitlines() or ["gh failed"])[-1][:200])
+    return out.stdout
+
+
+def pr_diff(url, since=None):
+    """A PR's files (with + and - counts), head sha and diff text; or {"error"}.
+    With since (the sha the page has) and no change, only the sha is sent."""
+    m = re.fullmatch(PR_URL, url or "")
+    if not m:
+        return {"error": "not a GitHub PR address"}
+    hit = _diffs.get(url)
+    if not hit or time.time() - hit[0] >= (30 if "error" not in hit[1] else 10):
+        owner, repo, n = m.groups()
+        repo_args = [n, "--repo", "%s/%s" % (owner, repo)]
+        try:
+            info = json.loads(_gh_run(["pr", "view"] + repo_args + ["--json", "headRefOid,files"], 15))
+            sha = info["headRefOid"]
+            if hit and hit[1].get("sha") == sha:
+                answer = hit[1]
+            else:
+                raw = _gh_run(["pr", "diff"] + repo_args, 30).encode("utf-8", "replace")
+                answer = {"sha": sha, "cut": len(raw) > DIFF_MAX,
+                          "text": raw[:DIFF_MAX].decode("utf-8", "ignore"),
+                          "files": [{"path": f.get("path"), "additions": f.get("additions", 0),
+                                     "deletions": f.get("deletions", 0)} for f in info.get("files", [])]}
+        except FileNotFoundError:
+            answer = {"error": "gh is not installed"}
+        except subprocess.TimeoutExpired:
+            answer = {"error": "GitHub took too long"}
+        except (ValueError, KeyError, TypeError) as e:
+            answer = {"error": str(e) or "no answer from gh"}
+        hit = _diffs[url] = (time.time(), answer)
+    answer = hit[1]
+    if since and answer.get("sha") == since:
+        return {"sha": since, "same": True}
+    return answer
+
+
 # A text file shown on the surface is read from disk each time it changes,
 # so it reads like the editor it was written in. Any text file, and only to
 # this page: the answer is the file itself, unlike anything else here.
@@ -1048,10 +1097,10 @@ def placed(body):
 
 
 def send_link(url=None, title=None, path=None, image=None, keep=None, tool=None, folder=None, origin="api",
-              term=None, cwd=None, note=False):
+              term=None, cwd=None, note=False, diff=None):
     """A card for the board: a web page (url), a markdown file (path), a
     picture (image: a path or an http(s) URL), a note (note: markdown typed
-    on the card) or a button for one of a project's tools (tool, by name, in
+    on the card), a PR's changes (diff: the PR's address) or a button for one of a project's tools (tool, by name, in
     folder). None, and why, if it won't do.
     A tool card holds the name only: what it runs is looked up when pressed,
     so an edit to the script, or to .winlist-tools, is what runs next.
@@ -1067,6 +1116,11 @@ def send_link(url=None, title=None, path=None, image=None, keep=None, tool=None,
             return None, "give a url, a path to a text file, or an image"
         card = {kind: keep[kind], "title": title or keep[kind]}
         card.update(placed(keep))
+    elif diff:
+        m = re.fullmatch(PR_URL, diff)
+        if not m:
+            return None, "diff takes a GitHub PR address"
+        card = {"diff": diff, "title": title or "Diff · PR #" + m.group(3)}
     elif note:
         card = {"note": True, "text": "", "title": title or "Note"}
     elif tool:
@@ -1504,6 +1558,11 @@ class Handler(BaseHTTPRequestHandler):
         elif self.path.startswith("/api/ghstate?"):
             q = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
             self._send(json.dumps(gh_state(q.get("url", [""])[0])))
+        elif self.path.startswith("/api/diff?"):
+            if not same_page(None, self.headers.get("Host", ""), named=True):
+                return self._send(json.dumps({"error": "refused"}), code=403)
+            q = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
+            self._send(json.dumps(pr_diff(q.get("url", [""])[0], q.get("since", [""])[0])))
         elif self.path in ("/", "/index.html"):
             port = self.server.server_address[1]
             try:
@@ -1576,7 +1635,7 @@ class Handler(BaseHTTPRequestHandler):
             link, err = send_link(body.get("url"), body.get("title"), body.get("path"),
                                   body.get("image"), body.get("keep"), body.get("tool"), body.get("dir"),
                                   "page" if body.get("from") == "page" or body.get("keep") else "api",
-                                  body.get("term"), body.get("cwd"), body.get("note") is True)
+                                  body.get("term"), body.get("cwd"), body.get("note") is True, body.get("diff"))
             if not link:
                 return self._send(json.dumps({"error": err}), code=400)
             return self._send(json.dumps(link), code=201)
