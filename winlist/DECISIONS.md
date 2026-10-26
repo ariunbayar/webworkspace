@@ -195,3 +195,9 @@ Each entry:
 - Q: Merge PR #83?
 - A: Merged.
 - Status: done (PR #83)
+
+### #29 One session fills the usage log with fake card adds
+- Q: How do old loop entries (one page logged 1584 card adds) stop skewing the usage report?
+- A: Both: the page logs nothing when `navigator.webdriver` is true or the URL has `?nolog`; usage_report.py drops one page's events of one kind when it logs 300+ in a minute, says how many it ignored, and `--all` shows everything. The poll never counted cards after PR #88 (placed cards are not adds).
+- Why: card adds looked like the top action. 300, not 100: fast key repeat reaches ~200 a minute in real use; the loop made 480-620.
+- Status: done (PR)
