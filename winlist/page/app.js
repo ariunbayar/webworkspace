@@ -199,11 +199,12 @@ imgbox.addEventListener('close', async () => {
     addCard(l);
   } catch {}
 });
-// o asks for a markdown file; the server checks it is one before it is shown
-const docbox = $('#docbox');
+// o asks for a text file; the server checks it is one before it is shown
+const docbox = $('#docbox'), docHint = $('#docpath').placeholder;
 function askDoc() {
   if (docbox.open) return;
   $('#docpath').value = '';
+  $('#docpath').placeholder = docHint;
   docbox.returnValue = '';
   docbox.showModal();
   $('#docpath').focus();
@@ -216,6 +217,73 @@ docbox.addEventListener('close', async () => {
     const l = await r.json();
     if (!r.ok) return alertDoc(l.error);
     addCard(l);
+  } catch {}
+});
+// a file dropped on the box fills in its path: a file manager hands it over as
+// a file:// URI, a terminal or an editor as plain text. A browser keeps the
+// path of a bare File to itself (Chrome does so even from a file manager), so
+// the server looks for one of that name, size and time under home
+function droppedPath(dt) {
+  const s = (dt.getData('text/uri-list') || dt.getData('text/plain') || '')
+    .split(/\r?\n/).map(l => l.trim()).find(l => l && !l.startsWith('#'));
+  if (!s) return null;
+  if (!s.startsWith('file://')) return s;
+  try { return decodeURIComponent(new URL(s).pathname); } catch { return null; }
+}
+docbox.addEventListener('dragover', e => { e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = 'copy'; });
+async function foundPath(f) {
+  if (!f) return null;
+  try {
+    const q = new URLSearchParams({ name: f.name, size: f.size, mtime: f.lastModified });
+    const r = await fetch('/api/find?' + q);
+    return r.ok ? ((await r.json()).paths || [])[0] || null : null;
+  } catch { return null; }
+}
+docbox.addEventListener('drop', async e => {
+  e.preventDefault();
+  e.stopPropagation();
+  const file = e.dataTransfer.files[0];
+  let path = droppedPath(e.dataTransfer);
+  if (!path && file) {
+    $('#docpath').value = '';
+    $('#docpath').placeholder = 'Looking for ' + file.name + '…';
+    path = await foundPath(file);
+  }
+  if (!path) return toast('Could not find ' + esc(file ? file.name : 'that file') + ' under home: paste its path instead', 4000);
+  $('#docpath').value = path;
+  docbox.close('add');
+});
+// A file dragged over the page shows where it can go, and dropped anywhere it
+// opens as a card right there, if the text viewer can read it; else it says so
+const carriesFile = dt => [...dt.types].some(t => t === 'Files' || t === 'text/uri-list');
+let dragDepth = 0;
+const dropzone = on => { if (!on) dragDepth = 0; $('#dropzone').hidden = !on; };
+window.addEventListener('dragenter', e => {
+  if (!carriesFile(e.dataTransfer) || docbox.open) return;
+  dragDepth++;
+  dropzone(true);
+});
+window.addEventListener('dragleave', () => { if (dragDepth && --dragDepth === 0) dropzone(false); });
+window.addEventListener('dragover', e => {
+  if (!carriesFile(e.dataTransfer)) return;
+  e.preventDefault();                // else the browser leaves the board to show the file
+  e.dataTransfer.dropEffect = 'copy';
+});
+window.addEventListener('drop', async e => {
+  if (!carriesFile(e.dataTransfer)) return;
+  e.preventDefault();
+  dropzone(false);
+  const file = e.dataTransfer.files[0], name = file ? file.name : 'that file';
+  const box = $('#pan').getBoundingClientRect();
+  const at = [(e.clientX - box.left - origin[0]) / zoom, (e.clientY - box.top - origin[1]) / zoom];
+  const path = droppedPath(e.dataTransfer) || await foundPath(file);
+  if (!path) return toast('Could not find ' + esc(name) + ' under home, so it cannot be opened', 4000);
+  try {
+    const r = await fetch('/api/links', { method: 'POST', body: JSON.stringify({ from: 'page', path }) });
+    const l = await r.json();
+    if (!r.ok) return toast('The text viewer cannot open ' + esc(name) + ': ' + esc(l.error || 'unknown error'), 4000);
+    const w = linkWin(l);
+    addCard(l, [at[0] - w.w / 2, at[1] - w.h / 2]);
   } catch {}
 });
 function alertDoc(msg) {            // said where you were typing, not in a modal
@@ -1249,14 +1317,15 @@ function cardHost(url) {
 const isCard = w => w.link && !w.link.image && !w.link.path && !w.link.note;   // link or tool card
 function linkWin(l) {
   return { id: 'link:' + l.id, link: l, title: cardTitle(l),
-           app: l.tool ? 'Tool' : l.image ? 'Image' : l.path ? 'Markdown' : l.note ? 'Note' : cardHost(l.url),
+           app: l.tool ? 'Tool' : l.image ? 'Image' : l.path ? (isMdPath(l.path) ? 'Markdown' : 'Text') : l.note ? 'Note' : cardHost(l.url),
            w: l.w || (l.image ? 640 : l.path ? 720 : l.tool ? 240 : l.note ? 360 : 320),
            h: l.h || (l.image ? 480 : l.path ? 900 : l.tool ? 96 : l.note ? 300 : 76),
            x: 0, y: 0, z: 1e9, desktop: null };
 }
 
-// ---- docs: a markdown file kept on the surface, read again when it changes --
-const docs = new Map();             // path -> {mtime, html} or {error}
+// ---- docs: a text file kept on the surface, read again when it changes -------
+const isMdPath = p => /\.(md|markdown)$/i.test(p);
+const docs = new Map();             // path -> {mtime, html, md, at} or {error}
 const md = new marked.Marked({ gfm: true });
 md.use({ renderer: {
   // a file can carry HTML, and this page can type into terminals: none of it runs
@@ -1272,13 +1341,16 @@ async function readDocs() {
   for (const l of links) {
     if (!l.path) continue;
     const had = docs.get(l.path);
+    if (had && had.at && Date.now() - had.at < 1000) continue;   // a busy file is redrawn once a second at most
     const q = 'path=' + encodeURIComponent(l.path) + (had && had.mtime ? '&since=' + had.mtime : '');
     try {
       const r = await fetch('/api/file?' + q), d = await r.json();
       if (!r.ok) {
         if (!had || !had.error) { docs.set(l.path, { error: d.error }); changed = true; }
       } else if ('text' in d) {
-        docs.set(l.path, { mtime: d.mtime, html: md.parse(d.text) });
+        const isMd = d.kind ? d.kind === 'md' : isMdPath(l.path);
+        docs.set(l.path, { mtime: d.mtime, md: isMd, at: Date.now(),
+                           html: isMd ? md.parse(d.text) : `<pre class="txt">${esc(d.text)}</pre>` });
         changed = true;
       }
     } catch {}
@@ -1298,7 +1370,9 @@ function docCard(pic, w) {
   pic.className = 'pic card doc';
   pic.style.cssText = '';
   pic.innerHTML = `<div class="docwrap" tabindex="-1"><div class="md"></div></div>`;
-  pic.querySelector('.md').innerHTML = !d ? '<p>Reading…</p>'
+  const body = pic.querySelector('.md');
+  if (d && !d.error && !d.md) body.className = 'txtwrap';
+  body.innerHTML = !d ? '<p>Reading…</p>'
     : d.error ? `<p class="gone">${esc(w.link.path)}: ${esc(d.error)}</p>` : d.html;
   pic.querySelector('.docwrap').scrollTop = top;   // a save keeps your place
   if (inside) pic.querySelector('.docwrap').focus({ preventScroll: true });

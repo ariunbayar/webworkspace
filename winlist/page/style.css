@@ -189,6 +189,9 @@
              background:transparent; color:var(--fg); font:13px/1.5 ui-monospace, monospace }
   .md a { color:var(--accent) } .md img { max-width:100% }
   .md .gone { color:var(--accent) }
+  /* any other text file: as it is, in monospace, scrolling sideways rather than wrapping */
+  .txtwrap { color:var(--fg) }
+  .txt { margin:0; font:12.5px/1.5 ui-monospace, monospace; white-space:pre; tab-size:4 }
   /* a picture fills its tile without being cut or stretched */
   .pic.img { padding:0; display:flex; align-items:center; justify-content:center;
              background:#111; overflow:hidden }
@@ -276,6 +279,11 @@
            max-width:calc(100vw - 32px) }
   #toast { bottom:52px; opacity:0; transition:opacity .3s }
   #toast.on { opacity:1; transition:none }
+  /* a file dragged in from outside: the whole page is where it can go */
+  #dropzone { position:fixed; inset:10px; z-index:99; pointer-events:none; display:grid; place-items:center;
+              border:3px dashed var(--accent); border-radius:12px; background:color-mix(in srgb, var(--bg) 70%, transparent);
+              color:var(--fg); font-size:20px; font-weight:600 }
+  #dropzone[hidden] { display:none }
   #legend { bottom:14px; display:none }
   #legend.on { display:block }
   #legend kbd, #toast kbd { color:#fff; background:#3a3a3a; border-color:#555 }
