@@ -1366,7 +1366,7 @@ function docKey(w) {
 }
 
 function docCard(pic, w) {
-  const old = pic.querySelector('.docwrap'), top = old ? old.scrollTop : 0;
+  const old = pic.querySelector('.docwrap'), top = old ? old.scrollTop : 0, left = old ? old.scrollLeft : 0;
   const inside = old && old.contains(document.activeElement);
   const d = docs.get(w.link.path);
   pic.className = 'pic card doc';
@@ -1376,7 +1376,7 @@ function docCard(pic, w) {
   if (d && !d.error && !d.md) body.className = 'txtwrap';
   body.innerHTML = !d ? '<p>Reading…</p>'
     : d.error ? `<p class="gone">${esc(w.link.path)}: ${esc(d.error)}</p>` : d.html;
-  pic.querySelector('.docwrap').scrollTop = top;   // a save keeps your place
+  Object.assign(pic.querySelector('.docwrap'), { scrollTop: top, scrollLeft: left });   // a save keeps your place
   if (inside) pic.querySelector('.docwrap').focus({ preventScroll: true });
 }
 
@@ -1403,7 +1403,7 @@ async function readDiffs(only) {    // only: the one just asked for; else every 
 const diffKey = w => 'diff ' + (diffs.has(w.link.diff) ? diffs.get(w.link.diff).sha || diffs.get(w.link.diff).error : '');
 
 function diffCard(pic, w) {
-  const old = pic.querySelector('.docwrap'), top = old ? old.scrollTop : 0;
+  const old = pic.querySelector('.docwrap'), top = old ? old.scrollTop : 0, left = old ? old.scrollLeft : 0;
   const inside = old && old.contains(document.activeElement);
   const d = diffs.get(w.link.diff);
   pic.className = 'pic card doc';
@@ -1423,7 +1423,7 @@ function diffCard(pic, w) {
       }).join('')
       + (d.cut ? `<p class="gone">Cut at 1 MB: the rest of the diff is on GitHub.</p>` : '');
   }
-  pic.querySelector('.docwrap').scrollTop = top;   // a new commit keeps your place
+  Object.assign(pic.querySelector('.docwrap'), { scrollTop: top, scrollLeft: left });   // a new commit keeps your place
   if (inside) pic.querySelector('.docwrap').focus({ preventScroll: true });
 }
 
@@ -1822,7 +1822,7 @@ function drag(e, w, el) {
       moved = true;
       el.classList.add('dragging');
       showGrid(true);
-      $('#tiles').append(el);          // the one you just touched belongs on top
+      toFront(el);                     // the one you just touched belongs on top
       // moving an element in the document drops its pointer capture, and the
       // drag then only lasts while the pointer happens to stay over the tile —
       // which for a terminal, grabbed by a thin title bar, is no time at all
@@ -2616,10 +2616,20 @@ function liftFinger(e) {
 addEventListener('pointerup', liftFinger, true);
 addEventListener('pointercancel', liftFinger, true);
 
+// to the front: moving a node in the document sets what scrolls inside it back
+// to the top, so a document card keeps its place across the move (and is not
+// moved at all when it is in front already)
+function toFront(el) {
+  const box = $('#tiles');
+  if (!el || box.lastElementChild === el) return;
+  const dw = el.querySelector('.docwrap'), at = dw && [dw.scrollTop, dw.scrollLeft];
+  box.append(el);
+  if (at) [dw.scrollTop, dw.scrollLeft] = at;
+}
+
 async function activate(id) {
   sel = id;
-  const el = tileEls.get(id);
-  if (el) $('#tiles').append(el);      // focusing it brings it to the front, as a drag does
+  toFront(tileEls.get(id));            // focusing it brings it to the front, as a drag does
   render();
   if (id.startsWith('link:')) {
     const w = data.windows.find(x => x.id === id);
@@ -2854,8 +2864,13 @@ document.addEventListener('keydown', e => {
   if (doc) {                         // a document has it: it scrolls, Esc leaves
     if (e.key === 'Escape' || (e.code === 'Space' && e.ctrlKey)) { e.preventDefault(); doc.blur(); return; }
     const by = { j: 40, k: -40, d: doc.clientHeight / 2, u: -doc.clientHeight / 2 }[e.key];
-    if (by && !e.ctrlKey && !e.altKey && !e.metaKey) { e.preventDefault(); doc.scrollBy(0, by); }
-    return;                          // arrows, PgUp/PgDn and Space scroll on their own
+    // sideways for a long diff or code line, as in vi: hl a step, 0 $ the ends
+    const across = { h: -80, l: 80 }[e.key], end = { 0: 0, $: doc.scrollWidth }[e.key];
+    if (e.ctrlKey || e.altKey || e.metaKey) return;
+    if (by) { e.preventDefault(); doc.scrollBy(0, by); }
+    else if (across) { e.preventDefault(); doc.scrollBy(across, 0); }
+    else if (end !== undefined) { e.preventDefault(); doc.scrollLeft = end; }
+    return;                          // arrows, PgUp/PgDn, Space and Shift+wheel scroll on their own
   }
   if (e.target.tagName === 'INPUT') {
     if (e.key === 'Escape') { e.target.value = ''; e.target.blur(); sel = null; render(); }
