@@ -1155,7 +1155,7 @@ function drawEdges() {
       if (ping && looked) {
         if (!inViewSince.has(w.id)) inViewSince.set(w.id, now);
         else if (now - inViewSince.get(w.id) >= 2000) {
-          if (arrived) arrivals.delete(w.id); else seenPing(w.id);
+          if (arrived) { arrivals.delete(w.id); saveArrivals(); } else seenPing(w.id);
           seen = true;
         }
       } else inViewSince.delete(w.id);
@@ -1661,10 +1661,13 @@ function addCard(l, at, placed) {      // placed: found on the server, not added
 }
 
 // Cards that just arrived from outside pulse, and so does their mark on the
-// edge, until you have had them in view for a moment, as a ping does.
-const arrivals = new Set();
+// edge, until you have had them in view for a moment, as a ping does. Kept in
+// the browser, so a reload does not stop them before you have seen them.
+const arrivals = new Set(store.get('arrivals', []));
+const saveArrivals = () => store.set('arrivals', [...arrivals]);
 function announce(id) {
   arrivals.add(id);
+  saveArrivals();
 }
 
 // A card sent from outside names where it came from, or is left in the Inbox:

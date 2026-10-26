@@ -231,3 +231,9 @@ Each entry:
 - A: No: the editor uses the note's own font (14px system-ui), and it grows with the text so the card is the only thing that scrolls.
 - Why: the user saw two scrollbars and the font switch to monospace when editing (2026-10-26).
 - Status: done (PR)
+
+### Pulses survive a reload and a restart
+- Q: Should a pulse (a new card, or Claude finished in a window) stop when the page reloads or the server restarts?
+- A: No: new-card pulses are kept in the browser, pings in `~/.local/state/winlist/pings.json`. Both still clear once you have looked at the tile. A ping older than a week is dropped at start.
+- Why: the user saw a reload clear the pulse (2026-10-26).
+- Status: done (PR)
