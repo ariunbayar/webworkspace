@@ -1318,7 +1318,7 @@ function leaveNote(id) {
   if (noteEdit !== id) return;      // a redraw drops the textarea and blurs it too
   noteEdit = null;
   if (noteSave.has(id)) sendNote(id);
-  render();
+  if (tileEls.has(id)) render();     // closed: render is what is taking it off, and blurred it
 }
 function editNote(id) {
   noteEdit = id;
@@ -2223,8 +2223,8 @@ function renderCanvas(match) {
   });
   tileEls.forEach((el, id) => {
     if (live.has(id)) return;
+    tileEls.delete(id);               // first: removing it can blur a note, which renders again
     el.remove();
-    tileEls.delete(id);
     const t = terms.get(id.slice(4));         // a session that has gone for good
     if (id.startsWith('web:') && t) {
       if (t.ws) t.ws.close();
