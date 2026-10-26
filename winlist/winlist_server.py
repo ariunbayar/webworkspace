@@ -1008,10 +1008,11 @@ def placed(body):
 
 
 def send_link(url=None, title=None, path=None, image=None, keep=None, tool=None, folder=None, origin="api",
-              term=None, cwd=None):
+              term=None, cwd=None, note=False):
     """A card for the board: a web page (url), a markdown file (path), a
-    picture (image: a path or an http(s) URL) or a button for one of a
-    project's tools (tool, by name, in folder). None, and why, if it won't do.
+    picture (image: a path or an http(s) URL), a note (note: markdown typed
+    on the card) or a button for one of a project's tools (tool, by name, in
+    folder). None, and why, if it won't do.
     A tool card holds the name only: what it runs is looked up when pressed,
     so an edit to the script, or to .winlist-tools, is what runs next.
     keep is a card a browser held from before the board lived here: taken as
@@ -1026,6 +1027,8 @@ def send_link(url=None, title=None, path=None, image=None, keep=None, tool=None,
             return None, "give a url, a path to a markdown file, or an image"
         card = {kind: keep[kind], "title": title or keep[kind]}
         card.update(placed(keep))
+    elif note:
+        card = {"note": True, "text": "", "title": title or "Note"}
     elif tool:
         tools, err = project_tools(folder or "")
         if err:
@@ -1061,7 +1064,7 @@ def send_link(url=None, title=None, path=None, image=None, keep=None, tool=None,
 
 
 def change_link(lid, body):
-    """A card moved or resized on some page; body None takes it off the board."""
+    """A card moved or resized on some page, or a note typed in; body None takes it off the board."""
     with _links_lock:
         link = next((l for l in _links if l["id"] == lid), None)
         if not link:
@@ -1070,6 +1073,8 @@ def change_link(lid, body):
             _links.remove(link)
         else:
             link.update(placed(body))
+            if link.get("note") and isinstance(body.get("text"), str):
+                link["text"] = body["text"][:200000]
         _save_links()
         return link
 
@@ -1405,7 +1410,7 @@ class Handler(BaseHTTPRequestHandler):
             link, err = send_link(body.get("url"), body.get("title"), body.get("path"),
                                   body.get("image"), body.get("keep"), body.get("tool"), body.get("dir"),
                                   "page" if body.get("from") == "page" or body.get("keep") else "api",
-                                  body.get("term"), body.get("cwd"))
+                                  body.get("term"), body.get("cwd"), body.get("note") is True)
             if not link:
                 return self._send(json.dumps({"error": err}), code=400)
             return self._send(json.dumps(link), code=201)

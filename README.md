@@ -127,6 +127,11 @@ to the middle of what you are looking at. The surface is placed rather
 than scrolled, so it has no edges: you can drag it as far as you like, and zoom
 runs free from 2% to 400%. "Fit" brings everything back into view.
 
+`n` drops a sticky note at that spot and puts you straight into it: type markdown,
+`Esc` (or `Ctrl+Space`) reads it rendered, `Enter` or a double click writes again.
+Its text is kept on the server with the other cards (`PATCH /api/links/<id>`
+with `{"text": ...}`), and the `/` filter matches it.
+
 A photo is of a whole workspace, so cutting one window's rectangle out of it
 also cuts out anything that was lying on top. The stacking order at the moment
 of the shutter says exactly which parts those are, so they are struck out with
