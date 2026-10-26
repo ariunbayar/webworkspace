@@ -920,6 +920,31 @@ def read_doc(path, since=None):
         return None, e.strerror or "cannot read it"
 
 
+
+SKIP_DIRS = {"node_modules", "__pycache__", "venv", "site-packages"}
+
+
+def find_file(name, size, mtime_ms, limit=3.0):
+    """Where a file dropped from a file manager lives. The browser hands over
+    only its name, size and time, so look for that file under home: hidden and
+    bulky folders are skipped, and the search gives up after limit seconds.
+    The paths that match, best first (none if it isn't there or is too deep)."""
+    home, end, found = os.path.expanduser("~"), time.monotonic() + limit, []
+    for top, dirs, files in os.walk(home):
+        if time.monotonic() > end:
+            break
+        dirs[:] = [d for d in dirs if not d.startswith(".") and d not in SKIP_DIRS]
+        if name not in files:
+            continue
+        path = os.path.join(top, name)
+        try:
+            st = os.stat(path)
+        except OSError:
+            continue
+        if st.st_size == size:
+            found.append((abs(st.st_mtime * 1000 - mtime_ms), path))
+    return [p for gap, p in sorted(found) if gap < 2000] or [p for gap, p in sorted(found)][:1]
+
 # Pictures go on the surface the same way: a file on disk is handed out by
 # path, only to this page and only if it is an image; one on the web is not
 # fetched here at all, the page shows it from where it is.
@@ -1322,6 +1347,18 @@ class Handler(BaseHTTPRequestHandler):
             if os.path.isdir(path):
                 return self._send(json.dumps({"ok": True, "path": path}))
             self._send(json.dumps({"error": "no such folder"}), code=404)
+        elif self.path.startswith("/api/find?"):
+            # a file dropped from a file manager comes without its path
+            if not same_page(None, self.headers.get("Host", ""), named=True):
+                return self._send(json.dumps({"error": "refused"}), code=403)
+            q = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
+            try:
+                name, size, mtime = q["name"][0], int(q["size"][0]), float(q.get("mtime", ["0"])[0])
+            except (KeyError, ValueError):
+                return self._send(json.dumps({"error": "bad request"}), code=400)
+            if "/" in name or name in ("", ".", ".."):
+                return self._send(json.dumps({"error": "bad name"}), code=400)
+            self._send(json.dumps({"paths": find_file(name, size, mtime)}))
         elif self.path.startswith("/api/tools?"):
             # the commands come back to be run, so only this page may ask
             if not same_page(None, self.headers.get("Host", ""), named=True):

@@ -200,10 +200,11 @@ imgbox.addEventListener('close', async () => {
   } catch {}
 });
 // o asks for a text file; the server checks it is one before it is shown
-const docbox = $('#docbox');
+const docbox = $('#docbox'), docHint = $('#docpath').placeholder;
 function askDoc() {
   if (docbox.open) return;
   $('#docpath').value = '';
+  $('#docpath').placeholder = docHint;
   docbox.returnValue = '';
   docbox.showModal();
   $('#docpath').focus();
@@ -220,7 +221,8 @@ docbox.addEventListener('close', async () => {
 });
 // a file dropped on the box fills in its path: a file manager hands it over as
 // a file:// URI, a terminal or an editor as plain text. A browser keeps the
-// path of a bare File to itself, so that one can only be said, not opened
+// path of a bare File to itself (Chrome does so even from a file manager), so
+// the server looks for one of that name, size and time under home
 function droppedPath(dt) {
   const s = (dt.getData('text/uri-list') || dt.getData('text/plain') || '')
     .split(/\r?\n/).map(l => l.trim()).find(l => l && !l.startsWith('#'));
@@ -229,10 +231,24 @@ function droppedPath(dt) {
   try { return decodeURIComponent(new URL(s).pathname); } catch { return null; }
 }
 docbox.addEventListener('dragover', e => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; });
-docbox.addEventListener('drop', e => {
+async function foundPath(f) {
+  if (!f) return null;
+  try {
+    const q = new URLSearchParams({ name: f.name, size: f.size, mtime: f.lastModified });
+    const r = await fetch('/api/find?' + q);
+    return r.ok ? ((await r.json()).paths || [])[0] || null : null;
+  } catch { return null; }
+}
+docbox.addEventListener('drop', async e => {
   e.preventDefault();
-  const path = droppedPath(e.dataTransfer);
-  if (!path) return toast('That drop carried no path: paste the path instead', 4000);
+  const file = e.dataTransfer.files[0];
+  let path = droppedPath(e.dataTransfer);
+  if (!path && file) {
+    $('#docpath').value = '';
+    $('#docpath').placeholder = 'Looking for ' + file.name + '…';
+    path = await foundPath(file);
+  }
+  if (!path) return toast('Could not find ' + esc(file ? file.name : 'that file') + ' under home: paste its path instead', 4000);
   $('#docpath').value = path;
   docbox.close('add');
 });
