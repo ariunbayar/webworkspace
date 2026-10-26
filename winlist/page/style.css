@@ -175,7 +175,7 @@
   .pic.doc { padding:0; overflow:hidden; display:block; background:var(--panel) }
   .docwrap { position:absolute; top:0; left:0; width:100%; height:100%; overflow:auto;
              transform-origin:0 0; box-sizing:border-box; padding:14px 18px; outline:none;
-             touch-action:pan-y }
+             touch-action:pan-x pan-y }
   /* like a terminal, a document is only a tile in NORMAL — you move it, nothing
      inside answers. Enter or a double click goes in; Esc comes back out */
   body:not(.insert) .docwrap, .docwrap:not(:focus-within) { pointer-events:none; overflow:hidden }

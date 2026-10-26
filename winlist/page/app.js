@@ -2828,8 +2828,13 @@ document.addEventListener('keydown', e => {
   if (doc) {                         // a document has it: it scrolls, Esc leaves
     if (e.key === 'Escape' || (e.code === 'Space' && e.ctrlKey)) { e.preventDefault(); doc.blur(); return; }
     const by = { j: 40, k: -40, d: doc.clientHeight / 2, u: -doc.clientHeight / 2 }[e.key];
-    if (by && !e.ctrlKey && !e.altKey && !e.metaKey) { e.preventDefault(); doc.scrollBy(0, by); }
-    return;                          // arrows, PgUp/PgDn and Space scroll on their own
+    // sideways for a long diff or code line, as in vi: hl a step, 0 $ the ends
+    const across = { h: -80, l: 80 }[e.key], end = { 0: 0, $: doc.scrollWidth }[e.key];
+    if (e.ctrlKey || e.altKey || e.metaKey) return;
+    if (by) { e.preventDefault(); doc.scrollBy(0, by); }
+    else if (across) { e.preventDefault(); doc.scrollBy(across, 0); }
+    else if (end !== undefined) { e.preventDefault(); doc.scrollLeft = end; }
+    return;                          // arrows, PgUp/PgDn, Space and Shift+wheel scroll on their own
   }
   if (e.target.tagName === 'INPUT') {
     if (e.key === 'Escape') { e.target.value = ''; e.target.blur(); sel = null; render(); }
