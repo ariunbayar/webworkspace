@@ -1441,9 +1441,16 @@ function card(pic, w) {
   if (w.link.image) return imgCard(pic, w);
   if (w.link.path) return docCard(pic, w);
   if (w.link.note) return noteCard(pic, w);
-  const u = new URL(w.link.url);
   pic.className = 'pic card';
   pic.style.cssText = '';
+  // a kind this page does not know (from a newer branch) is just its title:
+  // throwing here would stop every render, and with it the way into a terminal
+  let u;
+  try { u = new URL(w.link.url); } catch {
+    pic.innerHTML = `<div class="ttl"><span></span></div>`;
+    pic.querySelector('.ttl span').textContent = w.link.title || 'Card';
+    return;
+  }
   pic.innerHTML = `<div class="ttl"><img alt=""><span></span></div><div class="url"></div>`;
   const img = pic.querySelector('img');
   img.onerror = () => img.remove();
