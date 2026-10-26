@@ -1,6 +1,46 @@
 <!doctype html>
 <meta charset="utf-8">
 <title>__TITLE__</title>
+<script>
+// Any error the page throws shows as a mark in the corner, so a page that has
+// quietly stopped working says so. Here, before everything else, so it is
+// there even when app.js itself cannot load; clicking it says what went wrong.
+(() => {
+  const seen = new Map();             // message → how many times
+  let mark;
+  function note(msg, where) {
+    msg = String(msg || 'Unknown error') + (where ? ' (' + where + ')' : '');
+    seen.set(msg, (seen.get(msg) || 0) + 1);
+    if (!mark) {
+      mark = document.createElement('button');
+      mark.id = 'errmark';
+      mark.onclick = () => {
+        const list = mark.querySelector('ol') || mark.appendChild(document.createElement('ol'));
+        list.hidden = !list.hidden;
+      };
+    }
+    if (!mark.isConnected) (document.body || document.documentElement).append(mark);
+    let n = 0;
+    seen.forEach(c => n += c);
+    const open = mark.querySelector('ol') && !mark.querySelector('ol').hidden;
+    mark.innerHTML = '<b>⚠ ' + n + (n === 1 ? ' error' : ' errors') + '</b><ol' + (open ? '' : ' hidden') + '></ol>';
+    const list = mark.querySelector('ol');
+    seen.forEach((c, m) => {
+      const li = list.appendChild(document.createElement('li'));
+      li.textContent = (c > 1 ? c + '× ' : '') + m;
+    });
+    mark.title = 'The page hit an error; click for what. Reload once it is fixed.';
+  }
+  addEventListener('error', e => {
+    if (e.target !== window) {        // a favicon that is not there is not an error; a script is
+      if (/^(SCRIPT|LINK)$/.test(e.target.tagName)) note('Could not load ' + (e.target.src || e.target.href));
+      return;
+    }
+    note(e.message, e.filename && e.filename.split('/').pop() + ':' + e.lineno);
+  }, true);
+  addEventListener('unhandledrejection', e => note(e.reason && e.reason.message || e.reason));
+})();
+</script>
 <link rel="stylesheet" href="/vendor/xterm.css">
 <script src="/vendor/xterm.js"></script>
 <script src="/vendor/marked.min.js"></script>
