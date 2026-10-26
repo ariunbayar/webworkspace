@@ -2821,9 +2821,11 @@ setInterval(readDocs, 2000);
 // never a title, a URL, or anything typed into a terminal. Batched, and sent
 // when the page is let go of, to /api/usage; usage_report.py reads it back.
 const usage = [], session = newId();
+const nolog = navigator.webdriver || /[?&]nolog\b/.test(location.search);    // a robot or ?nolog is not use
 const kindOf = id => !id ? 'none' : id.startsWith('web:') ? 'term' : id.startsWith('husk:') ? 'husk'
   : id.startsWith('link:') ? 'card' : 'window';
 function track(ev, props) {
+  if (nolog) return;
   usage.push({ ev, t: Date.now(), s: session, ...props });
   if (usage.length >= 200) sendUsage();
 }

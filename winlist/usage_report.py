@@ -4,6 +4,7 @@
 Run:  python3 winlist/usage_report.py                 # every day there is
       python3 winlist/usage_report.py --days 7        # the last week
       python3 winlist/usage_report.py --split 2026-10-23  # before vs after a date
+      python3 winlist/usage_report.py --all           # without dropping bursts
 
 The page sends one line per thing done to /api/usage, and winlist_server.py
 appends them to ~/.local/state/winlist/usage.jsonl: action names, the kind of
@@ -37,6 +38,19 @@ def load(path):
     except OSError:
         pass
     return out
+
+
+BURST = 300     # of one event in one minute by one page; fast key repeat reaches ~200
+
+
+def drop_bursts(events):
+    """Leave out what one page did over BURST times of one kind in a minute: a
+    loop (one page logged 1584 card adds in four minutes), not use. Returns
+    what is left, and how many events and pages were left out."""
+    per = collections.Counter((e.get("s"), e["ev"], int(e["t"] // 60000)) for e in events)
+    bad = {k for k, n in per.items() if n >= BURST}
+    kept = [e for e in events if (e.get("s"), e["ev"], int(e["t"] // 60000)) not in bad]
+    return kept, len(events) - len(kept), len({k[0] for k in bad})
 
 
 def name(e):
@@ -81,8 +95,13 @@ def main():
     ap.add_argument("--log", default=LOG)
     ap.add_argument("--days", type=int, help="only the last N days")
     ap.add_argument("--split", help="YYYY-MM-DD: compare per-day rates before and from this date")
+    ap.add_argument("--all", action="store_true", help="keep bursts (a loop's worth of one event in a minute)")
     args = ap.parse_args()
     events = load(args.log)
+    if not args.all:
+        events, n, pages = drop_bursts(events)
+        if n:
+            print("ignored %d events from %d sessions (bursts of %d+ in a minute; --all keeps them)" % (n, pages, BURST))
     if args.days:
         since = datetime.date.today() - datetime.timedelta(days=args.days - 1)
         events = [e for e in events if e["day"] >= since]
