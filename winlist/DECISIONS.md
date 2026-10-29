@@ -249,3 +249,9 @@ Each entry:
 - A: Snap the frame back: any scroll of #pan is reset to 0,0. The surface is placed by its origin and never scrolled.
 - Why: the user saw the triangles inside the view while scrolling a terminal (2026-10-29).
 - Status: done (PR)
+
+### Zoom snaps to 1:1 near it
+- Q: Terminal text looks blurry at 97%. What should happen?
+- A: A zoom that comes to rest within 10% of 100% (90-110%) snaps to exactly 100%, on whole pixels, after 0.3 s, and not while fingers are still pinching. Elsewhere the zoom stays where you left it.
+- Why: anywhere but 1:1 every glyph is resampled and the text goes soft (2026-10-29). The user chose this over drawing terminals at a font sized to the zoom.
+- Status: done (PR)
