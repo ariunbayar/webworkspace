@@ -3142,16 +3142,23 @@ track('open', { vw: innerWidth, vh: innerHeight, bare, zoom: Math.round(zoom * 1
 
 // the page's own keys, as the page has them: in a terminal or a box only the
 // few that belong to the page are counted, never what is typed
+// A key the page does nothing with is counted as 'other', with no character:
+// a row of them would spell out whatever was being typed
+const PAGE_KEYS = new Set(['a', '?', ':', '/', 'Escape', 'b', 't', 'c', 'u', 'o', 'p', 'n', 'y', 'g', '1', 'z', 'm',
+  'Enter', ' ', 'h', 'j', 'k', 'l', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'PageUp', 'PageDown']);
 document.addEventListener('keydown', e => {
-  const typing = e.target.tagName === 'TEXTAREA' || e.target.tagName === 'INPUT'
-    || !!(e.target.closest && e.target.closest('.docwrap'));
+  // a box is anything that takes text: a group's name and folder are edited in
+  // place (contenteditable), and a dialog's keys are its own
+  const typing = e.target.tagName === 'TEXTAREA' || e.target.tagName === 'INPUT' || !!e.target.isContentEditable
+    || !!(e.target.closest && e.target.closest('.docwrap, [contenteditable=""], [contenteditable="true"], dialog[open], [role=dialog], [role=menu]'));
   const mods = (e.ctrlKey ? 'C-' : '') + (e.altKey ? 'A-' : '') + (e.metaKey ? 'S-' : '')
     + (e.shiftKey && e.key.length > 1 ? 's-' : '');
   const page = tileKey(e) || (e.code === 'Space' && e.ctrlKey) || (e.code === 'KeyF' && e.ctrlKey && e.altKey);
   if (typing && !page) return;
   if (!typing && (e.ctrlKey || e.altKey) && !page) return;      // the browser's
   if (['Shift', 'Control', 'Alt', 'Meta'].includes(e.key)) return;
-  track('key', { k: mods + (e.key === ' ' ? 'Space' : e.key), mode: editing || (typing ? 'insert' : 'normal') });
+  const k = page || PAGE_KEYS.has(e.key) ? mods + (e.key === ' ' ? 'Space' : e.key) : 'other';
+  track('key', { k, mode: editing || (typing ? 'insert' : 'normal') });
 }, true);
 
 // each of these is a thing done, counted where it is done, whichever way it came

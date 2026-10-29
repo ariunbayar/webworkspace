@@ -267,3 +267,9 @@ Each entry:
 - A: A second 1 goes back to the exact zoom and position the first came from, with a short "back to 72%" toast, as long as you haven't panned or zoomed since. Any move of your own (wheel, pinch, drag, the map, a pick that scrolls the view) forgets the way back, and 1 then does 1:1 again. The way back is kept across a reload. Pressing 1 at 100% saves nothing.
 - Why: of 118 presses of 1 in Oct 23-29, 115 were followed by a zoom within 5 s (2026-10-29 log review). #38's fly-in should reuse the same slot.
 - Status: done (PR)
+
+### #41 The usage log records what you type in a group's folder or name
+- Q: The log spelled out text typed into a group's name and folder chips. Fix it how, and what about the lines already logged?
+- A: Fix + scrub. The page now counts anything that takes text as typing (contenteditable, open dialogs and menus too), and logs only the keys it acts on by name; any other key is 'other', with no character. `winlist/scrub_usage.py` masks the old lines once, keeping a backup beside the log. The report applies the same mask whenever it reads, so anything that slips through is hidden: a run of keys less than 3 s apart that holds a non-page character was typing, and every character in it becomes 'char'.
+- Why: the log's promise is "never what is typed"; folder paths were in it (found in the 2026-10-29 log review).
+- Status: done (PR)
