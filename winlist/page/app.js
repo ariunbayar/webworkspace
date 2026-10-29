@@ -506,6 +506,14 @@ $('#reset').onclick = () => {
 addEventListener('resize', render);
 // the frame can change size without a window resize (bar folded, layout settled): the edge marks are measured against it
 new ResizeObserver(markEdges).observe($('#pan'));
+// overflow:hidden still lets the browser scroll the frame to bring a focused
+// terminal into view, and everything inside it, edge marks too, slides off
+// its place. The surface is placed by origin, never scrolled: put it back
+$('#pan').addEventListener('scroll', e => {
+  e.target.scrollTop = 0;
+  e.target.scrollLeft = 0;
+  markEdges();
+});
 $('#q').addEventListener('input', () => { sel = null; render(); });
 // hidden until asked for (/ or the palette); stays while it holds text, folds when it empties and loses focus
 const openQ = () => { if (bare) setBare(false); $('#q').classList.add('on'); $('#q').focus(); };
@@ -2302,6 +2310,55 @@ async function newTerm({ claude, argv, group, cwd, corner } = {}) {
   pickIt();
 }
 
+// The X answers a click, not a press: a press that moves is a pan or a drag
+// that happened to start on it, and a second finger makes it a pinch. Either
+// way nothing closes. Pressing it twice in a row is still a quick close.
+function pressShut(e, then) {
+  e.preventDefault();
+  if (e.button || pointers.size > 1) return;
+  const sx = e.clientX, sy = e.clientY;
+  const done = ev => {
+    off();
+    if (letGo === done) letGo = null;
+    if (ev && ev.type === 'pointerup' && Math.abs(ev.clientX - sx) + Math.abs(ev.clientY - sy) < 5
+        && pointers.size < 2 && ev.target.closest && ev.target.closest('.shut')) then();
+  };
+  const move = ev => { if (Math.abs(ev.clientX - sx) + Math.abs(ev.clientY - sy) >= 5) done(); };
+  const off = follow(window, move, done);
+  letGo = done;                      // a pinch beginning calls it off
+}
+
+// Closing a terminal that is running something (Claude, an editor, a server)
+// asks first, on the caption itself: a second click on the X, or Enter, closes;
+// Esc, a click elsewhere or four seconds keep it. An idle shell closes at once.
+let asking = null;
+function askClose(w, el) {
+  const id = w.term.session, run = w.term.running || '';
+  const busy = w.term.alive && (cstate[w.id] || (run && !SHELL_NAMES.has(run)));
+  if (!busy || (asking && asking.id === id)) { if (asking) asking.end(); return closeTerm(id); }
+  if (asking) asking.end();
+  const shut = el.querySelector('.shut');
+  shut.textContent = `Close ${cstate[w.id] ? 'Claude' : run}? ✕`;
+  shut.classList.add('asking');
+  const key = e => {
+    if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); end(); closeTerm(id); }
+    else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); end(); }
+  };
+  const away = e => { if (!(e.target.closest && e.target.closest('.shut') === shut)) end(); };
+  const timer = setTimeout(() => end(), 4000);
+  const end = () => {
+    clearTimeout(timer);
+    removeEventListener('keydown', key, true);
+    removeEventListener('pointerdown', away, true);
+    shut.textContent = '✕';
+    shut.classList.remove('asking');
+    if (asking && asking.id === id) asking = null;
+  };
+  addEventListener('keydown', key, true);
+  addEventListener('pointerdown', away, true);
+  asking = { id, end };
+}
+
 async function closeTerm(id) {
   await fetch('/api/terminals/' + id, { method: 'DELETE' }).catch(() => {});
   delete faces[id];                          // gone for good: nothing to put back
@@ -2356,7 +2413,7 @@ function renderCanvas(match) {
           // the drag takes the pointer captive, and a captured pointer's click
           // is delivered to the tile rather than to what was under it — so the
           // close button has to be answered here, before any of that
-          if (e.target.closest('.shut')) { e.preventDefault(); return closeTerm(win.term.session); }
+          if (e.target.closest('.shut')) return pressShut(e, () => askClose(tileEls.get(w.id).win, el));
           if (e.target.closest('.prof')) { e.preventDefault(); return swapFace(win.term.session); }
           if (e.target.closest('.grip')) return grab(e, win, el);
           // a terminal is for typing into, so only its caption is a handle;
@@ -2366,8 +2423,7 @@ function renderCanvas(match) {
         } else if (win.link && e.target.closest('.grip')) {
           return grabLink(e, win, el);
         } else if (win.link && e.target.closest('.shut')) {
-          e.preventDefault();
-          return closeLink(win.id);
+          return pressShut(e, () => closeLink(win.id));
         } else if (inInsert()) {
           return;                // in INSERT a photograph is just more surface: it pans
         }
