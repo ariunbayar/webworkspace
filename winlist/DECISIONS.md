@@ -277,3 +277,9 @@ Each entry:
 - A: The label rounds, so a zoom saved before the snap (e.g. 99.7%) showed as 100% but was still resampled; and tiles and the surface could sit on half pixels (a tile centred on a point lands on x.5). Now a kept zoom near 1:1 snaps at load, the surface and every tile are placed on whole screen pixels, and at exactly 1:1 terminals and text cards are not scaled at all.
 - Why: the user saw the blur again after the snap (2026-10-29).
 - Status: done (PR)
+
+### #44 A new terminal takes the keyboard
+- Q: Should a new terminal (t, c, the palette) be ready to type in, or stay picked in NORMAL until Enter?
+- A: Type at once. Once it is listed, the new terminal is focused, as a new terminal window is. If you press a key or click anything while it is starting, it is only picked: you have moved on. Keys typed before its socket opens are held and sent when it does. A terminal a tool button starts runs its own command, so it is only picked.
+- Why: usage log, Oct 23-29: of 77 new terminals, the next action was Enter 32 times, a median of 2.3 s later.
+- Status: done (PR)
