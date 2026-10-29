@@ -58,7 +58,7 @@
       <kbd>Super+Enter</kbd> move/size · <kbd>t</kbd> terminal · <kbd>c</kbd> Claude ·
       <kbd>Ctrl+Space</kbd> leave a terminal · <kbd>?</kbd> all keys</span>
   </div>
-  <div class="pan" id="pan"><div class="canvas" id="canvas"><div id="groups"></div><div id="tiles"></div><div id="mark"></div></div><div id="grid"></div><div id="edges"></div><div id="loupe"><div class="lens"></div></div><div id="nomatch"></div><div id="banner"></div></div>
+  <div class="pan" id="pan"><div class="canvas" id="canvas"><div id="groups"></div><div id="tiles"></div><div id="mark"></div></div><div id="grid"></div><div id="edges"></div><div id="loupe"><div class="lens"></div></div><canvas id="map" title="The whole surface: press or drag to go there · m keeps it shown"></canvas><div id="nomatch"></div><div id="banner"></div></div>
 <span class="mode" id="mode" title="NORMAL: keys move about the surface · INSERT: typing into a terminal or document · TILE: moving and sizing (Super+Enter)"></span>
 <div id="legend"></div><div id="toast"></div>
 <div id="dropzone" hidden>Drop a file to open it</div>
@@ -101,6 +101,7 @@
       <tr><td><kbd>Esc</kbd></td><td>clear and hide the filter and the pick, then fold the top bar</td></tr>
       <tr><td><kbd>1</kbd></td><td>actual size about the picked window</td></tr>
       <tr><td><kbd>z</kbd></td><td>loupe on or off</td></tr>
+      <tr><td><kbd>m</kbd></td><td>map of the whole surface: shown while you pan or zoom, m keeps it; press or drag on it to go there</td></tr>
       <tr><td><kbd>b</kbd></td><td>top bar in or out</td></tr>
     </table></section>
     <section><h3>Arranging</h3><table>

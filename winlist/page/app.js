@@ -356,6 +356,7 @@ const ACTIONS = [
   ['Group', 'g', () => newGroup()],
   ['Actual size', '1', () => actualSize()],
   ['Loupe', 'z', () => setLens(!lensOn)],
+  ['Map of the surface', 'm', () => setMap(!mapPinned)],
   ['Top bar', 'b', () => setBare(!bare)],
   ['Filter', '/', () => { openQ(); }],
   ['Architecture', 'a', () => showArch()],
@@ -1117,7 +1118,79 @@ function shift(dx, dy) {          // slide the whole surface, no edges to run in
   store.set('origin', origin);
   $('#canvas').style.transform = `translate(${origin[0]}px,${origin[1]}px)`;
   markEdges();
+  stirMap();
 }
+
+// The whole surface small, in the corner, with the view as a frame on it:
+// shown while you pan or zoom and gone a moment after, or kept with m. A press
+// or a drag on it carries the view there.
+let mapPinned = store.get('map', false), mapHide = 0, mapFit = null;
+if (mapPinned) $('#map').classList.add('on');
+function stirMap() {
+  $('#map').classList.add('on');
+  clearTimeout(mapHide);
+  if (!mapPinned) mapHide = setTimeout(() => $('#map').classList.remove('on'), 1200);
+}
+function setMap(v) {
+  mapPinned = v;
+  store.set('map', v);
+  track('map', { on: v });
+  clearTimeout(mapHide);
+  $('#map').classList.toggle('on', v);
+  markEdges();
+}
+function drawMap(W, H) {
+  const cv = $('#map'), on = cv.classList.contains('on');
+  if (!on || !data || !W || !H) return;
+  const dpr = devicePixelRatio || 1, MW = 220, MH = 150;
+  if (cv.width !== MW * dpr) { cv.width = MW * dpr; cv.height = MH * dpr; }
+  // what there is and what you see, whichever is bigger; held while you drag
+  // the map, or the ground would move under the pointer
+  if (!mapFit || !mapFit.held) {
+    const [b0, b1, b2, b3] = bounds(), v = [-origin[0] / zoom, -origin[1] / zoom];
+    const x0 = Math.min(b0, v[0]), y0 = Math.min(b1, v[1]);
+    const x1 = Math.max(b2, v[0] + W / zoom), y1 = Math.max(b3, v[1] + H / zoom);
+    const pad = 0.04 * Math.max(x1 - x0, y1 - y0);
+    const k = Math.min(MW / (x1 - x0 + 2 * pad), MH / (y1 - y0 + 2 * pad));
+    mapFit = { k, x: x0 - pad - (MW / k - (x1 - x0 + 2 * pad)) / 2, y: y0 - pad - (MH / k - (y1 - y0 + 2 * pad)) / 2 };
+  }
+  const { k, x, y } = mapFit, c = cv.getContext('2d'), css = getComputedStyle(cv);
+  c.setTransform(dpr, 0, 0, dpr, 0, 0);
+  c.clearRect(0, 0, MW, MH);
+  const match = visible();
+  data.windows.forEach(w => {
+    const [wx, wy] = seatOf(w);
+    c.globalAlpha = match(w) ? 0.85 : 0.2;
+    c.fillStyle = pings.has(w.id) ? '#f2a516' : colorOf(w.app);
+    c.fillRect((wx - x) * k, (wy - y) * k, Math.max(2, w.w * k), Math.max(2, w.h * k));
+    if (w.id === sel) {
+      c.globalAlpha = 1;
+      c.strokeStyle = css.color;
+      c.lineWidth = 1.5;
+      c.strokeRect((wx - x) * k, (wy - y) * k, Math.max(2, w.w * k), Math.max(2, w.h * k));
+    }
+  });
+  c.globalAlpha = 1;
+  c.strokeStyle = css.getPropertyValue('--accent').trim() || '#e0875c';
+  c.lineWidth = 1.5;
+  c.strokeRect((-origin[0] / zoom - x) * k, (-origin[1] / zoom - y) * k, W / zoom * k, H / zoom * k);
+}
+$('#map').addEventListener('pointerdown', e => {
+  if (e.button) return;
+  e.preventDefault();
+  e.stopPropagation();                 // the map, not the surface under it
+  const cv = $('#map');
+  cv.setPointerCapture(e.pointerId);
+  if (mapFit) mapFit.held = true;
+  const go = ev => {
+    if (!mapFit) return;
+    const r = cv.getBoundingClientRect(), pan = $('#pan');
+    const wx = mapFit.x + (ev.clientX - r.left) / mapFit.k, wy = mapFit.y + (ev.clientY - r.top) / mapFit.k;
+    shift(pan.clientWidth / 2 - wx * zoom - origin[0], pan.clientHeight / 2 - wy * zoom - origin[1]);
+  };
+  go(e);
+  const off = follow(cv, go, () => { off(); if (mapFit) mapFit.held = false; markEdges(); });
+});
 
 // A triangle on the frame's edge for windows wholly out of view, on the line from
 // the frame's middle to the window's. Nearby ones share a triangle, and a window
@@ -1202,6 +1275,7 @@ function drawEdges() {
     s.top = ey + 'px';
     s.setProperty('--a', a + 'rad');
   });
+  drawMap(W, H);
 }
 
 // to the window, picked, and near enough to read: the look that clears the ping
@@ -1226,6 +1300,7 @@ function zoomAbout(next, cx, cy) {
   store.set('zoom', zoom);
   store.set('origin', origin);
   render();
+  stirMap();
   // a rest within a tenth of 1:1 is taken to mean 1:1: anywhere else every
   // glyph is resampled and the text goes soft. Not while fingers still pinch
   clearTimeout(snapRest);
@@ -2632,7 +2707,7 @@ function carries(e) {
 // window is picked or dragged. Its mousedown is held back, so a terminal you
 // pressed on cannot take the keyboard straight back.
 $('#pan').addEventListener('pointerdown', e => {
-  if (!inInsert()) return;
+  if (!inInsert() || e.target.closest('#map')) return;   // the map keeps your place
   const tile = e.target.closest('.tile');
   const here = document.activeElement || document.body;
   if (tile && tile === here.closest('.tile')) return;
@@ -3001,6 +3076,7 @@ document.addEventListener('keydown', e => {
   if (k === 'g') { e.preventDefault(); return newGroup(); }
   if (k === '1') { e.preventDefault(); return actualSize(); }
   if (k === 'z') { e.preventDefault(); return setLens(!lensOn); }
+  if (k === 'm') { e.preventDefault(); return setMap(!mapPinned); }
   if (k === 'Enter' || k === ' ') { const w = selected(); if (w) { e.preventDefault(); activate(w.id); } return; }
   const moves = { ArrowUp: [0, -1], k: [0, -1], ArrowDown: [0, 1], j: [0, 1],
                   ArrowLeft: [-1, 0], h: [-1, 0], ArrowRight: [1, 0], l: [1, 0] };
