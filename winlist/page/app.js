@@ -481,7 +481,10 @@ function actualSize() {
     const r = el.getBoundingClientRect();
     zoomAbout(1, r.left + r.width / 2, r.top + r.height / 2);
   }
-  // and on whole screen pixels too: half a pixel off and the text smears
+  wholePixels();
+}
+// and on whole screen pixels too: half a pixel off and the text smears
+function wholePixels() {
   const box = $('#pan').getBoundingClientRect();
   shift(Math.round(box.left + origin[0]) - box.left - origin[0],
         Math.round(box.top + origin[1]) - box.top - origin[1]);
@@ -1223,7 +1226,16 @@ function zoomAbout(next, cx, cy) {
   store.set('zoom', zoom);
   store.set('origin', origin);
   render();
+  // a rest within a tenth of 1:1 is taken to mean 1:1: anywhere else every
+  // glyph is resampled and the text goes soft. Not while fingers still pinch
+  clearTimeout(snapRest);
+  if (zoom !== 1 && Math.abs(zoom - 1) <= 0.1) snapRest = setTimeout(function snap() {
+    if (pointers.size) return (snapRest = setTimeout(snap, 300));
+    zoomAbout(1, cx, cy);
+    wholePixels();
+  }, 300);
 }
+let snapRest = 0;
 
 function setZoom(z) {
   const box = $('#pan').getBoundingClientRect();
