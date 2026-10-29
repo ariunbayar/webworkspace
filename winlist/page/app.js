@@ -951,9 +951,12 @@ function renderHusks() {
       term.open(el.querySelector('.termhost'));
       h = { el, term, w: { id: 'husk:' + r.id, husk: r.id, w: 0, h: 0 }, t: { term, wrap: el.querySelector('.termwrap'), cap: el.querySelector('.cap') } };
       husks.set(r.id, h);
+      // the output can come back after the husk has gone (restored, or closed):
+      // a disposed xterm.js throws on a write or a scroll, so it is left alone
       savedOut(r.id).then(out => {
+        if (h.dead) return;
         if (out.length) term.write(out);
-        term.write(OUT_END + '\x1b[?25l', () => term.scrollToBottom());
+        term.write(OUT_END + '\x1b[?25l', () => h.dead || term.scrollToBottom());
       });
     }
     const { el, t } = h, key = JSON.stringify([r.title, r.cwd, r.cmds]);
@@ -976,6 +979,7 @@ function renderHusks() {
   husks.forEach((h, id) => {
     if (live.has(id)) return;
     h.el.remove();
+    h.dead = true;
     h.term.dispose();
     husks.delete(id);
   });
@@ -1922,7 +1926,7 @@ function connect(t, id) {
   ws.onmessage = e => {
     // bytes are the terminal; text is the server talking about it, which the
     // window list already covers
-    if (typeof e.data !== 'string') t.term.write(new Uint8Array(e.data));
+    if (typeof e.data !== 'string' && !t.dead) t.term.write(new Uint8Array(e.data));
   };
   ws.onclose = () => { if (t.ws === ws) t.ws = null; };
   ws.onerror = () => { if (t.ws === ws) t.ws = null; };
@@ -2477,6 +2481,9 @@ function renderCanvas(match) {
     el.remove();
     const t = terms.get(id.slice(4));         // a session that has gone for good
     if (id.startsWith('web:') && t) {
+      // bytes already on their way still arrive after close(), and a write
+      // to a disposed xterm.js throws once it tries to scroll
+      t.dead = true;
       if (t.ws) t.ws.close();
       t.term.dispose();
       terms.delete(id.slice(4));
