@@ -255,3 +255,9 @@ Each entry:
 - A: A zoom that comes to rest within 10% of 100% (90-110%) snaps to exactly 100%, on whole pixels, after 0.3 s, and not while fingers are still pinching. Elsewhere the zoom stays where you left it.
 - Why: anywhere but 1:1 every glyph is resampled and the text goes soft (2026-10-29). The user chose this over drawing terminals at a font sized to the zoom.
 - Status: done (PR)
+
+### #11 Minimap
+- Q: When is the map of the surface shown?
+- A: While you pan or zoom, fading 1.2 s after; `m` (or the palette) keeps it shown, remembered across reloads. Bottom-right, 220x150: every tile as a box in its app colour, a pinging one orange, the picked one outlined, filtered-out ones faint, the view as a frame. A press or drag on it carries the view there, and doesn't take the keyboard from the terminal you're typing in.
+- Why: zoom is the most used action, mostly zooming out to find something and back (2026-10-29 log review). The user asked to try it; Claude's pick, as no option was chosen.
+- Status: done (PR)

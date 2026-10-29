@@ -286,6 +286,12 @@
   .helpbody td:first-child { white-space:nowrap; padding-right:12px; width:1% }
   .archbody b { color:var(--fg); font-weight:600 }
   footer { color:var(--dim); font-size:11px; margin-top:18px; border-top:1px solid var(--line); padding-top:9px }
+  /* the whole surface small, bottom right: only while it is wanted */
+  #map { position:absolute; right:10px; bottom:10px; width:220px; height:150px; z-index:85;
+         background:var(--panel); border:1px solid var(--line); border-radius:6px; color:var(--fg);
+         box-shadow:0 4px 14px rgba(0,0,0,.25); opacity:0; pointer-events:none; transition:opacity .2s;
+         cursor:crosshair; touch-action:none }
+  #map.on { opacity:.94; pointer-events:auto }
   /* which mode you are in, in the corner whether the bar is shown or not */
   .mode { position:fixed; left:8px; bottom:6px; z-index:98; pointer-events:none;
           font:600 10.5px ui-monospace,monospace; padding:2px 7px; border-radius:3px;
