@@ -272,4 +272,8 @@ Each entry:
 - Q: The log spelled out text typed into a group's name and folder chips. Fix it how, and what about the lines already logged?
 - A: Fix + scrub. The page now counts anything that takes text as typing (contenteditable, open dialogs and menus too), and logs only the keys it acts on by name; any other key is 'other', with no character. `winlist/scrub_usage.py` masks the old lines once, keeping a backup beside the log. The report applies the same mask whenever it reads, so anything that slips through is hidden: a run of keys less than 3 s apart that holds a non-page character was typing, and every character in it becomes 'char'.
 - Why: the log's promise is "never what is typed"; folder paths were in it (found in the 2026-10-29 log review).
+### Text stays sharp at 100%
+- Q: Text was still soft at "100%". Why?
+- A: The label rounds, so a zoom saved before the snap (e.g. 99.7%) showed as 100% but was still resampled; and tiles and the surface could sit on half pixels (a tile centred on a point lands on x.5). Now a kept zoom near 1:1 snaps at load, the surface and every tile are placed on whole screen pixels, and at exactly 1:1 terminals and text cards are not scaled at all.
+- Why: the user saw the blur again after the snap (2026-10-29).
 - Status: done (PR)
