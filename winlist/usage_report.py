@@ -40,6 +40,52 @@ def load(path):
     return out
 
 
+# the keys the page itself acts on (app.js PAGE_KEYS); anything else in the log
+# is typing that the page used to let through, before #41
+PAGE_KEYS = set("a ? : / Escape b t c u o p n y g 1 z m Enter Space h j k l "
+                "ArrowUp ArrowDown ArrowLeft ArrowRight PageUp PageDown".split())
+TYPED_GAP = 3000    # ms between keys in one run of typing
+
+
+def base_key(k):
+    """A key without its modifiers: 'S-Enter' -> 'Enter'. A lone '-' is a key."""
+    while len(k) > 2 and k[1] == "-" and k[0] in "CASs":
+        k = k[2:]
+    return k
+
+
+def mask_typing(events):
+    """Hide what older logs spelled out. A NORMAL key the page does nothing with
+    becomes 'char' (one character) or 'other'. A run of keys, under TYPED_GAP
+    apart, that holds such a character was typing, so every character in it is
+    masked, the page's letters too. Events are changed in place and keep their
+    order; returns how many were masked."""
+    n, run = 0, []
+
+    def flush():
+        nonlocal n
+        typed = any(len(base_key(e["k"])) == 1 and base_key(e["k"]) not in PAGE_KEYS for e in run)
+        for e in run:
+            b = base_key(e["k"])
+            if b in ("char", "other"):
+                continue
+            if len(b) == 1 and (typed or b not in PAGE_KEYS):
+                e["k"] = "char"; n += 1
+            elif b not in PAGE_KEYS and b != e["k"] and e["k"].startswith(("C-", "A-")):
+                continue          # a page shortcut with a modifier (Ctrl+Space, Ctrl+Alt+F)
+            elif b not in PAGE_KEYS and len(b) > 1:
+                e["k"] = "other"; n += 1
+        run.clear()
+
+    for e in sorted((e for e in events if e.get("ev") == "key" and isinstance(e.get("k"), str)
+                     and e.get("mode") == "normal"), key=lambda e: (str(e.get("s")), e["t"])):
+        if run and (e.get("s") != run[-1].get("s") or e["t"] - run[-1]["t"] > TYPED_GAP):
+            flush()
+        run.append(e)
+    flush()
+    return n
+
+
 BURST = 300     # of one event in one minute by one page; fast key repeat reaches ~200
 
 
@@ -98,6 +144,7 @@ def main():
     ap.add_argument("--all", action="store_true", help="keep bursts (a loop's worth of one event in a minute)")
     args = ap.parse_args()
     events = load(args.log)
+    mask_typing(events)
     if not args.all:
         events, n, pages = drop_bursts(events)
         if n:
