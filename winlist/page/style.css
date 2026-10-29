@@ -107,6 +107,7 @@
   .cap .shut { flex:none; cursor:pointer; opacity:.55; padding:0 3px;
                font-size:14px; line-height:1; border-radius:3px }
   .cap .shut:hover { opacity:1; background:var(--accent); color:#fff }
+  .cap .shut.asking { opacity:1; background:#cf222e; color:#fff; font-size:12px; padding:1px 6px }
   .tile.gone .cap .note { color:var(--accent); opacity:1 }
   .cap .note { flex:none; font-size:11px; opacity:.75 }
   /* the app in words beside the title; it gives way first when the tile is narrow */

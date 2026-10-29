@@ -237,3 +237,15 @@ Each entry:
 - A: No: new-card pulses are kept in the browser, pings in `~/.local/state/winlist/pings.json`. Both still clear once you have looked at the tile. A ping older than a week is dropped at start.
 - Why: the user saw a reload clear the pulse (2026-10-26).
 - Status: done (PR)
+
+### #25 The X on a terminal kills a running Claude at once
+- Q: What should closing a busy terminal do?
+- A: Release + ask: the X closes only on a click that did not move (a press that drags, or a second finger, closes nothing). A terminal running Claude or another program asks on its caption first: a second click or Enter closes, while Esc, a click elsewhere or 4 seconds keep it. An idle shell closes at once. Cards' X also answers only a click.
+- Why: a Claude session was lost to a pan or zoom that started on the X (2026-10-29). The X fired on the press.
+- Status: done (PR)
+
+### #35 Off-view markers drift into the middle of the screen
+- Q: Fix it how?
+- A: Snap the frame back: any scroll of #pan is reset to 0,0. The surface is placed by its origin and never scrolled.
+- Why: the user saw the triangles inside the view while scrolling a terminal (2026-10-29).
+- Status: done (PR)
