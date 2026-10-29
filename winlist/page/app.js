@@ -475,15 +475,38 @@ $('#zoom').addEventListener('input', () => {
 });
 // 1:1 is the one zoom where a terminal is not scaled at all, so its text lands
 // on whole pixels; held about the picked tile, or the middle with none picked
+// A second 1 goes back to where the first one came from, unless you have
+// panned or zoomed since: the way back is one step, kept across a reload, and
+// any move of your own forgets it (see leftBack).
+let backView = store.get('back', null), moving = false;
 function actualSize() {
+  if (backView) {
+    const b = backView;
+    setBack(null);
+    moving = true;
+    zoom = b.zoom;
+    origin = b.origin;
+    store.set('zoom', zoom);
+    store.set('origin', origin);
+    render();
+    moving = false;
+    stirMap();
+    return toast('back to ' + Math.round(zoom * 100) + '%', 1400);
+  }
+  const was = { zoom, origin: [...origin] };
   const el = sel && tileEls.get(sel);
+  moving = true;
   if (!el) setZoom(1);
   else {
     const r = el.getBoundingClientRect();
     zoomAbout(1, r.left + r.width / 2, r.top + r.height / 2);
   }
   wholePixels();
+  moving = false;
+  if (was.zoom !== 1) setBack(was);
 }
+function setBack(v) { backView = v; store.set('back', v); }
+function leftBack() { if (backView && !moving) setBack(null); }
 // and on whole screen pixels too: half a pixel off and the text smears
 function wholePixels() {
   const box = $('#pan').getBoundingClientRect();
@@ -1115,6 +1138,7 @@ function viewCenter() {
 
 function shift(dx, dy) {          // slide the whole surface, no edges to run into
   origin = [origin[0] + dx, origin[1] + dy];
+  leftBack();
   store.set('origin', origin);
   $('#canvas').style.transform = `translate(${origin[0]}px,${origin[1]}px)`;
   markEdges();
@@ -1297,6 +1321,7 @@ function zoomAbout(next, cx, cy) {
   const fx = cx - box.left, fy = cy - box.top;
   origin = [fx - (fx - origin[0]) / zoom * next, fy - (fy - origin[1]) / zoom * next];
   zoom = next;
+  leftBack();
   store.set('zoom', zoom);
   store.set('origin', origin);
   render();
