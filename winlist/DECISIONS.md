@@ -267,3 +267,9 @@ Each entry:
 - A: A second 1 goes back to the exact zoom and position the first came from, with a short "back to 72%" toast, as long as you haven't panned or zoomed since. Any move of your own (wheel, pinch, drag, the map, a pick that scrolls the view) forgets the way back, and 1 then does 1:1 again. The way back is kept across a reload. Pressing 1 at 100% saves nothing.
 - Why: of 118 presses of 1 in Oct 23-29, 115 were followed by a zoom within 5 s (2026-10-29 log review). #38's fly-in should reuse the same slot.
 - Status: done (PR)
+
+### Text stays sharp at 100%
+- Q: Text was still soft at "100%". Why?
+- A: The label rounds, so a zoom saved before the snap (e.g. 99.7%) showed as 100% but was still resampled; and tiles and the surface could sit on half pixels (a tile centred on a point lands on x.5). Now a kept zoom near 1:1 snaps at load, the surface and every tile are placed on whole screen pixels, and at exactly 1:1 terminals and text cards are not scaled at all.
+- Why: the user saw the blur again after the snap (2026-10-29).
+- Status: done (PR)

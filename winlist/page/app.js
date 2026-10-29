@@ -30,6 +30,8 @@ let started = null;                        // which run of the server we are tal
 let bare = store.get('bare', true);        // top bar folded away, the surface takes the page
 let layout = store.get('layout', {});      // window id -> [x, y] on the virtual screen
 let zoom = store.get('zoom', 0);           // 0 until we have measured a fit
+// a zoom kept from before snapping near 1:1 existed is snapped now: see zoomAbout
+if (zoom && zoom !== 1 && Math.abs(zoom - 1) <= 0.1) zoom = 1;
 let origin = store.get('origin', [0, 0]);  // where the surface sits in the frame
 // The cards on the board live on the server, so every browser shows the same
 // board: where one sits and how big it is go back to it.
@@ -1136,11 +1138,18 @@ function viewCenter() {
   return [(pan.clientWidth / 2 - origin[0]) / zoom, (pan.clientHeight / 2 - origin[1]) / zoom];
 }
 
+// The surface moves by whole screen pixels, wherever the frame itself sits:
+// half a pixel off and every glyph is drawn across two, which blurs the text
+function placeCanvas() {
+  const b = $('#pan').getBoundingClientRect();
+  $('#canvas').style.transform = `translate(${Math.round(b.left + origin[0]) - b.left}px,` +
+    `${Math.round(b.top + origin[1]) - b.top}px)`;
+}
 function shift(dx, dy) {          // slide the whole surface, no edges to run into
   origin = [origin[0] + dx, origin[1] + dy];
   leftBack();
   store.set('origin', origin);
-  $('#canvas').style.transform = `translate(${origin[0]}px,${origin[1]}px)`;
+  placeCanvas();
   markEdges();
   stirMap();
 }
@@ -1893,13 +1902,14 @@ function dress(pic, w) {
 
 function place(el, w) {
   const [x, y] = seatOf(w);
-  el.style.left = x * zoom + 'px';
-  el.style.top = y * zoom + 'px';
+  el.style.left = Math.round(x * zoom) + 'px';      // on whole pixels, as the surface is
+  el.style.top = Math.round(y * zoom) + 'px';
+  const scaled = zoom === 1 ? '' : `scale(${zoom})`;  // at 1:1 nothing is resampled at all
   if (w.husk) {                      // drawn at its saved size, scaled like a terminal
     const h = husks.get(w.husk), cap = h.t.capH;
     el.style.width = w.w * zoom + 'px';
     el.style.height = (w.h - cap) * zoom + cap + 'px';
-    h.t.wrap.style.transform = `scale(${zoom})`;
+    h.t.wrap.style.transform = scaled;
     return;
   }
   if (w.term) {
@@ -1911,7 +1921,7 @@ function place(el, w) {
     const cap = t && t.cap ? t.capH : 0;
     el.style.width = w.w * zoom + 'px';
     el.style.height = (w.h - cap) * zoom + cap + 'px';
-    if (t && t.wrap) t.wrap.style.transform = `scale(${zoom})`;
+    if (t && t.wrap) t.wrap.style.transform = scaled;
     return;
   }
   // a link card is exactly its saved size at any zoom: no screen-px floor
@@ -1922,7 +1932,7 @@ function place(el, w) {
   if (dw) {                          // the caption stays at screen size
     dw.style.width = w.w + 'px';
     dw.style.height = Math.max(0, Math.max(60, w.h * zoom) - CAP_H) / zoom + 'px';
-    dw.style.transform = `scale(${zoom})`;
+    dw.style.transform = scaled;
   }
 }
 
@@ -2488,7 +2498,7 @@ function renderCanvas(match) {
   if (!zoom) fitAll();                 // the first time only: after that the view is yours
   $('#zoom').value = Math.round(Math.sqrt(zoom / MAX_ZOOM) * 100);
   $('#zpct').textContent = Math.round(zoom * 100) + '%';
-  $('#canvas').style.transform = `translate(${origin[0]}px,${origin[1]}px)`;
+  placeCanvas();
   markEdges();
 
   const live = new Set();
@@ -2860,7 +2870,7 @@ function reveal() {
   origin = [pan.clientWidth / 2 - (x + w.w / 2) * zoom,
             pan.clientHeight / 2 - (y + w.h / 2) * zoom];
   store.set('origin', origin);
-  $('#canvas').style.transform = `translate(${origin[0]}px,${origin[1]}px)`;
+  placeCanvas();
   markEdges();
 }
 
