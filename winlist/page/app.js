@@ -2050,6 +2050,10 @@ function connect(t, id) {
     // window list already covers
     if (typeof e.data !== 'string' && !t.dead) t.term.write(new Uint8Array(e.data));
   };
+  ws.onopen = () => {
+    if (t.early) t.early.forEach(d => ws.send(utf8.encode(d)));
+    t.early = null;
+  };
   ws.onclose = () => { if (t.ws === ws) t.ws = null; };
   ws.onerror = () => { if (t.ws === ws) t.ws = null; };
 }
@@ -2092,8 +2096,10 @@ function mount(w) {
   });
   // what you type goes straight down the socket; nothing is echoed locally,
   // because the far end is what decides what a keystroke looks like
+  // keys typed before the socket is open wait for it (see connect)
   term.onData(d => {
     if (t.ws && t.ws.readyState === 1) t.ws.send(utf8.encode(d));
+    else (t.early || (t.early = [])).push(d);
   });
   // xterm.js sends a bare CR for Shift+Enter, same as Enter. Send ESC CR
   // instead, which is what Claude Code and readline take as "newline, don't
@@ -2402,7 +2408,13 @@ function clearSpot([x, y], exceptId) {
 // that group unless the drop point is already inside it.
 const inGroup = (g, [x, y]) => x >= g.x && x <= g.x + g.w && y >= g.y && y <= g.y + g.h;
 // A tool's button says exactly where: cwd and the new tile's top-left corner.
+// Anything you do while one is starting counts: a key or a press after t means
+// you have moved on, and the new terminal must not take the keyboard from it.
+let doneSince = 0;
+addEventListener('keydown', () => doneSince++, true);
+addEventListener('pointerdown', () => doneSince++, true);
 async function newTerm({ claude, argv, group, cwd, corner } = {}) {
+  const asked = doneSince;
   let at = corner || dropAt(0, 0);
   if (group && !inGroup(group, at)) at = [group.x + group.w / 2, group.y + group.h / 2];
   const g = group || groups.findLast(g => inGroup(g, at));
@@ -2414,13 +2426,15 @@ async function newTerm({ claude, argv, group, cwd, corner } = {}) {
   const made = await fetch('/api/terminals', { method: 'POST', body: JSON.stringify(body) })
     .then(r => r.json()).catch(() => null);
   if (!made || !made.id) return void toast('Could not start the terminal: ' + esc((made && made.error) || 'no answer from the server'), 4000);
-  // the new one is picked and brought to the front, but you stay in NORMAL:
-  // Enter is what types into it, as with any other terminal
+  // the new one is picked, brought to the front and typed into at once, as a
+  // new terminal window is; one a tool started is only picked: it runs its own
+  // command, to be watched rather than typed into
   const pickIt = () => {
     sel = 'web:' + made.id;
     const el = tileEls.get(sel);
     if (el) $('#tiles').append(el);
     render();
+    if (!argv && doneSince === asked) activate(sel);
   };
   if (!zoom) {
     await poll();
