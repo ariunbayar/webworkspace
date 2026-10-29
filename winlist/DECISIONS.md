@@ -261,3 +261,9 @@ Each entry:
 - A: While you pan or zoom, fading 1.2 s after; `m` (or the palette) keeps it shown, remembered across reloads. Bottom-right, 220x150: every tile as a box in its app colour, a pinging one orange, the picked one outlined, filtered-out ones faint, the view as a frame. A press or drag on it carries the view there, and doesn't take the keyboard from the terminal you're typing in.
 - Why: zoom is the most used action, mostly zooming out to find something and back (2026-10-29 log review). The user asked to try it; Claude's pick, as no option was chosen.
 - Status: done (PR)
+
+### #16 1 toggles: actual size and back
+- Q: How should 1 get you back?
+- A: A second 1 goes back to the exact zoom and position the first came from, with a short "back to 72%" toast, as long as you haven't panned or zoomed since. Any move of your own (wheel, pinch, drag, the map, a pick that scrolls the view) forgets the way back, and 1 then does 1:1 again. The way back is kept across a reload. Pressing 1 at 100% saves nothing.
+- Why: of 118 presses of 1 in Oct 23-29, 115 were followed by a zoom within 5 s (2026-10-29 log review). #38's fly-in should reuse the same slot.
+- Status: done (PR)
