@@ -283,3 +283,9 @@ Each entry:
 - A: Type at once. Once it is listed, the new terminal is focused, as a new terminal window is. If you press a key or click anything while it is starting, it is only picked: you have moved on. Keys typed before its socket opens are held and sent when it does. A terminal a tool button starts runs its own command, so it is only picked.
 - Why: usage log, Oct 23-29: of 77 new terminals, the next action was Enter 32 times, a median of 2.3 s later.
 - Status: done (PR)
+
+### #23 Split app.js into modules
+- Q: Split the 3.2k-line app.js into ES modules, or not?
+- A: Not split; a parse check instead. `winlist/check_page.sh` parses every page script as the browser will (app.js as a module, index.html's inline scripts), and a GitHub workflow runs it on each PR that touches the page.
+- Why: the page shares 39 top-level variables that many sections reassign, and a module cannot assign another's, so a split is a rewrite, not a move: risk with no visible gain. What broke the page in PR #85, a name declared twice, is a parse error in a module, which the check catches.
+- Status: done (PR)
