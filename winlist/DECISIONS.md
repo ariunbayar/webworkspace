@@ -355,3 +355,9 @@ Each entry:
 - A: The percentage sits beside the mode badge in the bottom-left corner, visible with or without the top bar. The top bar's zoom slider and percentage are removed; zoom is the wheel, a pinch, double Ctrl or the map.
 - Why: the user asked for it (2026-10-30); the top bar keeps the filter, bookmarks and keys.
 - Status: done (PR)
+
+### The status line under the title is gone
+- Q: "N windows · N terminals of our own · 3×6 workspaces · N in use · updated hh:mm:ss": still useful?
+- A: No: removed. A lost server already shows in the banner after two failed polls.
+- Why: the user no longer uses it, and plans to stop showing the desktop's own windows (2026-10-30).
+- Status: done (PR)

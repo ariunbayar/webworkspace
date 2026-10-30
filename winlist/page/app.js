@@ -1046,18 +1046,10 @@ function render() {
 }
 
 function status(match, q) {
-  const hits = data.windows.filter(w => !w.link && match(w));
-  const ours = data.windows.filter(w => w.term).length;
-  const desks = new Set(data.windows.filter(w => !w.term).map(w => w.desktop)).size;
   const shown = data.windows.filter(match).length;
   $('#nomatch').classList.toggle('on', !!q && !shown);
   if (q && !shown) $('#nomatch').innerHTML = `Nothing matches “${esc(q)}” — <kbd>Esc</kbd> clears`;
-  $('#stat').textContent = `${hits.length - ours}${q ? " of " + (data.windows.length - links.length - ours) : ""} windows · `
-    + (ours ? `${ours} terminal${ours > 1 ? 's' : ''} of our own · ` : '')
-    + `${data.grid.cols}×${data.grid.rows} workspaces · ${desks} in use`;
-  showTrouble();
-  $('#ts').innerHTML = failures ? `<span class="stale">disconnected — retrying</span>`
-    : `updated ${data.captured}`;
+  showTrouble();                       // a lost server shows in the banner
   $('#foot').innerHTML = `Every window on one surface, seeded from where it `
       + `really sits and then yours to arrange: drag a tile and only the tile moves — the `
       + `desktop is never touched. The arrangement is remembered in this browser; `
