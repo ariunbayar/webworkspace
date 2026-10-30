@@ -2866,6 +2866,29 @@ async function activate(id) {
 }
 
 // ---- keyboard picking -----------------------------------------------------
+// PgUp/PgDn read the picked tile without going into it: a terminal's
+// scrollback, or a document, note or diff a page at a time
+function scrollPicked(dir) {
+  const w = selected();
+  if (!w) return;
+  const h = w.husk && husks.get(w.husk), t = w.term ? terms.get(w.term.session) : h && !h.dead ? h.t : null;
+  if (t && t.term) {
+    // A program that reads the mouse (Claude) draws its own view and scrolls it
+    // on the wheel, ignoring PgUp, and the terminal holds no scrollback for it:
+    // send it a page of wheel turns, as SGR mouse reports at the middle of the
+    // screen. Another full-screen program (vim, less) gets the key itself.
+    const send = d => t.ws && t.ws.readyState === 1 && t.ws.send(utf8.encode(d));
+    if (t.term.modes.mouseTrackingMode !== 'none') {
+      const { cols, rows } = t.term;
+      const turn = `\x1b[<${dir < 0 ? 64 : 65};${cols >> 1 || 1};${rows >> 1 || 1}M`;
+      return void send(turn.repeat(Math.max(1, Math.round((rows - 2) / 3))));   // about 3 lines a turn
+    }
+    if (t.term.buffer.active.type === 'alternate') return void send(dir < 0 ? '\x1b[5~' : '\x1b[6~');
+    return t.term.scrollPages(dir);
+  }
+  const dw = tileEls.get(w.id) && tileEls.get(w.id).querySelector('.docwrap');
+  if (dw) dw.scrollBy(0, dir * dw.clientHeight * 0.9);
+}
 function selected() {
   if (!data) return null;
   return data.windows.find(w => w.id === sel) || null;
@@ -3127,6 +3150,7 @@ document.addEventListener('keydown', e => {
   if (k === 'z') { e.preventDefault(); return setLens(!lensOn); }
   if (k === 'm') { e.preventDefault(); return setMap(!mapPinned); }
   if (k === 'Enter' || k === ' ') { const w = selected(); if (w) { e.preventDefault(); activate(w.id); } return; }
+  if (k === 'PageUp' || k === 'PageDown') { e.preventDefault(); return scrollPicked(k === 'PageUp' ? -1 : 1); }
   const moves = { ArrowUp: [0, -1], k: [0, -1], ArrowDown: [0, 1], j: [0, 1],
                   ArrowLeft: [-1, 0], h: [-1, 0], ArrowRight: [1, 0], l: [1, 0] };
   if (moves[k]) { e.preventDefault(); move(...moves[k]); }
