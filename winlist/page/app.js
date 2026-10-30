@@ -837,17 +837,19 @@ function renderGroups() {
       el.innerHTML = `<div class="gcap"><span class="gname" title="Double-click to rename"></span><span class="gcount"></span>`
         + `<span class="gdir" title="Folder new terminals start in (click to set)"></span>`
         + `<span class="gtools" title="Put a button for one of this project's tools in the group">▸ tools</span>`
-        + `<span class="shut" title="Remove the group (its windows stay)">✕</span></div>`
+        + `<span class="more" title="Options">⋯</span></div>`
         + `<div class="grip" title="Drag to resize this group"></div>`;
       const cap = el.querySelector('.gcap'), name = el.querySelector('.gname');
       const dir = el.querySelector('.gdir'), tools = el.querySelector('.gtools');
       cap.addEventListener('pointerdown', e => {
         if (name.isContentEditable || dir.isContentEditable || e.target === dir || e.target === tools) return e.stopPropagation();
-        if (e.target.closest('.shut')) {
-          e.preventDefault(); e.stopPropagation();
-          groups = groups.filter(v => v !== el.group);
-          saveGroups();
-          return render();
+        if (e.target.closest('.more')) {
+          e.stopPropagation();
+          return pressMore(e, () => tileMenu(e.target.closest('.more'), [{ label: 'Remove group (its windows stay)', close: () => {
+            groups = groups.filter(v => v !== el.group);
+            saveGroups();
+            render();
+          } }]));
         }
         carryGroup(e, el.group, el);
       });
@@ -2199,8 +2201,7 @@ function dressTerm(el, w) {
   if (!t.wrap) {
     el.innerHTML = `<div class="cap"><span class="dot"></span><span class="pre"></span><span class="app"></span><span class="t2"></span>` +
                    `<span class="note"></span>` +
-                   `<span class="prof" title="Switch font (Ctrl+Alt+F)"></span>` +
-                   `<span class="shut" title="Close">✕</span></div>` +
+                   `<span class="more" title="Options">⋯</span></div>` +
                    `<div class="termbody"><div class="termwrap"></div></div>`;
     const wrap = el.querySelector('.termwrap');
     const host = document.createElement('div');
@@ -2252,7 +2253,6 @@ function dressTerm(el, w) {
   if (t.natural) { w.w = t.natural[0]; w.h = t.natural[1]; }
   const cap = t.cap;
   cap.querySelector('.dot').style.background = colorOf(w.app);
-  cap.querySelector('.prof').textContent = (profiles()[t.prof] || {}).name || '';
   const title = t.title || w.term.title || w.term.running || w.title;
   cap.querySelector('.t2').textContent = title;
   // which project it is, said for you: its group's name, else its folder's
@@ -2449,10 +2449,10 @@ async function newTerm({ claude, argv, group, cwd, corner } = {}) {
   pickIt();
 }
 
-// The X answers a click, not a press: a press that moves is a pan or a drag
+// The ⋯ answers a click, not a press: a press that moves is a pan or a drag
 // that happened to start on it, and a second finger makes it a pinch. Either
-// way nothing closes. Pressing it twice in a row is still a quick close.
-function pressShut(e, then) {
+// way no menu opens.
+function pressMore(e, then) {
   e.preventDefault();
   if (e.button || pointers.size > 1) return;
   const sx = e.clientX, sy = e.clientY;
@@ -2460,42 +2460,64 @@ function pressShut(e, then) {
     off();
     if (letGo === done) letGo = null;
     if (ev && ev.type === 'pointerup' && Math.abs(ev.clientX - sx) + Math.abs(ev.clientY - sy) < 5
-        && pointers.size < 2 && ev.target.closest && ev.target.closest('.shut')) then();
+        && pointers.size < 2 && ev.target.closest && ev.target.closest('.more')) then();
   };
   const move = ev => { if (Math.abs(ev.clientX - sx) + Math.abs(ev.clientY - sy) >= 5) done(); };
   const off = follow(window, move, done);
   letGo = done;                      // a pinch beginning calls it off
 }
 
-// Closing a terminal that is running something (Claude, an editor, a server)
-// asks first, on the caption itself: a second click on the X, or Enter, closes;
-// Esc, a click elsewhere or four seconds keep it. An idle shell closes at once.
-let asking = null;
-function askClose(w, el) {
-  const id = w.term.session, run = w.term.running || '';
-  const busy = w.term.alive && (cstate[w.id] || (run && !SHELL_NAMES.has(run)));
-  if (!busy || (asking && asking.id === id)) { if (asking) asking.end(); return closeTerm(id); }
-  if (asking) asking.end();
-  const shut = el.querySelector('.shut');
-  shut.textContent = `Close ${cstate[w.id] ? 'Claude' : run}? ✕`;
-  shut.classList.add('asking');
-  const key = e => {
-    if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); end(); closeTerm(id); }
-    else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); end(); }
-  };
-  const away = e => { if (!(e.target.closest && e.target.closest('.shut') === shut)) end(); };
-  const timer = setTimeout(() => end(), 4000);
-  const end = () => {
-    clearTimeout(timer);
+// A tile's ⋯ opens its options under it. Nothing in it closes on one click:
+// Close turns into Confirm close in place, and only that closes, so a stray
+// press on a caption never costs a terminal. Esc or a press elsewhere puts the
+// menu away. An option with `keep` (the font) leaves it open to press again.
+const tmenu = document.createElement('div');
+tmenu.id = 'tilemenu';
+tmenu.hidden = true;
+document.body.append(tmenu);
+let tmenuOff = null;
+function tileMenu(anchor, items) {
+  if (tmenuOff) tmenuOff();
+  tmenu.textContent = '';
+  items.forEach(it => {
+    const b = document.createElement('div');
+    b.className = 'tmitem' + (it.close ? ' danger' : '');
+    const label = () => typeof it.label === 'function' ? it.label() : it.label;
+    b.textContent = label();
+    b.onclick = () => {
+      if (it.close && !b.classList.contains('confirm')) {
+        b.classList.add('confirm');
+        b.textContent = 'Confirm: ' + label().replace(/^./, c => c.toLowerCase()) + ' ✕';
+        return;
+      }
+      if (!it.keep) put();
+      (it.close || it.run)();
+      if (it.keep) b.textContent = label();
+    };
+    tmenu.append(b);
+  });
+  const r = anchor.getBoundingClientRect();
+  tmenu.hidden = false;
+  tmenu.style.left = Math.max(4, Math.min(r.right - tmenu.offsetWidth, innerWidth - tmenu.offsetWidth - 4)) + 'px';
+  tmenu.style.top = Math.min(r.bottom + 2, innerHeight - tmenu.offsetHeight - 4) + 'px';
+  const key = e => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); put(); } };
+  const away = e => { if (!tmenu.contains(e.target)) put(); };
+  const put = () => {
+    tmenu.hidden = true;
     removeEventListener('keydown', key, true);
     removeEventListener('pointerdown', away, true);
-    shut.textContent = '✕';
-    shut.classList.remove('asking');
-    if (asking && asking.id === id) asking = null;
+    tmenuOff = null;
   };
   addEventListener('keydown', key, true);
   addEventListener('pointerdown', away, true);
-  asking = { id, end };
+  tmenuOff = put;
+}
+const faceName = id => { const t = terms.get(id); return t && (profiles()[t.prof] || {}).name || ''; };
+function termMenu(w, anchor) {
+  const id = w.term.session, items = [];
+  if (profiles().length > 1) items.push({ label: () => 'Font: ' + faceName(id) + '  ↻', run: () => swapFace(id), keep: true });
+  items.push({ label: 'Close terminal', close: () => closeTerm(id) });
+  tileMenu(anchor, items);
 }
 
 async function closeTerm(id) {
@@ -2533,7 +2555,7 @@ function renderCanvas(match) {
       el = document.createElement('div');
       if (!w.term) {
         el.innerHTML = `<div class="cap"><span class="dot"></span><span class="app"></span><span class="t2"></span><span class="ord"></span>`
-          + (w.link ? `<span class="shut" title="Remove">✕</span>` : '') + `</div>`;
+          + (w.link ? `<span class="more" title="Options">⋯</span>` : '') + `</div>`;
         el.append(document.createElement('div'));
         if (w.link) {
           const grip = document.createElement('div');
@@ -2552,8 +2574,7 @@ function renderCanvas(match) {
           // the drag takes the pointer captive, and a captured pointer's click
           // is delivered to the tile rather than to what was under it — so the
           // close button has to be answered here, before any of that
-          if (e.target.closest('.shut')) return pressShut(e, () => askClose(tileEls.get(w.id).win, el));
-          if (e.target.closest('.prof')) { e.preventDefault(); return swapFace(win.term.session); }
+          if (e.target.closest('.more')) return pressMore(e, () => termMenu(tileEls.get(w.id).win, e.target.closest('.more')));
           if (e.target.closest('.grip')) return grab(e, win, el);
           // a terminal is for typing into, so only its caption is a handle;
           // a photograph has nothing to click, so all of it is
@@ -2561,21 +2582,21 @@ function renderCanvas(match) {
           if (inInsert() && !e.target.closest('.cap')) return;
         } else if (win.link && e.target.closest('.grip')) {
           return grabLink(e, win, el);
-        } else if (win.link && e.target.closest('.shut')) {
-          return pressShut(e, () => closeLink(win.id));
+        } else if (win.link && e.target.closest('.more')) {
+          return pressMore(e, () => tileMenu(e.target.closest('.more'), [{ label: 'Remove card', close: () => closeLink(win.id) }]));
         } else if (inInsert()) {
           return;                // in INSERT a photograph is just more surface: it pans
         }
         drag(e, win, el);
       });
       if (w.link) el.addEventListener('dblclick', e => {
-        if (!e.target.closest('.shut, .grip')) activate(w.id);
+        if (!e.target.closest('.more, .grip')) activate(w.id);
       });
       // a terminal is typed into on a double click, as Enter does: the one
       // click only picks it. Once it has the keyboard, a double click in it
       // is xterm's again, to select a word
       if (w.term) el.addEventListener('dblclick', e => {
-        if (!inInsert() && !e.target.closest('.shut, .grip, .prof')) activate(w.id);
+        if (!inInsert() && !e.target.closest('.more, .grip')) activate(w.id);
       });
       tileEls.set(w.id, el);
       $('#tiles').append(el);

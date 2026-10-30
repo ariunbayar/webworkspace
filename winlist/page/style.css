@@ -104,10 +104,16 @@
   .termhost .xterm { padding:2px 3px }
   /* a session that has ended keeps its last words, and says so */
   .tile.gone { opacity:.62 }
-  .cap .shut { flex:none; cursor:pointer; opacity:.55; padding:0 3px;
+  .cap .more { flex:none; cursor:pointer; opacity:.55; padding:0 3px;
                font-size:14px; line-height:1; border-radius:3px }
-  .cap .shut:hover { opacity:1; background:var(--accent); color:#fff }
-  .cap .shut.asking { opacity:1; background:#cf222e; color:#fff; font-size:12px; padding:1px 6px }
+  .cap .more:hover { opacity:1; background:var(--accent); color:#fff }
+  #tilemenu { position:fixed; z-index:9000; min-width:170px; padding:4px; border:1px solid var(--line);
+              border-radius:6px; background:var(--panel); color:var(--fg); box-shadow:0 4px 16px #0003; font-size:12px }
+  #tilemenu[hidden] { display:none }
+  .tmitem { padding:5px 9px; border-radius:4px; cursor:pointer; white-space:nowrap }
+  .tmitem:hover { background:var(--line) }
+  .tmitem.danger { color:#cf222e }
+  .tmitem.confirm { background:#cf222e; color:#fff; font-weight:600 }
   .tile.gone .cap .note { color:var(--accent); opacity:1 }
   .cap .note { flex:none; font-size:11px; opacity:.75 }
   /* the app in words beside the title; it gives way first when the tile is narrow */
@@ -118,9 +124,6 @@
   .cap .ord { flex:none; font-size:11px; opacity:.6 }
   @container (max-width:170px) { .cap .app { display:none } }
   .gcount { margin-left:6px; opacity:.6; font-weight:400 }
-  .cap .prof { flex:none; font-size:11px; opacity:.55; cursor:pointer; padding:0 4px; border-radius:3px }
-  .cap .prof:empty { display:none }
-  .cap .prof:hover { opacity:1; background:var(--line) }
   /* a corner to pull: a terminal and a link are the only tiles with a size of
      their own to change, since the rest are pictures of windows somebody else
      is sizing */
@@ -155,8 +158,8 @@
   #tools button:hover, #tools button:focus-visible { background:var(--accent); color:#fff; outline:none }
   #tools span { display:grid; gap:1px; min-width:0 }
   #tools small { color:inherit; opacity:.7 }
-  .group .shut { cursor:pointer; opacity:.55; padding:0 3px; border-radius:3px }
-  .group .shut:hover { opacity:1; background:var(--accent); color:#fff }
+  .group .more { cursor:pointer; opacity:.55; padding:0 3px; border-radius:3px }
+  .group .more:hover { opacity:1; background:var(--accent); color:#fff }
   /* a link is kept as the least that still says what it was: the site's icon,
      the page's title and where it lives. Opening it is a click away */
   .pic.card { display:flex; flex-direction:column; justify-content:center; gap:3px;
