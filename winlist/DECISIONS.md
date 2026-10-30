@@ -289,3 +289,9 @@ Each entry:
 - A: Not split; a parse check instead. `winlist/check_page.sh` parses every page script as the browser will (app.js as a module, index.html's inline scripts), and a GitHub workflow runs it on each PR that touches the page.
 - Why: the page shares 39 top-level variables that many sections reassign, and a module cannot assign another's, so a split is a rewrite, not a move: risk with no visible gain. What broke the page in PR #85, a name declared twice, is a parse error in a module, which the check catches.
 - Status: done (PR)
+
+### PgUp/PgDn scroll the picked tile in NORMAL
+- Q: Scroll a card or terminal without going into it?
+- A: Yes. In NORMAL, PgUp/PgDn scroll the picked tile a page: a terminal's (or restored husk's) scrollback, or a document, note or diff card. A desktop window only scrolls once it has the keyboard, so a toast says Enter.
+- Why: asked by the user 2026-10-30; reading output meant going in and coming out again.
+- Status: done (PR)
