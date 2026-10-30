@@ -2872,10 +2872,22 @@ function scrollPicked(dir) {
   const w = selected();
   if (!w) return;
   const h = w.husk && husks.get(w.husk), t = w.term ? terms.get(w.term.session) : h && !h.dead ? h.t : null;
-  if (t && t.term) return t.term.scrollPages(dir);
+  if (t && t.term) {
+    // A program that reads the mouse (Claude) draws its own view and scrolls it
+    // on the wheel, ignoring PgUp, and the terminal holds no scrollback for it:
+    // send it a page of wheel turns, as SGR mouse reports at the middle of the
+    // screen. Another full-screen program (vim, less) gets the key itself.
+    const send = d => t.ws && t.ws.readyState === 1 && t.ws.send(utf8.encode(d));
+    if (t.term.modes.mouseTrackingMode !== 'none') {
+      const { cols, rows } = t.term;
+      const turn = `\x1b[<${dir < 0 ? 64 : 65};${cols >> 1 || 1};${rows >> 1 || 1}M`;
+      return void send(turn.repeat(Math.max(1, Math.round((rows - 2) / 3))));   // about 3 lines a turn
+    }
+    if (t.term.buffer.active.type === 'alternate') return void send(dir < 0 ? '\x1b[5~' : '\x1b[6~');
+    return t.term.scrollPages(dir);
+  }
   const dw = tileEls.get(w.id) && tileEls.get(w.id).querySelector('.docwrap');
-  if (dw) return dw.scrollBy(0, dir * dw.clientHeight * 0.9);
-  if (!w.link) toast('A desktop window scrolls once it has the keyboard: <kbd>Enter</kbd>', 2000);
+  if (dw) dw.scrollBy(0, dir * dw.clientHeight * 0.9);
 }
 function selected() {
   if (!data) return null;

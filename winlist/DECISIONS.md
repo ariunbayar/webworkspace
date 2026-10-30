@@ -292,6 +292,6 @@ Each entry:
 
 ### PgUp/PgDn scroll the picked tile in NORMAL
 - Q: Scroll a card or terminal without going into it?
-- A: Yes. In NORMAL, PgUp/PgDn scroll the picked tile a page: a terminal's (or restored husk's) scrollback, or a document, note or diff card. A desktop window only scrolls once it has the keyboard, so a toast says Enter.
+- A: Yes. In NORMAL, PgUp/PgDn scroll the picked tile a page: a terminal's (or restored husk's) scrollback, or a document, note or diff card. A Claude terminal (it reads the mouse) gets a page of wheel turns; vim or less gets the key. Desktop windows and link cards: nothing.
 - Why: asked by the user 2026-10-30; reading output meant going in and coming out again.
 - Status: done (PR)
