@@ -383,8 +383,7 @@ function palItems() {
       name: w.title || (t && t.title) || w.app || '', extra: haystack(w),
       run: () => { sel = w.id; render(); reveal(); } };
   });
-  const name = id => { const r = [...gs, ...ws].find(r => r.id === id); return r ? r.name : ''; };
-  const bms = Object.keys(marks).sort().map(n => ({ kind: 'bookmark', key: n, name: name(marks[n]), extra: '',
+  const bms = Object.keys(marks).sort().map(n => ({ kind: 'bookmark', key: n, name: markName(marks[n]), extra: '',
     run: () => jumpMark(+n) })).filter(r => r.name);
   return [...bms, ...ACTIONS, ...gs, ...ws];
 }
@@ -2544,7 +2543,8 @@ function termMenu(w, anchor) {
 // free number; the number shows on its caption. In NORMAL that number goes to
 // it: picked, in the middle, at 100% (a group is fitted). The same number again
 // goes back to the view you came from, unless you have moved since.
-let marks = store.get('marks', {});            // { '1': 'web:…' | 'link:…' | 'group:…' }
+let marks = store.get('marks', {});
+$('#bms').addEventListener('click', e => { const c = e.target.closest('.bmchip'); if (c) jumpMark(+c.dataset.n); });            // { '1': 'web:…' | 'link:…' | 'group:…' }
 let markBack = null;
 const markOf = id => Object.keys(marks).find(n => marks[n] === id);
 function setMark(id, on) {
@@ -2587,7 +2587,17 @@ function jumpMark(n) {
   }
   markBack = { ...back, zoom, at: origin.join() };
 }
+function markName(id) {
+  if (id.startsWith('group:')) { const g = groups.find(v => 'group:' + v.id === id); return g ? g.name || 'group' : ''; }
+  const w = data && data.windows.find(v => v.id === id), t = w && w.term && terms.get(w.term.session);
+  return w ? w.title || (t && t.title) || w.app || '' : '';
+}
+let bmsHtml = '';
 function drawMarks() {
+  // the list in the top bar: a chip per bookmark, pressed to go there
+  const html = Object.keys(marks).sort().map(n => [n, markName(marks[n])]).filter(([, name]) => name)
+    .map(([n, name]) => `<span class="bmchip" data-n="${n}" title="Bookmark ${n}: press ${n} or click"><b>${n}</b><span>${esc(name)}</span></span>`).join('');
+  if (html !== bmsHtml) $('#bms').innerHTML = bmsHtml = html;
   const put = (cap, n) => {
     if (!cap) return;
     let b = cap.querySelector('.bm');

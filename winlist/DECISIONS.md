@@ -346,6 +346,6 @@ Each entry:
 
 ### Bookmarks on 1-9
 - Q: How to get back to the few tiles you keep using, quickly?
-- A: ⋯ → Bookmark on a terminal, card or group gives it the lowest free number 1-9, shown as a badge on its caption. In NORMAL that number picks it, centres it and zooms to 100% (a group is fitted); the same number again goes back to the view you came from, unless you moved since. The palette lists bookmarks first. Closing a tile drops its bookmark; they survive a reload. NORMAL only (no Alt+digit in terminals) and no automatic recent list, by choice.
+- A: ⋯ → Bookmark on a terminal, card or group gives it the lowest free number 1-9, shown as a badge on its caption and as a chip (number and name, click to go) in the top bar. In NORMAL that number picks it, centres it and zooms to 100% (a group is fitted); the same number again goes back to the view you came from, unless you moved since. The palette lists bookmarks first. Closing a tile drops its bookmark; they survive a reload. NORMAL only (no Alt+digit in terminals) and no automatic recent list, by choice.
 - Why: the user asked for easy switching between recently used items (2026-10-30); 1 was freed by double Ctrl.
 - Status: done (PR)
