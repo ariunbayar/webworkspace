@@ -103,14 +103,19 @@ def name(e):
     """An event as it reads in a table: a key with its mode, an action with its kind."""
     if e["ev"] == "key":
         return "key %s (%s)" % (e.get("k", "?"), e.get("mode", "?"))
-    if "kind" in e:
-        return "%s %s" % (e["ev"], e["kind"])
-    return e["ev"]
+    out = e["ev"] if "kind" not in e else "%s %s" % (e["ev"], e["kind"])
+    if "by" in e:
+        out += " by " + str(e["by"])
+    if "why" in e:
+        out += " (%s)" % e["why"]
+    if e.get("gh"):
+        out += " gh"
+    return out
 
 
 def active_minutes(events):
     """Minutes with at least one thing done, per session: time actually spent."""
-    return len({(e.get("s"), int(e["t"] // 60000)) for e in events if e["ev"] != "close"})
+    return len({(e.get("s"), int(e["t"] // 60000)) for e in events if e["ev"] not in ("close", "page.close")})
 
 
 def summary(events, label, days):
@@ -133,6 +138,19 @@ def summary(events, label, days):
     zooms = [e.get("z", 0) for e in events if e["ev"] == "zoom"]
     if zooms:
         print("   zoom: %d gestures, median rests at %d%%" % (len(zooms), statistics.median(zooms)))
+    for ev, field, what in (("pick", "by", "picks by source"), ("activate", "by", "entries by source"),
+                            ("term.close", "why", "terminal closes by cause")):
+        by = collections.Counter(e.get(field, "?") for e in events if e["ev"] == ev and field in e)
+        if by:
+            print("   %s: %s" % (what, ", ".join("%s %d" % kv for kv in by.most_common())))
+    # a re-entry is going back into the tile you entered last, in the same page load
+    ins = sorted((e for e in events if e["ev"] == "activate" and "n" in e), key=lambda e: (str(e.get("s")), e["t"]))
+    again = sum(1 for a, b in zip(ins, ins[1:]) if a.get("s") == b.get("s") and a["n"] == b["n"])
+    if len(ins) > 1:
+        print("   re-entries: %d of %d entries (%d%%)" % (again, len(ins), 100 * again // len(ins)))
+    pans = sum(1 for e in events if e["ev"] == "pan")
+    if pans:
+        print("   pans: %d, %.1f per active minute" % (pans, pans / max(1, active_minutes(events))))
     return {k: n / days for k, n in counts.items()}
 
 

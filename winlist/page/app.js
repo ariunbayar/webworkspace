@@ -1814,9 +1814,8 @@ function arrivedCard(l) {
   if (t) {
     const [x, y] = seatOf(t);
     to = groups.findLast(v => inGroup(v, [x, y]));
-    at = [x + t.w + GRID, y];
-  } else at = [g.x + GRID, g.y + GRID * 2];     // the caption takes the top row
-  layout[w.id] = clearSpot(at, w.id);
+    layout[w.id] = spotBeside(t, w);
+  } else layout[w.id] = clearSpot([g.x + GRID, g.y + GRID * 2], w.id);   // the caption takes the top row
   saveLayout();
   announce(w.id);
   toast(`New card ${t ? 'beside its terminal' : 'in'}${to ? ' in ' + esc(to.name) : ''}: ${esc(cardTitle(l))}`);
@@ -2266,7 +2265,7 @@ function dressTerm(el, w) {
   // a running session is reconnected whenever its socket has dropped; one that
   // has ended is closed, the way a terminal window goes when its shell exits
   if (w.term.alive) connect(t, id);
-  else if (!t.closing) { t.closing = true; closeTerm(id); }
+  else if (!t.closing) { t.closing = true; via = 'exit'; closeTerm(id); }
 }
 
 // What one character costs, worked out from what xterm.js actually laid out
@@ -2393,6 +2392,26 @@ function clearSpot([x, y], exceptId) {
   return [x, y];
 }
 
+// A card from a terminal goes in a column on its right, each under the last,
+// on no other tile: the first gap down the right side, then under the
+// terminal, then down its left side. Only when all of those are full does it
+// fall back to clearSpot's step down and right.
+function spotBeside(t, w) {
+  const [tx, ty] = seatOf(t), pad = GRID / 2, reach = Math.max(t.h, 8 * (w.h + GRID));
+  const free = (x, y) => !data.windows.some(v => {
+    if (v.id === w.id) return false;
+    const [a, b] = seatOf(v);
+    return x - pad < a + v.w && a < x + w.w + pad && y - pad < b + v.h && b < y + w.h + pad;
+  });
+  // on the grid, rounded away from the terminal: snap() can round back onto it
+  const up = v => Math.ceil(v / GRID) * GRID, dn = v => Math.floor(v / GRID) * GRID;
+  const down = x => { for (let y = dn(ty); y <= ty + reach; y += GRID) if (free(x, y)) return [x, y]; };
+  const right = up(tx + t.w + GRID), below = up(ty + t.h + GRID);
+  let at = down(right);
+  for (let x = dn(tx); !at && x <= tx + t.w; x += GRID) if (free(x, below)) at = [x, below];
+  return at || down(dn(tx - w.w - GRID)) || clearSpot([right, ty], w.id);
+}
+
 // A new terminal opens at the drop point, and the view stays where it is: you
 // zoomed in there to work there.
 // Inside a group that has a folder, it starts there. With claude, the tile
@@ -2427,7 +2446,7 @@ async function newTerm({ claude, argv, group, cwd, corner } = {}) {
     const el = tileEls.get(sel);
     if (el) $('#tiles').append(el);
     render();
-    if (!argv && doneSince === asked) activate(sel);
+    if (!argv && doneSince === asked) { via = 'new'; activate(sel); }
   };
   if (!zoom) {
     await poll();
@@ -2584,13 +2603,13 @@ function renderCanvas(match) {
         drag(e, win, el);
       });
       if (w.link) el.addEventListener('dblclick', e => {
-        if (!e.target.closest('.more, .grip')) activate(w.id);
+        if (!e.target.closest('.more, .grip')) { via = 'dbl'; activate(w.id); }
       });
       // a terminal is typed into on a double click, as Enter does: the one
       // click only picks it. Once it has the keyboard, a double click in it
       // is xterm's again, to select a word
       if (w.term) el.addEventListener('dblclick', e => {
-        if (!inInsert() && !e.target.closest('.more, .grip')) activate(w.id);
+        if (!inInsert() && !e.target.closest('.more, .grip')) { via = 'dbl'; activate(w.id); }
       });
       tileEls.set(w.id, el);
       $('#tiles').append(el);
@@ -2791,6 +2810,7 @@ $('#pan').addEventListener('pointerdown', e => {
   // a press that did not carry the surface anywhere picks the drop point
   const done = ev => {
     if (ev && ev.type === 'pointerup' && !far && pointers.size < 2) setAnchor(ev.clientX, ev.clientY);
+    if (far) track('pan', { d: Math.round(Math.hypot(px - sx, py - sy) / 100) * 100 });
     pan.classList.remove('grabbing');
     off();
     letGo = null;
@@ -2849,6 +2869,7 @@ function toFront(el) {
   if (at) [dw.scrollTop, dw.scrollLeft] = at;
 }
 
+let via = null;                        // see how(), in the usage log
 async function activate(id) {
   sel = id;
   toFront(tileEls.get(id));            // focusing it brings it to the front, as a drag does
@@ -2997,7 +3018,7 @@ function endEdit() {
   saveLayout();
   showMode();
   poll();
-  if (editBack) activate(editBack);
+  if (editBack) { via = 'back'; activate(editBack); }
   editBack = null;
 }
 // Moved on the grid, by key or by drag, a tile takes the nearest size on it too, so its far
@@ -3162,7 +3183,7 @@ document.addEventListener('keydown', e => {
   if (k === 'g') { e.preventDefault(); return newGroup(); }
   if (k === 'z') { e.preventDefault(); return setLens(!lensOn); }
   if (k === 'm') { e.preventDefault(); return setMap(!mapPinned); }
-  if (k === 'Enter' || k === ' ') { const w = selected(); if (w) { e.preventDefault(); activate(w.id); } return; }
+  if (k === 'Enter' || k === ' ') { const w = selected(); if (w) { e.preventDefault(); via = k === ' ' ? 'space' : 'enter'; activate(w.id); } return; }
   if (k === 'PageUp' || k === 'PageDown') { e.preventDefault(); return scrollPicked(k === 'PageUp' ? -1 : 1); }
   const moves = { ArrowUp: [0, -1], k: [0, -1], ArrowDown: [0, 1], j: [0, 1],
                   ArrowLeft: [-1, 0], h: [-1, 0], ArrowRight: [1, 0], l: [1, 0] };
@@ -3207,7 +3228,7 @@ addEventListener('beforeunload', e => {
   e.preventDefault();
   e.returnValue = '';
 });
-addEventListener('pagehide', () => { track('close'); sendUsage(true); });
+addEventListener('pagehide', () => { track('page.close'); sendUsage(true); });
 track('open', { vw: innerWidth, vh: innerHeight, bare, zoom: Math.round(zoom * 100) });
 
 // the page's own keys, as the page has them: in a terminal or a box only the
@@ -3238,18 +3259,43 @@ const counted = (ev, f, props) => function (...a) {
   if (p) track(ev, p);
   return f.apply(this, a);
 };
-activate = counted('activate', activate, id => ({ kind: kindOf(id) }));
+// how a tile was picked or entered: a site that knows says so in via (dbl,
+// enter, palette…), otherwise the last key or press, if it was just now. n is
+// a tile's number for this page load (1, 2, 3…), so a re-entry shows as the
+// same n twice; never a title or an id
+const tnos = new Map();
+const tno = id => tnos.get(id) || (tnos.set(id, tnos.size + 1), tnos.size);
+let lastInput = { by: 'auto', at: 0 }, picked = null;
+addEventListener('keydown', () => { lastInput = { by: 'key', at: Date.now() }; }, true);
+addEventListener('pointerdown', () => { lastInput = { by: 'click', at: Date.now() }; }, true);
+function how() {
+  const by = via || (Date.now() - lastInput.at < 1000 ? lastInput.by : 'auto');
+  via = null;
+  return by;
+}
+activate = counted('activate', activate, id => {
+  picked = id;                          // entering picks too: not a pick of its own
+  return { kind: kindOf(id), by: how(), n: tno(id) };
+});
+render = (f => function (...a) {
+  if (sel && sel !== picked) track('pick', { kind: kindOf(sel), by: how(), n: tno(sel) });
+  picked = sel;
+  return f.apply(this, a);
+})(render);
 newTerm = counted('term.new', newTerm);
-closeTerm = counted('term.close', closeTerm);
+closeTerm = counted('term.close', closeTerm, () => ({ why: via === 'exit' ? (via = null, 'exit') : 'menu' }));
 // a card the poll finds unplaced is placed again every poll until the server holds it: not an add
 addCard = counted('card.add', addCard, (f, at, placed) => placed ? null : { kind: f.image ? 'image' : f.path ? 'doc' : f.note ? 'note' : 'url' });
-closeLink = counted('card.close', closeLink);
+closeLink = counted('card.close', closeLink, id => {
+  const l = links.find(v => 'link:' + v.id === id) || {};
+  return { kind: l.image ? 'image' : l.path ? 'doc' : l.note ? 'note' : 'url', gh: GH_URL.test(l.url || '') };
+});
 newGroup = counted('group.new', newGroup);
 flipZoom = counted('flip', flipZoom);
 setLens = counted('lens', setLens, v => ({ on: !!v }));
 setBare = counted('bare', setBare, v => ({ on: !!v }));
 swapFace = counted('face', swapFace);
-runPal = counted('palette', runPal, r => ({ kind: r.kind }));
+runPal = counted('palette', runPal, r => (lastInput = { by: 'palette', at: Date.now() }, { kind: r.kind }));
 const nudged = { n: 0, grow: 0, at: 0 };
 nudge = (f => function (dx, dy, grow) {      // counted into the tile.end it belongs to
   nudged.n++;
