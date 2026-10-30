@@ -20,6 +20,7 @@ case "$ev" in
     case "$in" in *idle_prompt*) exit 0 ;; esac
     st=waiting ;;
   Stop|"") st=done ;;                      # no event: an old Stop hook
+  SessionEnd) st=gone ;;                   # Claude quit: the chip goes
   *) exit 0 ;;
 esac
 [ "$st" = done ] && curl -s -m 1 localhost:8766/api/ping -d "{\"window\":\"$id\"}" >/dev/null 2>&1

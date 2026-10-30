@@ -25,6 +25,7 @@ X11 only: it reads EWMH properties via xprop/xdotool, and photographs the
 workspace you are on with xwd + ImageMagick's convert.
 """
 import argparse
+import collections
 import html
 import json
 import os
@@ -782,7 +783,7 @@ def sample():
         "arrange": arrangement(),  # its groups and tile places; None until a page sends one
         "lost": lost_terms(),   # terminals a reboot took, for the page to offer back
         "pings": pinged(),      # windows that want you, the same in every browser
-        "claude": claude_states({w["id"] for w in windows}),  # what Claude is up to in each
+        "claude": claude_states(windows),  # what Claude is up to in each
     }
 
 
@@ -1330,25 +1331,75 @@ def pinged():
 # memory only.
 CLAUDE_STATES = ("working", "waiting", "done")
 CLAUDE_STALE = 30 * 60                  # a "working" this old lost its Stop: let it go
+CLAUDE_GONE = 5                         # s with no claude left in a page terminal: it quit
 _claude = {}                            # window id -> (state, when)
+_claude_missing = {}                    # page window id -> when claude was first not found
 _claude_lock = threading.Lock()
 
 
 def claude_state(wid, state):
     """Note what Claude is doing in a window. False if the id or state is not one we use."""
-    if state not in CLAUDE_STATES or not isinstance(wid, str) \
+    if state not in CLAUDE_STATES + ("gone",) or not isinstance(wid, str) \
             or not (wid.startswith("web:") or WIN_ID.match(wid)):
         return False
     wid = wid if wid.startswith("web:") else wid.lower()
     with _claude_lock:
-        _claude[wid] = (state, time.time())
+        if state == "gone":             # SessionEnd: Claude quit, the chip goes with it
+            _claude.pop(wid, None)
+        else:
+            _claude[wid] = (state, time.time())
     return True
 
 
-def claude_states(live):
-    """{window id: {state, at}} for windows still there, minus a stale 'working'."""
+def claude_under(pids):
+    """The terminal pids, of those given, that are claude or have a claude process
+    somewhere below them (a terminal started as claude has it on top). One pass over /proc. Claude running a tool puts bash or node in the
+    foreground, so the foreground program alone would say it had gone."""
+    kids = collections.defaultdict(list)
+    comm = {}
+    for d in os.listdir("/proc"):
+        if not d.isdigit():
+            continue
+        try:
+            with open("/proc/%s/stat" % d) as f:
+                st = f.read()
+        except OSError:
+            continue
+        r = st.rfind(")")
+        comm[int(d)] = st[st.find("(") + 1:r]
+        kids[int(st[r + 2:].split()[1])].append(int(d))
+    found = set()
+    for top in pids:
+        todo = [top]
+        while todo:
+            p = todo.pop()
+            if comm.get(p) == "claude":
+                found.add(top)
+                break
+            todo.extend(kids.get(p, ()))
+    return found
+
+
+def claude_states(windows):
+    """{window id: {state, at}} for windows still there, minus a stale 'working',
+    and minus a page terminal whose Claude has quit (none left under its shell for
+    CLAUDE_GONE seconds). An X window's Claude can't be seen, so it keeps the timeout."""
     now = time.time()
+    live = {w["id"] for w in windows}
+    shells = {w["id"]: w.get("pid") for w in windows if w["id"].startswith("web:") and w.get("pid")}
     with _claude_lock:
+        watch = {wid: shells[wid] for wid in _claude if wid in shells}
+    with_claude = claude_under(set(watch.values())) if watch else set()
+    with _claude_lock:
+        for wid, pid in watch.items():
+            if pid in with_claude:
+                _claude_missing.pop(wid, None)
+            elif now - _claude_missing.setdefault(wid, now) >= CLAUDE_GONE:
+                _claude.pop(wid, None)
+                _claude_missing.pop(wid, None)
+        for wid in list(_claude_missing):
+            if wid not in _claude:
+                del _claude_missing[wid]
         for wid, (state, at) in list(_claude.items()):
             if wid not in live or (state == "working" and now - at > CLAUDE_STALE):
                 del _claude[wid]
