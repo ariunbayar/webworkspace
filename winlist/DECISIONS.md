@@ -337,3 +337,9 @@ Each entry:
 - A: All of it. pick {kind, by, n} when the pick changes; activate gains {by, n}; by is click, key, dbl, enter, space, palette, new, back, exit or auto. n is a tile's number for this page load (1, 2, 3…), never a title, URL or id, so re-entering the same tile shows. pan {d} once on release, only if it moved. term.close {why: menu|exit}, card.close {kind, gh}. The page closing is now page.close; the report reads both. usage_report.py adds picks and entries by source, re-entry share, closes by cause and pans per active minute.
 - Why: #36, #37, #38 and #40 rested on guesses (2026-10-29 log review). Next review measures.
 - Status: done (PR)
+
+### A card link with a space no longer kills the request
+- Q: A link with a space ("…es from Image") passed the prefix check, and fetching its title raised http.client.InvalidURL, which isn't a ValueError on Python 3.10: the request died with a traceback, no card and no answer. Handle it how?
+- A: A url or image link must be whole: no spaces or control characters (WEB_URL). An http(s) link that isn't gets "bad url: …" back. fetch_title also catches HTTPException and falls back to the host name.
+- Why: seen in the server's terminal on 2026-10-30; the sender had no idea the card was lost.
+- Status: done (PR)
