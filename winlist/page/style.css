@@ -122,6 +122,9 @@
               font-size:11.5px; font-weight:600; opacity:.8 }
   .cap .app:empty, .cap .ord:empty { display:none }
   .cap .ord { flex:none; font-size:11px; opacity:.6 }
+  /* a bookmark's number, pressed in NORMAL to come back here */
+  .bm { flex:none; min-width:15px; padding:0 4px; margin:0 2px; border-radius:3px; text-align:center;
+        background:var(--accent); color:#fff; font-size:11px; font-weight:700; line-height:16px }
   @container (max-width:170px) { .cap .app { display:none } }
   .gcount { margin-left:6px; opacity:.6; font-weight:400 }
   /* a corner to pull: a terminal and a link are the only tiles with a size of

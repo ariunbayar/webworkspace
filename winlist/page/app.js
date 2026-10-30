@@ -375,15 +375,18 @@ let palRows = [], palAt = 0, palArmed = null;
 
 // the groups and tiles as they are right now, so the list is never stale
 function palItems() {
-  const gs = groups.map(g => ({ kind: 'group', name: g.name, key: '', extra: g.dir || '',
+  const gs = groups.map(g => ({ id: 'group:' + g.id, kind: 'group', name: g.name, key: '', extra: g.dir || '',
     run: () => fitGroup(g) }));
   const ws = (data ? data.windows : []).map(w => {
     const t = w.term && terms.get(w.term.session);
-    return { kind: kindOf(w.id) === 'term' ? 'terminal' : kindOf(w.id), key: '',
+    return { id: w.id, kind: kindOf(w.id) === 'term' ? 'terminal' : kindOf(w.id), key: '',
       name: w.title || (t && t.title) || w.app || '', extra: haystack(w),
       run: () => { sel = w.id; render(); reveal(); } };
   });
-  return [...ACTIONS, ...gs, ...ws];
+  const name = id => { const r = [...gs, ...ws].find(r => r.id === id); return r ? r.name : ''; };
+  const bms = Object.keys(marks).sort().map(n => ({ kind: 'bookmark', key: n, name: name(marks[n]), extra: '',
+    run: () => jumpMark(+n) })).filter(r => r.name);
+  return [...bms, ...ACTIONS, ...gs, ...ws];
 }
 
 // bring the group to fill the frame, as fitAll does for everything
@@ -412,11 +415,11 @@ function palScore(it, words) {
   return s;
 }
 
-const KIND_ORDER = { action: 0, group: 1 };
+const KIND_ORDER = { bookmark: -1, action: 0, group: 1 };
 function palFind() {
   const words = $('#palq').value.toLowerCase().split(/\s+/).filter(Boolean);
   let rows = palItems();
-  if (!words.length) rows = rows.filter(r => r.kind === 'action' || r.kind === 'group');
+  if (!words.length) rows = rows.filter(r => r.kind === 'bookmark' || r.kind === 'action' || r.kind === 'group');
   else {
     rows.forEach(r => { r.score = palScore(r, words); });
     rows = rows.filter(r => r.score >= 0)
@@ -841,7 +844,8 @@ function renderGroups() {
         if (name.isContentEditable || dir.isContentEditable || e.target === dir || e.target === tools) return e.stopPropagation();
         if (e.target.closest('.more')) {
           e.stopPropagation();
-          return pressMore(e, () => tileMenu(e.target.closest('.more'), [{ label: 'Remove group (its windows stay)', close: () => {
+          return pressMore(e, () => tileMenu(e.target.closest('.more'), [markItem('group:' + el.group.id), { label: 'Remove group (its windows stay)', close: () => {
+            if (markOf('group:' + el.group.id)) setMark('group:' + el.group.id, false);
             groups = groups.filter(v => v !== el.group);
             saveGroups();
             render();
@@ -1042,6 +1046,7 @@ function render() {
   renderCanvas(match);
   renderHusks();
   drawMark();
+  drawMarks();
   status(match, q);
   syncLens();
 }
@@ -1855,6 +1860,7 @@ function inboxCard(l) {
 }
 
 function closeLink(id) {
+  if (markOf(id)) setMark(id, false);
   const l = links.find(v => 'link:' + v.id === id);
   if (l) sendCard(l, null);
   links = links.filter(v => v !== l);
@@ -2529,11 +2535,77 @@ const faceName = id => { const t = terms.get(id); return t && (profiles()[t.prof
 function termMenu(w, anchor) {
   const id = w.term.session, items = [];
   if (profiles().length > 1) items.push({ label: () => 'Font: ' + faceName(id) + '  ↻', run: () => swapFace(id), keep: true });
-  items.push({ label: 'Close terminal', close: () => closeTerm(id) });
+  items.push(markItem(w.id), { label: 'Close terminal', close: () => closeTerm(id) });
   tileMenu(anchor, items);
 }
 
+// ---- bookmarks: tiles you go back to, on 1-9 ------------------------------
+// Set from a tile's ⋯ menu (terminals, cards, groups), each taking the lowest
+// free number; the number shows on its caption. In NORMAL that number goes to
+// it: picked, in the middle, at 100% (a group is fitted). The same number again
+// goes back to the view you came from, unless you have moved since.
+let marks = store.get('marks', {});            // { '1': 'web:…' | 'link:…' | 'group:…' }
+let markBack = null;
+const markOf = id => Object.keys(marks).find(n => marks[n] === id);
+function setMark(id, on) {
+  if (!on) { const n = markOf(id); if (n) delete marks[n]; }
+  else if (!markOf(id)) {
+    const n = [1, 2, 3, 4, 5, 6, 7, 8, 9].find(i => !marks[i]);
+    if (!n) return toast('All nine bookmarks are taken: remove one first');
+    marks[n] = id;
+    toast('Bookmarked as ' + n, 1200);
+  }
+  store.set('marks', marks);
+  render();
+}
+const markItem = id => ({ label: () => markOf(id) ? 'Remove bookmark ' + markOf(id) : 'Bookmark', run: () => setMark(id, !markOf(id)) });
+function jumpMark(n) {
+  const id = marks[n];
+  if (!id) return toast('No bookmark ' + n + ': set one from a tile\'s ⋯ menu', 1600);
+  if (markBack && markBack.n === n && markBack.zoom === zoom && markBack.at === origin.join()) {
+    zoom = markBack.zoom0; origin = markBack.origin0; markBack = null;
+    store.set('zoom', zoom); store.set('origin', origin);
+    return render();
+  }
+  const back = { n, zoom0: zoom, origin0: [...origin] };
+  if (id.startsWith('group:')) {
+    const g = groups.find(v => 'group:' + v.id === id);
+    if (!g) return;
+    fitGroup(g);
+  } else {
+    const w = data && data.windows.find(v => v.id === id), pan = $('#pan');
+    if (!w) return toast('Bookmark ' + n + ' is not on the board right now', 1600);
+    const [x, y] = seatOf(w);
+    sel = id;
+    zoom = 1;
+    // tall tiles show their top: the caption and the start of what's in them
+    origin = [Math.round(pan.clientWidth / 2 - x - w.w / 2),
+              Math.round(w.h > pan.clientHeight - 48 ? 24 - y : pan.clientHeight / 2 - y - w.h / 2)];
+    store.set('zoom', zoom); store.set('origin', origin);
+    render();
+    wholePixels();
+  }
+  markBack = { ...back, zoom, at: origin.join() };
+}
+function drawMarks() {
+  const put = (cap, n) => {
+    if (!cap) return;
+    let b = cap.querySelector('.bm');
+    if (!n) return b && b.remove();
+    if (!b) {
+      b = document.createElement('span');
+      b.className = 'bm';
+      b.title = 'Bookmark: press this number to come here';
+      cap.insertBefore(b, cap.querySelector('.more'));
+    }
+    b.textContent = n;
+  };
+  tileEls.forEach((el, id) => put(el.querySelector('.cap'), markOf(id)));
+  groupEls.forEach((el, id) => put(el.querySelector('.gcap'), markOf('group:' + id)));
+}
+
 async function closeTerm(id) {
+  if (markOf('web:' + id)) setMark('web:' + id, false);
   await fetch('/api/terminals/' + id, { method: 'DELETE' }).catch(() => {});
   delete faces[id];                          // gone for good: nothing to put back
   store.set('faces', faces);
@@ -2596,7 +2668,7 @@ function renderCanvas(match) {
         } else if (win.link && e.target.closest('.grip')) {
           return grabLink(e, win, el);
         } else if (win.link && e.target.closest('.more')) {
-          return pressMore(e, () => tileMenu(e.target.closest('.more'), [{ label: 'Remove card', close: () => closeLink(win.id) }]));
+          return pressMore(e, () => tileMenu(e.target.closest('.more'), [markItem(win.id), { label: 'Remove card', close: () => closeLink(win.id) }]));
         } else if (inInsert()) {
           return;                // in INSERT a photograph is just more surface: it pans
         }
@@ -3182,6 +3254,7 @@ document.addEventListener('keydown', e => {
   if (k === 'y') { e.preventDefault(); return void copyRef(); }
   if (k === 'g') { e.preventDefault(); return newGroup(); }
   if (k === 'z') { e.preventDefault(); return setLens(!lensOn); }
+  if (/^[1-9]$/.test(k) && !e.ctrlKey && !e.altKey && !e.metaKey) { e.preventDefault(); return jumpMark(+k); }
   if (k === 'm') { e.preventDefault(); return setMap(!mapPinned); }
   if (k === 'Enter' || k === ' ') { const w = selected(); if (w) { e.preventDefault(); via = k === ' ' ? 'space' : 'enter'; activate(w.id); } return; }
   if (k === 'PageUp' || k === 'PageDown') { e.preventDefault(); return scrollPicked(k === 'PageUp' ? -1 : 1); }
@@ -3235,7 +3308,7 @@ track('open', { vw: innerWidth, vh: innerHeight, bare, zoom: Math.round(zoom * 1
 // few that belong to the page are counted, never what is typed
 // A key the page does nothing with is counted as 'other', with no character:
 // a row of them would spell out whatever was being typed
-const PAGE_KEYS = new Set(['a', '?', ':', '/', 'Escape', 'b', 't', 'c', 'u', 'o', 'p', 'n', 'y', 'g', 'z', 'm',
+const PAGE_KEYS = new Set(['a', '?', ':', '/', 'Escape', 'b', 't', 'c', 'u', 'o', 'p', 'n', 'y', 'g', 'z', 'm', '1', '2', '3', '4', '5', '6', '7', '8', '9',
   'Enter', ' ', 'h', 'j', 'k', 'l', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'PageUp', 'PageDown']);
 document.addEventListener('keydown', e => {
   // a box is anything that takes text: a group's name and folder are edited in
@@ -3292,6 +3365,8 @@ closeLink = counted('card.close', closeLink, id => {
 });
 newGroup = counted('group.new', newGroup);
 flipZoom = counted('flip', flipZoom);
+jumpMark = counted('mark.jump', jumpMark);
+setMark = counted('mark', setMark, (id, on) => ({ kind: id.split(':')[0], on: !!on }));
 setLens = counted('lens', setLens, v => ({ on: !!v }));
 setBare = counted('bare', setBare, v => ({ on: !!v }));
 swapFace = counted('face', swapFace);
