@@ -307,3 +307,9 @@ Each entry:
 - A: Only in the `:` palette, marked with a ⚠ and an amber highlight. The first Enter (or click) only arms it, and the row says it can't be undone; a second Enter runs it. Typing anything else disarms it.
 - Why: the usage log never recorded it in a week, and an always-visible button for something that throws away the whole arrangement is the wrong shape.
 - Status: done (PR)
+
+### Ctrl+W in a terminal no longer closes the board unasked
+- Q: Ctrl+W (delete a word in bash) closes the whole tab, because Chrome takes it before the page. What to do?
+- A: While a terminal has the keyboard, leaving the page asks first (beforeunload: Chrome's "Leave site?"). In NORMAL nothing asks. A reload while typing in a terminal asks too. The terminals themselves always survive in pty_server.
+- Why: the likeliest accidental close left after the X fixes (2026-10-30). Skipped for now: undoing a shell exit (Ctrl+D) or a Claude exit.
+- Status: done (PR)

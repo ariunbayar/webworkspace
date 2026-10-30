@@ -3184,6 +3184,15 @@ function sendUsage(leaving) {
   else fetch('/api/usage', { method: 'POST', body, keepalive: true }).catch(() => {});
 }
 setInterval(sendUsage, 30000);
+// Ctrl+W deletes a word in a shell, but Chrome takes it first and closes the
+// tab, and a page can't stop that, only ask. So while a terminal has the
+// keyboard, leaving asks; in NORMAL the tab closes as any other does.
+addEventListener('beforeunload', e => {
+  if (!(document.activeElement && document.activeElement.closest('.termhost'))) return;
+  track('leave.ask');
+  e.preventDefault();
+  e.returnValue = '';
+});
 addEventListener('pagehide', () => { track('close'); sendUsage(true); });
 track('open', { vw: innerWidth, vh: innerHeight, bare, zoom: Math.round(zoom * 100) });
 
