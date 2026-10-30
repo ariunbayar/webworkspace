@@ -480,11 +480,6 @@ palbox.addEventListener('keydown', e => {
   if (step) { e.preventDefault(); if (n) palPick((palAt + step + n) % n); }
   else if (e.key === 'Enter') { e.preventDefault(); if (palRows[palAt]) runPal(palRows[palAt]); }
 });
-// squared, so the slider gives fine control down at the small end where the
-// whole surface lives and still reaches far enough in to read a window
-$('#zoom').addEventListener('input', () => {
-  setZoom(MAX_ZOOM * Math.pow($('#zoom').value / 100, 2));
-});
 // Ctrl tapped twice, on its own: between the overview and 1:1, the one zoom
 // where a terminal is not scaled at all, so its text lands on whole pixels.
 // Held about the picked tile, or the middle with none picked. Ctrl alone sends
@@ -2626,7 +2621,6 @@ async function closeTerm(id) {
 
 function renderCanvas(match) {
   if (!zoom) fitAll();                 // the first time only: after that the view is yours
-  $('#zoom').value = Math.round(Math.sqrt(zoom / MAX_ZOOM) * 100);
   $('#zpct').textContent = Math.round(zoom * 100) + '%';
   placeCanvas();
   markEdges();

@@ -43,11 +43,9 @@
 
   /* the virtual screen: every window on one surface, arranged however you like */
   #q:not(.on) { display:none }
-  .ctl { display:flex; gap:8px; align-items:center }
   .btn { border:1px solid var(--line); background:var(--panel); color:var(--dim); font:inherit;
          font-size:12px; padding:5px 10px; border-radius:6px; cursor:pointer }
   .btn:hover { color:var(--fg); border-color:var(--dim) }
-  #zoom { width:96px; accent-color:var(--accent) }
   /* the surface is placed, not scrolled: overflow is hidden and the canvas is
      translated, so a drag can carry everything as far as you like */
   .pan { position:relative; overflow:hidden; border:1px solid var(--line);
@@ -308,8 +306,9 @@
          cursor:crosshair; touch-action:none }
   #map.on { opacity:.94; pointer-events:auto }
   /* which mode you are in, in the corner whether the bar is shown or not */
-  .mode { position:fixed; left:8px; bottom:6px; z-index:98; pointer-events:none;
-          font:600 10.5px ui-monospace,monospace; padding:2px 7px; border-radius:3px;
+  #corner { position:fixed; left:8px; bottom:6px; z-index:98; pointer-events:none;
+            display:flex; gap:6px; align-items:center }
+  .mode { font:600 10.5px ui-monospace,monospace; padding:2px 7px; border-radius:3px;
           background:var(--chip); color:var(--dim) }
   .mode.insert { background:var(--accent); color:#fff }
   .mode.grid { background:#d9a300; color:#111 }
@@ -362,7 +361,7 @@
   .husk .hbtn button { padding:2px 12px; font:12px sans-serif; color:#fff; background:rgba(255,255,255,.1);
                        border:1px solid rgba(255,255,255,.35); border-radius:4px; cursor:pointer }
   .husk .hbtn button:first-child { background:var(--accent); border-color:var(--accent) }
-  #zpct { font-size:11px; color:var(--dim); min-width:3.2em; text-align:right }
+  #zpct { font:600 10.5px ui-monospace,monospace; color:var(--dim) }
   /* small quiet triangles on the frame's edge, pointing at windows out of view */
   .edge { position:absolute; width:8px; height:8px; margin:-4px 0 0 -4px; pointer-events:none;
           z-index:70; background:#e0453a; opacity:.75;

@@ -349,3 +349,9 @@ Each entry:
 - A: ⋯ → Bookmark on a terminal, card or group gives it the lowest free number 1-9, shown as a badge on its caption and as a chip (number and name, click to go) in the top bar. In NORMAL that number picks it, centres it and zooms to 100% (a group is fitted); the same number again goes back to the view you came from, unless you moved since. The palette lists bookmarks first. Closing a tile drops its bookmark; they survive a reload. NORMAL only (no Alt+digit in terminals) and no automatic recent list, by choice.
 - Why: the user asked for easy switching between recently used items (2026-10-30); 1 was freed by double Ctrl.
 - Status: done (PR)
+
+### The zoom shows beside the mode, and the slider is gone
+- Q: Where should the zoom level show?
+- A: The percentage sits beside the mode badge in the bottom-left corner, visible with or without the top bar. The top bar's zoom slider and percentage are removed; zoom is the wheel, a pinch, double Ctrl or the map.
+- Why: the user asked for it (2026-10-30); the top bar keeps the filter, bookmarks and keys.
+- Status: done (PR)
