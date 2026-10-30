@@ -313,3 +313,9 @@ Each entry:
 - A: While a terminal has the keyboard, leaving the page asks first (beforeunload: Chrome's "Leave site?"). In NORMAL nothing asks. A reload while typing in a terminal asks too. The terminals themselves always survive in pty_server.
 - Why: the likeliest accidental close left after the X fixes (2026-10-30). Skipped for now: undoing a shell exit (Ctrl+D) or a Claude exit.
 - Status: done (PR)
+
+### A ⋯ menu instead of the X on every tile
+- Q: How to stop accidental closes for good: hold the X, an undo list, or a menu?
+- A: A ⋯ on every closable tile (terminals, cards, groups) opens its options. For now: Font (terminals; cycles, menu stays open) and Close. Close turns into "Confirm: close … ✕" in place, and only that closes: three deliberate clicks. Esc or a press elsewhere puts the menu away. It replaces the X, #25's "Close Claude?" question and the font name in the caption. No undo list for now.
+- Why: the X kept closing things during pans and zooms (2026-10-29/30). A menu can't be closed through by a stray press, and it gives the caption one place for options.
+- Status: done (PR)
