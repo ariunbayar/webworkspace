@@ -325,3 +325,9 @@ Each entry:
 - A: Tap Ctrl twice (no other key, click or wheel between, within 350 ms) in any mode, typing in a terminal included: at 100% it goes to the 30% overview, anywhere else to 100%, about the picked tile. 1 and its saved way back are removed; the palette row is "Overview / 100%".
 - Why: resting zooms cluster at 25-35% (28%) and 100%; after 1, the view was zoomed by hand again within 2 min 119 of 173 times (2026-10-30 log review). Ctrl alone sends nothing to a terminal, so it is free in every mode.
 - Status: done (PR)
+
+### #43 A sharper usage log
+- Q: Several findings were guesses because the log couldn't say how a tile was picked or entered, that you panned, or why something closed. Add how much?
+- A: All of it. pick {kind, by, n} when the pick changes; activate gains {by, n}; by is click, key, dbl, enter, space, palette, new, back, exit or auto. n is a tile's number for this page load (1, 2, 3…), never a title, URL or id, so re-entering the same tile shows. pan {d} once on release, only if it moved. term.close {why: menu|exit}, card.close {kind, gh}. The page closing is now page.close; the report reads both. usage_report.py adds picks and entries by source, re-entry share, closes by cause and pans per active minute.
+- Why: #36, #37, #38 and #40 rested on guesses (2026-10-29 log review). Next review measures.
+- Status: done (PR)
