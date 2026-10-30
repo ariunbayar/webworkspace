@@ -183,6 +183,27 @@
     only holds the emulator drawing one. Sessions arrive in the same
     <code>windows[]</code> list as synthetic entries, in a cell of their own past the
     last workspace, which is what lets them share the surface with real windows.</p>
+<pre>  ┌─────────────── claude, in any terminal ───────────────┐
+  │  hooks in ~/.claude/settings.json run ping_hook.sh:   │
+  │   UserPromptSubmit · PostToolUse ──► working          │
+  │   Notification (a question)      ──► waiting          │
+  │   Stop                           ──► done  + ping     │
+  │   SessionEnd                     ──► gone             │
+  └──────────────────────────┬────────────────────────────┘
+                             │ POST /api/claude {window, state}
+                             │ POST /api/ping   {window}
+                             ▼
+  ┌────────────────────────────────────────────────┐
+  │ winlist_server.py  keeps the state per window  │──► windows[] ──► the chip on
+  │ in memory; drops it when the window goes, when │    "claude"      the tile, the
+  │ no claude is left in a page terminal for 5 s,  │    "pings"       ring, the bob
+  │ or when a "working" is 30 minutes old          │                  on its edge mark
+  └────────────────────────────────────────────────┘</pre>
+    <p><b>Claude's state:</b> Claude Code tells the board what it is doing through its
+    hooks. Each hook runs <code>ping_hook.sh</code>, which finds its window from
+    <code>$WINLIST_TERM</code> (a page terminal) or <code>$WINDOWID</code> (an X terminal)
+    and posts the state; it never fails, blocks or prints, wherever it runs. The server
+    holds it in memory only, so a restart forgets it until the next hook fires.</p>
   </div>
 </dialog>
 <script type="module" src="/page/app.js"></script>
