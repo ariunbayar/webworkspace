@@ -301,3 +301,9 @@ Each entry:
 - A: Both. For a page terminal the server looks under its shell each poll; with no claude process anywhere below it for 5 s, the chip goes. The whole tree is looked at, not the foreground, because Claude running a tool puts bash or node in front. And ping_hook.sh sends 'gone' on SessionEnd, which clears it at once, X windows included; a crash in an X window still waits for the 30-minute timeout.
 - Why: quitting Claude left 'done' or 'waiting' on the tile for good.
 - Status: done (PR)
+
+### #18 Reset layout off the top bar
+- Q: Where should Reset layout live?
+- A: Only in the `:` palette, marked with a ⚠ and an amber highlight. The first Enter (or click) only arms it, and the row says it can't be undone; a second Enter runs it. Typing anything else disarms it.
+- Why: the usage log never recorded it in a week, and an always-visible button for something that throws away the whole arrangement is the wrong shape.
+- Status: done (PR)

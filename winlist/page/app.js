@@ -368,13 +368,10 @@ const ACTIONS = [
     if (w) startTile(w);
     else toast('Pick a window first: <kbd>↑↓←→</kbd>, then <kbd>Super+Enter</kbd>');
   }],
-  ['Reset layout', '', () => {     // it asks twice, so the button is left armed
-    if (bare) setBare(false);
-    $('#reset').click();
-    toast('Click <b>Reset layout</b> again to confirm');
-  }],
-].map(([name, key, run]) => ({ kind: 'action', name, key, extra: '', run }));
-let palRows = [], palAt = 0;
+  // the whole arrangement goes, so it is marked and asks once more (see runPal)
+  ['Reset layout', '', () => resetLayout(), true],
+].map(([name, key, run, danger]) => ({ kind: 'action', name, key, extra: '', run, danger }));
+let palRows = [], palAt = 0, palArmed = null;
 
 // the groups and tiles as they are right now, so the list is never stale
 function palItems() {
@@ -427,13 +424,17 @@ function palFind() {
   }
   palRows = rows;
   palAt = 0;
+  palArmed = null;
   const list = $('#pallist');
   list.textContent = '';
   rows.forEach((r, i) => {
     const el = document.createElement('div');
     el.className = 'palrow';
     el.setAttribute('role', 'option');
-    el.innerHTML = `<span class="palkind">${r.kind}</span><span class="palname">${esc(r.name)}</span>`
+    if (r.danger) el.classList.add('danger');
+    el.innerHTML = `<span class="palkind">${r.kind}</span>`
+      + (r.danger ? `<span class="palwarn" title="Can't be undone">⚠</span>` : '')
+      + `<span class="palname">${esc(r.name)}</span>`
       + (r.key ? `<kbd>${esc(r.key)}</kbd>` : '');
     if (words.length) markWords(el.querySelector('.palname'), words);
     el.onmousemove = () => palPick(i, false);
@@ -451,6 +452,13 @@ function palPick(i, scroll = true) {
 }
 // closed first, so a dialog the action opens does not land under this one
 function runPal(r) {
+  // one that can't be undone runs on a second Enter or click; the box stays open
+  if (r.danger && palArmed !== r) {
+    palArmed = r;
+    const el = $('#pallist').children[palRows.indexOf(r)];
+    if (el) el.querySelector('.palname').textContent = r.name + ': can\'t be undone. Enter again to confirm';
+    return;
+  }
   palbox.close();
   r.run();
 }
@@ -515,23 +523,14 @@ function wholePixels() {
   shift(Math.round(box.left + origin[0]) - box.left - origin[0],
         Math.round(box.top + origin[1]) - box.top - origin[1]);
 }
-// the whole arrangement goes, so it asks once more: a second click within 3s
-let resetArmed = 0;
-$('#reset').onclick = () => {
-  const b = $('#reset');
-  if (!resetArmed) {
-    b.textContent = 'Click again to reset';
-    resetArmed = setTimeout(() => { resetArmed = 0; b.textContent = 'Reset layout'; }, 3000);
-    return;
-  }
-  clearTimeout(resetArmed);
-  resetArmed = 0;
-  b.textContent = 'Reset layout';
+// every tile back where the desktop has it: from the palette only, which asks first
+function resetLayout() {
+  track('reset');
   layout = {};
   scales = {};
   saveLayout();
   render();
-};
+}
 addEventListener('resize', render);
 // the frame can change size without a window resize (bar folded, layout settled): the edge marks are measured against it
 new ResizeObserver(markEdges).observe($('#pan'));
@@ -1065,7 +1064,7 @@ function status(match, q) {
   $('#foot').innerHTML = `Every window on one surface, seeded from where it `
       + `really sits and then yours to arrange: drag a tile and only the tile moves — the `
       + `desktop is never touched. The arrangement is remembered in this browser; `
-      + `<b>Reset layout</b> puts everything back where the desktop has it. Scroll or `
+      + `<b>Reset layout</b> (in the <kbd>:</kbd> palette) puts everything back where the desktop has it. Scroll or `
       + `pinch to zoom, drag the background or slide two fingers to pan, and click a window `
       + `(or press <kbd>Enter</kbd>) to focus it for real. Windows start out grouped by `
       + `the workspace they live on, packed together rather than spread over the desktop's `
@@ -3255,4 +3254,3 @@ $('#q').addEventListener('input', () => {
 [[helpbox, 'help'], [archbox, 'arch']].forEach(([box, ev]) => new MutationObserver(() => {
   if (box.open) track(ev);
 }).observe(box, { attributes: true, attributeFilter: ['open'] }));
-$('#reset').addEventListener('click', () => track('reset'));

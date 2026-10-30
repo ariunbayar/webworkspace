@@ -267,6 +267,8 @@
   .palrow { display:flex; align-items:center; gap:10px; padding:5px 9px; border-radius:6px;
             font-size:13px; cursor:pointer; height:20px }
   .palrow.on { background:var(--accent); color:#fff }
+  .palwarn { color:#d97706; font-size:14px; line-height:1 }
+  .palrow.danger.on { background:#b45309 }
   .palkind { flex:0 0 58px; font-size:10px; text-transform:uppercase; letter-spacing:.04em;
              color:var(--dim) }
   .palrow.on .palkind { color:inherit; opacity:.8 }
