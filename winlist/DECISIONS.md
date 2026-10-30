@@ -326,6 +326,12 @@ Each entry:
 - Why: resting zooms cluster at 25-35% (28%) and 100%; after 1, the view was zoomed by hand again within 2 min 119 of 173 times (2026-10-30 log review). Ctrl alone sends nothing to a terminal, so it is free in every mode.
 - Status: done (PR)
 
+### #39 Cards from a terminal stack in a column beside it
+- Q: Cards Claude sends land at the terminal's top right and step down-right over each other and over neighbours. Place them how?
+- A: A column on the terminal's right: the first gap from its top down, with nothing overlapping (real rectangles, half a grid apart). If the right side is full (about 8 card heights), under the terminal, then down its left side, then the old step down and right. Cards into a group, the Inbox and new terminals are unchanged. The view doesn't move.
+- Why: Oct 23-29, 35 of 109 arrived cards (32%) were dragged within a minute, and cards are the most dragged tile (290 drags). The old check only compared top-left corners.
+- Status: done (PR)
+
 ### #43 A sharper usage log
 - Q: Several findings were guesses because the log couldn't say how a tile was picked or entered, that you panned, or why something closed. Add how much?
 - A: All of it. pick {kind, by, n} when the pick changes; activate gains {by, n}; by is click, key, dbl, enter, space, palette, new, back, exit or auto. n is a tile's number for this page load (1, 2, 3…), never a title, URL or id, so re-entering the same tile shows. pan {d} once on release, only if it moved. term.close {why: menu|exit}, card.close {kind, gh}. The page closing is now page.close; the report reads both. usage_report.py adds picks and entries by source, re-entry share, closes by cause and pans per active minute.
