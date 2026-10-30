@@ -1814,9 +1814,8 @@ function arrivedCard(l) {
   if (t) {
     const [x, y] = seatOf(t);
     to = groups.findLast(v => inGroup(v, [x, y]));
-    at = [x + t.w + GRID, y];
-  } else at = [g.x + GRID, g.y + GRID * 2];     // the caption takes the top row
-  layout[w.id] = clearSpot(at, w.id);
+    layout[w.id] = spotBeside(t, w);
+  } else layout[w.id] = clearSpot([g.x + GRID, g.y + GRID * 2], w.id);   // the caption takes the top row
   saveLayout();
   announce(w.id);
   toast(`New card ${t ? 'beside its terminal' : 'in'}${to ? ' in ' + esc(to.name) : ''}: ${esc(cardTitle(l))}`);
@@ -2391,6 +2390,26 @@ function clearSpot([x, y], exceptId) {
   x = snap(x); y = snap(y);
   for (let n = 0; n < 100 && taken(); n++) { x += 2 * GRID; y += 2 * GRID; }
   return [x, y];
+}
+
+// A card from a terminal goes in a column on its right, each under the last,
+// on no other tile: the first gap down the right side, then under the
+// terminal, then down its left side. Only when all of those are full does it
+// fall back to clearSpot's step down and right.
+function spotBeside(t, w) {
+  const [tx, ty] = seatOf(t), pad = GRID / 2, reach = Math.max(t.h, 8 * (w.h + GRID));
+  const free = (x, y) => !data.windows.some(v => {
+    if (v.id === w.id) return false;
+    const [a, b] = seatOf(v);
+    return x - pad < a + v.w && a < x + w.w + pad && y - pad < b + v.h && b < y + w.h + pad;
+  });
+  // on the grid, rounded away from the terminal: snap() can round back onto it
+  const up = v => Math.ceil(v / GRID) * GRID, dn = v => Math.floor(v / GRID) * GRID;
+  const down = x => { for (let y = dn(ty); y <= ty + reach; y += GRID) if (free(x, y)) return [x, y]; };
+  const right = up(tx + t.w + GRID), below = up(ty + t.h + GRID);
+  let at = down(right);
+  for (let x = dn(tx); !at && x <= tx + t.w; x += GRID) if (free(x, below)) at = [x, below];
+  return at || down(dn(tx - w.w - GRID)) || clearSpot([right, ty], w.id);
 }
 
 // A new terminal opens at the drop point, and the view stays where it is: you

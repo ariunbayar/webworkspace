@@ -325,3 +325,9 @@ Each entry:
 - A: Tap Ctrl twice (no other key, click or wheel between, within 350 ms) in any mode, typing in a terminal included: at 100% it goes to the 30% overview, anywhere else to 100%, about the picked tile. 1 and its saved way back are removed; the palette row is "Overview / 100%".
 - Why: resting zooms cluster at 25-35% (28%) and 100%; after 1, the view was zoomed by hand again within 2 min 119 of 173 times (2026-10-30 log review). Ctrl alone sends nothing to a terminal, so it is free in every mode.
 - Status: done (PR)
+
+### #39 Cards from a terminal stack in a column beside it
+- Q: Cards Claude sends land at the terminal's top right and step down-right over each other and over neighbours. Place them how?
+- A: A column on the terminal's right: the first gap from its top down, with nothing overlapping (real rectangles, half a grid apart). If the right side is full (about 8 card heights), under the terminal, then down its left side, then the old step down and right. Cards into a group, the Inbox and new terminals are unchanged. The view doesn't move.
+- Why: Oct 23-29, 35 of 109 arrived cards (32%) were dragged within a minute, and cards are the most dragged tile (290 drags). The old check only compared top-left corners.
+- Status: done (PR)
