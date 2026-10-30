@@ -295,3 +295,9 @@ Each entry:
 - A: Yes. In NORMAL, PgUp/PgDn scroll the picked tile a page: a terminal's (or restored husk's) scrollback, or a document, note or diff card. A Claude terminal (it reads the mouse) gets a page of wheel turns; vim or less gets the key. Desktop windows and link cards: nothing.
 - Why: asked by the user 2026-10-30; reading output meant going in and coming out again.
 - Status: done (PR)
+
+### #19 Claude chip outlives Claude
+- Q: How should a stale Claude chip go away?
+- A: Both. For a page terminal the server looks under its shell each poll; with no claude process anywhere below it for 5 s, the chip goes. The whole tree is looked at, not the foreground, because Claude running a tool puts bash or node in front. And ping_hook.sh sends 'gone' on SessionEnd, which clears it at once, X windows included; a crash in an X window still waits for the 30-minute timeout.
+- Why: quitting Claude left 'done' or 'waiting' on the tile for good.
+- Status: done (PR)
