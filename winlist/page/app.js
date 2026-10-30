@@ -356,7 +356,7 @@ const ACTIONS = [
   ['Markdown file', 'o', () => askDoc()],
   ['Copy ref for Claude', 'y', () => copyRef()],
   ['Group', 'g', () => newGroup()],
-  ['Actual size', '1', () => actualSize()],
+  ['Overview / 100%', 'Ctrl Ctrl', () => flipZoom()],
   ['Loupe', 'z', () => setLens(!lensOn)],
   ['Map of the surface', 'm', () => setMap(!mapPinned)],
   ['Top bar', 'b', () => setBare(!bare)],
@@ -483,40 +483,36 @@ palbox.addEventListener('keydown', e => {
 $('#zoom').addEventListener('input', () => {
   setZoom(MAX_ZOOM * Math.pow($('#zoom').value / 100, 2));
 });
-// 1:1 is the one zoom where a terminal is not scaled at all, so its text lands
-// on whole pixels; held about the picked tile, or the middle with none picked
-// A second 1 goes back to where the first one came from, unless you have
-// panned or zoomed since: the way back is one step, kept across a reload, and
-// any move of your own forgets it (see leftBack).
-let backView = store.get('back', null), moving = false;
-function actualSize() {
-  if (backView) {
-    const b = backView;
-    setBack(null);
-    moving = true;
-    zoom = b.zoom;
-    origin = b.origin;
-    store.set('zoom', zoom);
-    store.set('origin', origin);
-    render();
-    moving = false;
-    stirMap();
-    return toast('back to ' + Math.round(zoom * 100) + '%', 1400);
-  }
-  const was = { zoom, origin: [...origin] };
-  const el = sel && tileEls.get(sel);
-  moving = true;
-  if (!el) setZoom(1);
+// Ctrl tapped twice, on its own: between the overview and 1:1, the one zoom
+// where a terminal is not scaled at all, so its text lands on whole pixels.
+// Held about the picked tile, or the middle with none picked. Ctrl alone sends
+// nothing to a terminal, so it works in every mode, typing included.
+const OVERVIEW = 0.3;
+function flipZoom() {
+  const el = sel && tileEls.get(sel), to = Math.abs(zoom - 1) < 0.05 ? OVERVIEW : 1;
+  if (!el) setZoom(to);
   else {
     const r = el.getBoundingClientRect();
-    zoomAbout(1, r.left + r.width / 2, r.top + r.height / 2);
+    zoomAbout(to, r.left + r.width / 2, r.top + r.height / 2);
   }
-  wholePixels();
-  moving = false;
-  if (was.zoom !== 1) setBack(was);
+  if (to === 1) wholePixels();
+  toast(to === 1 ? '100%' : 'overview ' + Math.round(to * 100) + '%', 900);
 }
-function setBack(v) { backView = v; store.set('back', v); }
-function leftBack() { if (backView && !moving) setBack(null); }
+// a tap is Ctrl down and up with no other key, click or wheel in between;
+// two within 350 ms is the double
+let ctrlClean = false, ctrlLast = 0;
+addEventListener('keydown', e => {
+  if (e.key === 'Control') { if (!e.repeat) ctrlClean = true; }
+  else ctrlClean = false, ctrlLast = 0;
+}, true);
+addEventListener('keyup', e => {
+  if (e.key !== 'Control' || !ctrlClean) return;
+  ctrlClean = false;
+  if (e.timeStamp - ctrlLast < 350) { ctrlLast = 0; flipZoom(); }
+  else ctrlLast = e.timeStamp;
+}, true);
+for (const t of ['pointerdown', 'wheel']) addEventListener(t, () => { ctrlClean = false; ctrlLast = 0; }, true);
+addEventListener('blur', () => { ctrlClean = false; ctrlLast = 0; });
 // and on whole screen pixels too: half a pixel off and the text smears
 function wholePixels() {
   const box = $('#pan').getBoundingClientRect();
@@ -1148,7 +1144,6 @@ function placeCanvas() {
 }
 function shift(dx, dy) {          // slide the whole surface, no edges to run into
   origin = [origin[0] + dx, origin[1] + dy];
-  leftBack();
   store.set('origin', origin);
   placeCanvas();
   markEdges();
@@ -1331,7 +1326,6 @@ function zoomAbout(next, cx, cy) {
   const fx = cx - box.left, fy = cy - box.top;
   origin = [fx - (fx - origin[0]) / zoom * next, fy - (fy - origin[1]) / zoom * next];
   zoom = next;
-  leftBack();
   store.set('zoom', zoom);
   store.set('origin', origin);
   render();
@@ -3166,7 +3160,6 @@ document.addEventListener('keydown', e => {
   if (k === 'n') { e.preventDefault(); return void newNote(); }
   if (k === 'y') { e.preventDefault(); return void copyRef(); }
   if (k === 'g') { e.preventDefault(); return newGroup(); }
-  if (k === '1') { e.preventDefault(); return actualSize(); }
   if (k === 'z') { e.preventDefault(); return setLens(!lensOn); }
   if (k === 'm') { e.preventDefault(); return setMap(!mapPinned); }
   if (k === 'Enter' || k === ' ') { const w = selected(); if (w) { e.preventDefault(); activate(w.id); } return; }
@@ -3221,7 +3214,7 @@ track('open', { vw: innerWidth, vh: innerHeight, bare, zoom: Math.round(zoom * 1
 // few that belong to the page are counted, never what is typed
 // A key the page does nothing with is counted as 'other', with no character:
 // a row of them would spell out whatever was being typed
-const PAGE_KEYS = new Set(['a', '?', ':', '/', 'Escape', 'b', 't', 'c', 'u', 'o', 'p', 'n', 'y', 'g', '1', 'z', 'm',
+const PAGE_KEYS = new Set(['a', '?', ':', '/', 'Escape', 'b', 't', 'c', 'u', 'o', 'p', 'n', 'y', 'g', 'z', 'm',
   'Enter', ' ', 'h', 'j', 'k', 'l', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'PageUp', 'PageDown']);
 document.addEventListener('keydown', e => {
   // a box is anything that takes text: a group's name and folder are edited in
@@ -3252,7 +3245,7 @@ closeTerm = counted('term.close', closeTerm);
 addCard = counted('card.add', addCard, (f, at, placed) => placed ? null : { kind: f.image ? 'image' : f.path ? 'doc' : f.note ? 'note' : 'url' });
 closeLink = counted('card.close', closeLink);
 newGroup = counted('group.new', newGroup);
-actualSize = counted('actual', actualSize);
+flipZoom = counted('flip', flipZoom);
 setLens = counted('lens', setLens, v => ({ on: !!v }));
 setBare = counted('bare', setBare, v => ({ on: !!v }));
 swapFace = counted('face', swapFace);
