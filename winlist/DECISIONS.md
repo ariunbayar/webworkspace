@@ -343,3 +343,21 @@ Each entry:
 - A: A url or image link must be whole: no spaces or control characters (WEB_URL). An http(s) link that isn't gets "bad url: …" back. fetch_title also catches HTTPException and falls back to the host name.
 - Why: seen in the server's terminal on 2026-10-30; the sender had no idea the card was lost.
 - Status: done (PR)
+
+### Bookmarks on 1-9
+- Q: How to get back to the few tiles you keep using, quickly?
+- A: ⋯ → Bookmark on a terminal, card or group gives it the lowest free number 1-9, shown as a badge on its caption and as a chip (number and name, click to go) in the top bar. In NORMAL that number picks it, centres it and zooms to 100% (a group is fitted); the same number again goes back to the view you came from, unless you moved since. The palette lists bookmarks first. Closing a tile drops its bookmark; they survive a reload. NORMAL only (no Alt+digit in terminals) and no automatic recent list, by choice.
+- Why: the user asked for easy switching between recently used items (2026-10-30); 1 was freed by double Ctrl.
+- Status: done (PR)
+
+### The zoom shows beside the mode, and the slider is gone
+- Q: Where should the zoom level show?
+- A: The percentage sits beside the mode badge in the bottom-left corner, visible with or without the top bar. The top bar's zoom slider and percentage are removed; zoom is the wheel, a pinch, double Ctrl or the map.
+- Why: the user asked for it (2026-10-30); the top bar keeps the filter, bookmarks and keys.
+- Status: done (PR)
+
+### The status line under the title is gone
+- Q: "N windows · N terminals of our own · 3×6 workspaces · N in use · updated hh:mm:ss": still useful?
+- A: No: removed. A lost server already shows in the banner after two failed polls.
+- Why: the user no longer uses it, and plans to stop showing the desktop's own windows (2026-10-30).
+- Status: done (PR)

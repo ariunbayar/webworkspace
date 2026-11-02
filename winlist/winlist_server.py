@@ -27,6 +27,7 @@ workspace you are on with xwd + ImageMagick's convert.
 import argparse
 import collections
 import html
+import http.client
 import json
 import os
 import re
@@ -841,6 +842,11 @@ def log_usage(events):
     return len(lines)
 
 
+# a web address with nothing in it a request can't carry: a space or a control
+# character got through the old prefix check and killed the request mid-way
+WEB_URL = re.compile(r"https?://[^/\x00-\x20\x7f]+[^\x00-\x20\x7f]*")
+
+
 def fetch_title(url):
     """What the page calls itself, if it will say without a login: else None."""
     try:
@@ -849,7 +855,7 @@ def fetch_title(url):
             if "html" not in r.headers.get("Content-Type", ""):
                 return None
             head = r.read(65536).decode(r.headers.get_content_charset() or "utf-8", "replace")
-    except (OSError, ValueError):
+    except (OSError, ValueError, http.client.HTTPException):    # InvalidURL is one, not a ValueError
         return None
     m = re.search(r"<title[^>]*>(.*?)</title>", head, re.S | re.I)
     return html.unescape(" ".join(m.group(1).split()))[:200] if m else None
@@ -1134,7 +1140,7 @@ def send_link(url=None, title=None, path=None, image=None, keep=None, tool=None,
         card = {"tool": tool, "dir": os.path.expanduser(folder), "about": found["about"],
                 "title": title or tool}
     elif image:
-        if not re.match(r"https?://[^/\s]+", image):
+        if not WEB_URL.fullmatch(image):
             image, _, err = image_file(image)
             if err:
                 return None, err
@@ -1144,8 +1150,10 @@ def send_link(url=None, title=None, path=None, image=None, keep=None, tool=None,
         if err:
             return None, err
         card = {"path": doc["path"], "title": title or doc["name"]}
-    elif re.match(r"https?://[^/\s]+", url or ""):
+    elif WEB_URL.fullmatch(url or ""):
         card = {"url": url, "title": title or fetch_title(url) or url.split("/")[2]}
+    elif re.match(r"https?:", url or ""):
+        return None, "bad url: it has a space or a control character in it (encode it, e.g. %20)"
     else:
         return None, "give a url, a path to a markdown file, or an image"
     with _links_lock:
