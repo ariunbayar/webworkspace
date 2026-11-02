@@ -361,3 +361,9 @@ Each entry:
 - A: No: removed. A lost server already shows in the banner after two failed polls.
 - Why: the user no longer uses it, and plans to stop showing the desktop's own windows (2026-10-30).
 - Status: done (PR)
+
+### Choosing a bookmark's number
+- Q: Can a bookmark go on a number you choose?
+- A: Yes: ⋯ → Bookmark is now a row of 1-9. The tile's own number is lit, numbers in use are dimmed and name their tile on hover; pressing one moves that bookmark here, pressing its own takes it off. No Shift+number, by choice.
+- Why: the user asked for it (2026-11-02); always the lowest free number made the numbers hard to keep in your head.
+- Status: done (PR)

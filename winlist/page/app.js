@@ -2485,6 +2485,20 @@ function tileMenu(anchor, items) {
   if (tmenuOff) tmenuOff();
   tmenu.textContent = '';
   items.forEach(it => {
+    if (it.nums) {
+      const row = document.createElement('div'), mine = markOf(it.nums);
+      row.className = 'tmnums';
+      row.innerHTML = '<span>Bookmark</span>' + [1, 2, 3, 4, 5, 6, 7, 8, 9].map(n =>
+        `<b data-n="${n}" class="${mine == n ? 'mine' : marks[n] ? 'taken' : ''}" title="${
+          mine == n ? 'Remove this bookmark' : marks[n] ? esc('Move from: ' + markName(marks[n])) : 'Bookmark as ' + n}">${n}</b>`).join('');
+      row.onclick = e => {
+        const b = e.target.closest('b');
+        if (!b) return;
+        put();
+        setMark(it.nums, mine == b.dataset.n ? 0 : +b.dataset.n);
+      };
+      return void tmenu.append(row);
+    }
     const b = document.createElement('div');
     b.className = 'tmitem' + (it.close ? ' danger' : '');
     const label = () => typeof it.label === 'function' ? it.label() : it.label;
@@ -2534,18 +2548,20 @@ let marks = store.get('marks', {});
 $('#bms').addEventListener('click', e => { const c = e.target.closest('.bmchip'); if (c) jumpMark(+c.dataset.n); });            // { '1': 'web:…' | 'link:…' | 'group:…' }
 let markBack = null;
 const markOf = id => Object.keys(marks).find(n => marks[n] === id);
-function setMark(id, on) {
-  if (!on) { const n = markOf(id); if (n) delete marks[n]; }
-  else if (!markOf(id)) {
-    const n = [1, 2, 3, 4, 5, 6, 7, 8, 9].find(i => !marks[i]);
-    if (!n) return toast('All nine bookmarks are taken: remove one first');
+// n: the number to put it on (whatever had it loses it), or none to take it off
+function setMark(id, n) {
+  const had = markOf(id);
+  if (had) delete marks[had];
+  if (n) {
     marks[n] = id;
     toast('Bookmarked as ' + n, 1200);
   }
   store.set('marks', marks);
   render();
 }
-const markItem = id => ({ label: () => markOf(id) ? 'Remove bookmark ' + markOf(id) : 'Bookmark', run: () => setMark(id, !markOf(id)) });
+// a row of 1-9 in the ⋯ menu: its own number lit, numbers in use dimmed
+// (pressing one moves it here), its own again takes it off
+const markItem = id => ({ nums: id });
 function jumpMark(n) {
   const id = marks[n];
   if (!id) return toast('No bookmark ' + n + ': set one from a tile\'s ⋯ menu', 1600);
@@ -3362,7 +3378,7 @@ closeLink = counted('card.close', closeLink, id => {
 newGroup = counted('group.new', newGroup);
 flipZoom = counted('flip', flipZoom);
 jumpMark = counted('mark.jump', jumpMark);
-setMark = counted('mark', setMark, (id, on) => ({ kind: id.split(':')[0], on: !!on }));
+setMark = counted('mark', setMark, (id, n) => ({ kind: id.split(':')[0], on: !!n }));
 setLens = counted('lens', setLens, v => ({ on: !!v }));
 setBare = counted('bare', setBare, v => ({ on: !!v }));
 swapFace = counted('face', swapFace);
