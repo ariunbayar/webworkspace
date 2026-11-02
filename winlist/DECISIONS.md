@@ -373,3 +373,9 @@ Each entry:
 - A: Yes. Typing in / opens a list of up to 12 matching tiles under the box (kind, name, bookmark number). ↑↓ or a hover lights one and the view goes to it, picked (zooming in if it's too small to read). Enter or a click keeps it and clears the filter; Shift+Enter also goes into it. Esc or clicking away puts back the view and pick you started from. Enter with nothing lit still goes to the first match, as before. Chrome's own list of past searches is off (autocomplete="off").
 - Why: the user asked for it (2026-11-02); the dropdown they saw was Chrome's search history, not tiles.
 - Status: done (PR)
+
+### The desktop's own windows are gone from the board
+- Q: Keep showing the real GNOME/X11 windows as tiles?
+- A: No. The server no longer asks X anything for the board: no window list (xprop, xdotool), no workspace photographs (xwd, convert), no workspace grid (dconf), no focusing a real window (/api/focus), no /api/screen, and no --no-focus, --no-screens or --shot-width. /api/windows now lists our terminals only; cards, groups, pings and Claude state are unchanged. --open just runs xdg-open. ping_hook.sh only knows page terminals ($WINLIST_TERM). On the page: no window tiles, thumbnails or workspace cells; ↑↓←→ pick the nearest tile that way; Reset layout is gone (it only put windows back); ws2 is gone from the filter; help, footer and the architecture dialog say so. xterm_look() still reads xrdb for the terminal colours.
+- Why: the user no longer uses the windows on the board (2026-11-02). About 700 lines go.
+- Status: done (PR)

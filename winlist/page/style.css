@@ -57,7 +57,6 @@
           display:flex; flex-direction:column; cursor:grab; touch-action:none }
   .tile:hover { border-color:var(--dim) }
   .tile.dragging { cursor:grabbing; box-shadow:0 12px 34px rgba(0,0,0,.4); z-index:60 }
-  .tile.focused { border-color:var(--accent) }
   .tile.sel { outline:10px solid var(--accent); outline-offset:5px }
   body:not(.insert) .tile.sel { outline-color:#9aa0a6 }   /* NORMAL is grey, INSERT keeps the accent */
   /* a card takes no keys, so it is never INSERT's colour — unless it is a
@@ -79,17 +78,12 @@
   .cap .pre:not(:empty)::after { content:" ·" }
   .pic { position:relative; flex:1; min-height:0; background-repeat:no-repeat;
          background-origin:border-box }
-  .pic.none { display:flex; align-items:center; justify-content:center; color:#fff;
-              font-size:10px; text-shadow:0 1px 2px rgba(0,0,0,.4); text-align:center;
-              padding:0 6px }
-  /* A terminal is not a photograph of anything — it is the session itself,
-     live. So the whole tile is drawn at the size the terminal really wants and
+  /* A terminal is the session itself, live. So the whole tile is drawn at the size the terminal really wants and
      then scaled with the rest of the surface: zoom out and it goes small like
      everything else, zoom in and you can read it and type into it. */
   .tile.term { background:#12110d; border-color:#3a372c }
-  .tile.term.focused { border-color:var(--accent) }
-  /* …all of it but the caption, which stays at screen size like a
-     photograph's, so the title reads the same at any zoom */
+  /* …all of it but the caption, which stays at screen size, so the title
+     reads the same at any zoom */
   .termbody { position:relative; flex:1; min-height:0; overflow:hidden }
   .termwrap { position:absolute; top:0; left:0; transform-origin:0 0 }
   .tile.term .cap { cursor:grab }
@@ -249,12 +243,6 @@
               background:rgba(0,0,0,.72); color:#e9e7df; font:11px ui-monospace,monospace;
               pointer-events:none }
 
-  /* a photo of a workspace shows whatever was on top, so the parts of this
-     window that something else was covering get struck out rather than passed
-     off as its own content */
-  .hid { position:absolute; background:var(--empty);
-         background-image:repeating-linear-gradient(45deg,
-           rgba(128,128,128,.22) 0 4px, transparent 4px 9px) }
   /* what the whole thing is, on demand: a picture of the pieces and who
      talks to whom, since none of it is visible from the page itself */
   dialog { border:1px solid var(--line); border-radius:10px; background:var(--panel);

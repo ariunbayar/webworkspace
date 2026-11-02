@@ -16,9 +16,8 @@ const inInsert = () => document.body.classList.contains('insert');
 let idCount = 0;
 const newId = () => Date.now().toString(36) + (idCount++ % 36).toString(36);
 
-// The arrangement lives here, not on the desktop: dragging a window on the
-// virtual screen moves the tile and nothing else. Kept per window id, so a
-// window we have not seen before falls back to where it really is.
+// The arrangement lives here: where each tile sits, kept per tile id, so a
+// terminal we have not placed yet falls back to where the server laid it.
 const store = {
   get(k, fb) { try { return JSON.parse(localStorage.getItem('winlist.' + k)) ?? fb; }
                catch { return fb; } },
@@ -136,12 +135,6 @@ const GRID = 40;                           // virtual px: what moving and resizi
 // zoomed out to a quarter or less a cell is a few screen px, too fine to step
 // across with the keyboard, so the grid doubles there
 const gridStep = () => zoom <= 0.25 ? GRID * 2 : GRID;
-const GUTTER = 140;                        // virtual px between one workspace and the next
-
-function shotUrl(i) {
-  const s = data.shots && data.shots[i];
-  return s ? `/api/screen/${i}?v=${encodeURIComponent(s.clock)}` : null;
-}
 
 
 // always the whole browser window, F11 not involved
@@ -364,12 +357,11 @@ const ACTIONS = [
   ['Architecture', 'a', () => showArch()],
   ['Keys help', '?', () => showHelp()],
   ['Move/size picked tile', 'Super+Enter', () => {
-    const w = selected() || data && data.windows.find(x => x.focused && visible()(x));
+    const w = selected();
     if (w) startTile(w);
     else toast('Pick a window first: <kbd>↑↓←→</kbd>, then <kbd>Super+Enter</kbd>');
   }],
   // the whole arrangement goes, so it is marked and asks once more (see runPal)
-  ['Reset layout', '', () => resetLayout(), true],
 ].map(([name, key, run, danger]) => ({ kind: 'action', name, key, extra: '', run, danger }));
 let palRows = [], palAt = 0, palArmed = null;
 
@@ -516,14 +508,6 @@ function wholePixels() {
   shift(Math.round(box.left + origin[0]) - box.left - origin[0],
         Math.round(box.top + origin[1]) - box.top - origin[1]);
 }
-// every tile back where the desktop has it: from the palette only, which asks first
-function resetLayout() {
-  track('reset');
-  layout = {};
-  scales = {};
-  saveLayout();
-  render();
-}
 addEventListener('resize', render);
 // the frame can change size without a window resize (bar folded, layout settled): the edge marks are measured against it
 new ResizeObserver(markEdges).observe($('#pan'));
@@ -640,10 +624,9 @@ function forgetGone() {
 async function poll() {
   const asked = Date.now();
   try {
-    // asking for screens is what keeps the grabber awake
-    const r = await fetch('/api/windows?screens=1');
+    const r = await fetch('/api/windows');
     const got = await r.json();
-    // an error answer is no picture of the desktop: keep the last good one
+    // an error answer is no board: keep the last good one
     if (!r.ok || !Array.isArray(got.windows)) throw new Error(got.error || r.status);
     data = got;
     takeArrange(got.arrange, asked);
@@ -666,34 +649,17 @@ async function poll() {
 }
 
 // every word has to be somewhere in what the tile is: its title, app, the
-// program and folder of a terminal, a card's address, its workspace as ws2
+// program and folder of a terminal, a card's address
 function haystack(w) {
   const t = w.term && terms.get(w.term.session);
   return [w.title, w.app, w.cls, t && t.title, w.term && w.term.running, w.term && w.term.cwd,
-          w.link && (w.link.url || w.link.path || w.link.image || w.link.tool || w.link.diff || w.link.text),
-          w.desktop !== null && w.desktop !== undefined ? 'ws' + (w.desktop + 1) : ''
+          w.link && (w.link.url || w.link.path || w.link.image || w.link.tool || w.link.diff || w.link.text)
          ].filter(Boolean).join(' ').toLowerCase();
 }
 function visible() {
   const words = $('#q').value.trim().toLowerCase().split(/\s+/).filter(Boolean);
   return w => !words.length || words.every(q => haystack(w).includes(q));
 }
-
-function onWorkspace(i) { return data.windows.filter(w => w.desktop === i); }
-
-// Windows of one app sit together, apps ordered by their topmost window, so two
-// windows sharing a title never end up split by something stacked between them.
-function byApp(ws) {
-  const order = [], groups = new Map();
-  ws.forEach(w => {
-    if (!groups.has(w.app)) { groups.set(w.app, []); order.push(w.app); }
-    groups.get(w.app).push(w);
-  });
-  return order.map(app => [app, groups.get(app)]);
-}
-
-// the on-screen order, which is what the arrow keys walk
-function ordered(i) { return byApp(onWorkspace(i)).flatMap(([, group]) => group); }
 
 // ---- groups: a frame you put windows in, and move together ----------------
 let groups = store.get('groups', []);   // [{id, name, x, y, w, h, dir?}] in surface px; dir is where its new terminals start
@@ -1128,26 +1094,14 @@ function status(match, q) {
   $('#nomatch').classList.toggle('on', !!q && !shown);
   if (q && !shown) $('#nomatch').innerHTML = `Nothing matches “${esc(q)}” — <kbd>Esc</kbd> clears`;
   showTrouble();                       // a lost server shows in the banner
-  $('#foot').innerHTML = `Every window on one surface, seeded from where it `
-      + `really sits and then yours to arrange: drag a tile and only the tile moves — the `
-      + `desktop is never touched. The arrangement is remembered in this browser; `
-      + `<b>Reset layout</b> (in the <kbd>:</kbd> palette) puts everything back where the desktop has it. Scroll or `
-      + `pinch to zoom, drag the background or slide two fingers to pan, and click a window `
-      + `(or press <kbd>Enter</kbd>) to focus it for real. Windows start out grouped by `
-      + `the workspace they live on, packed together rather than spread over the desktop's `
-      + `own grid.`
-    + (!data.shots_on
-        ? ` Screens are off (<code>--no-screens</code>), so tiles stay plain colours.`
-        : data.shot_error
-        ? ` No photographs: ${esc(data.shot_error)}.`
-        : ` X can only photograph the workspace in front of you, so a tile shows the last `
-          + `look at its workspace; visit one to fill its windows in.`)
+  $('#foot').innerHTML = `Terminals, cards and groups on one surface, yours to arrange: `
+      + `drag a tile by its caption, and the arrangement is remembered. Scroll or pinch to zoom, `
+      + `drag the background or slide two fingers to pan, and double-click a tile (or press `
+      + `<kbd>Enter</kbd>) to go into it.`
     + (!data.pty || !data.pty.on ? ''
        : data.pty.error
        ? ` No terminals: ${esc(data.pty.error)}. Start it with <code>python3 winlist/pty_server.py</code>.`
-       : ` <b>New terminal</b> starts a shell of this page's own, off to the right of the `
-         + `workspaces — drag it by its title bar, click into it and type. It lives in `
-         + `<code>pty_server.py</code>, not in this tab, so a reload picks it back up.`);
+       : ` A terminal lives in <code>pty_server.py</code>, not in this tab, so a reload picks it back up.`);
 }
 
 
@@ -1155,34 +1109,15 @@ function status(match, q) {
 // One surface holding every window there is, and it goes on forever: the
 // surface is drawn at an offset and a scale of our choosing rather than scrolled
 // inside a box, so a drag can carry everything anywhere and the zoom has no
-// stops. A tile starts life where its window really sits and from then on you
-// put it wherever you like. Nothing here talks to the window manager: dragging
-// rearranges the picture, not the desktop.
+// stops. A tile starts life where it is made, and from then on you put it
+// wherever you like.
 
 const tileEls = new Map();   // window id -> element, kept so a drag survives a poll
 const MIN_ZOOM = 0.02, MAX_ZOOM = 4;
 
-// Where a window starts out. The desktop's own 3x6 grid is no use here: it is
-// far taller than any browser window and most of its cells are empty, so the
-// workspaces that actually hold something get packed into a squarish block
-// instead. Windows that shared a workspace still start out together.
-let seating = { key: '', cols: 1, at: new Map() };
-function plan() {
-  const used = [...new Set(data.windows.filter(w => !w.link).map(w => w.desktop))].sort((a, b) => a - b);
-  const key = used.join(',');
-  if (key !== seating.key) {
-    seating = { key, cols: Math.max(1, Math.ceil(Math.sqrt(used.length))),
-                at: new Map(used.map((d, i) => [d, i])) };
-  }
-  return seating;
-}
-
-function seat(w) {
-  const p = plan(), i = p.at.get(w.desktop) || 0;
-  const col = i % p.cols, row = Math.floor(i / p.cols);
-  return [col * (data.screen.w + GUTTER) + Math.max(0, w.x),
-          row * (data.screen.h + GUTTER) + Math.max(0, w.y)];
-}
+// Where a terminal starts out: where the server laid it, left to right and
+// wrapped, until it is dragged or placed by the page
+const seat = w => [Math.max(0, w.x), Math.max(0, w.y)];
 const seatOf = w => layout[w.id] || (w.husk ? w.at : seat(w));
 
 // what the windows actually cover, which is the thing worth fitting
@@ -1933,35 +1868,6 @@ function closeLink(id) {
   if (data) data.windows = data.windows.filter(w => w.id !== id);
   if (sel === id) sel = null;
   render();
-}
-
-// cut this window out of its workspace photo — percentages, so the photo's own
-// pixel size never comes into it
-function dress(pic, w) {
-  const S = data.screen, c = w.crop, url = shotUrl(w.desktop);
-  const x = c && Math.max(0, c[0]), y = c && Math.max(0, c[1]);
-  const cw = c && Math.min(c[2], S.w - x), ch = c && Math.min(c[3], S.h - y);
-  // nothing of this window was showing, so there is nothing honest to display
-  const buried = w.seen !== undefined && w.seen < 0.08;
-  if (!url || !cw || !ch || buried) {
-    pic.className = 'pic none';
-    pic.style.cssText = `background:${colorOf(w.app)}`;
-    pic.textContent = buried ? 'was behind another window'
-      : data.shots_on ? `not photographed yet — visit workspace ${w.desktop + 1} to fill it in` : '';
-    return;
-  }
-  pic.className = 'pic';
-  pic.textContent = '';
-  pic.style.cssText = `background-image:url("${url}");`
-    + `background-size:${S.w / cw * 100}% ${S.h / ch * 100}%;`
-    + `background-position:${S.w > cw ? x / (S.w - cw) * 100 : 0}% `
-    + `${S.h > ch ? y / (S.h - ch) * 100 : 0}%`;
-  (w.over || []).forEach(o => {
-    const m = document.createElement('div');
-    m.className = 'hid';
-    m.style.cssText = `left:${o[0]}%;top:${o[1]}%;width:${o[2]}%;height:${o[3]}%`;
-    pic.append(m);
-  });
 }
 
 function place(el, w) {
@@ -2777,14 +2683,14 @@ function renderCanvas(match) {
       $('#tiles').append(el);
     }
     el.win = w;                       // the drag handler always wants the fresh one
-    el.className = 'tile' + (w.term ? ' term' : '') + (w.link ? ' link' : '') + (w.focused ? ' focused' : '')
+    el.className = 'tile' + (w.term ? ' term' : '') + (w.link ? ' link' : '')
       + (match(w) ? '' : ' off') + (w.id === sel ? ' sel' : '') + (pings.has(w.id) ? ' ping' : '') + (arrivals.has(w.id) ? ' arrive' : '')
       + (cstate[w.id] ? ' cs-' + cstate[w.id].state : '');
     if (w.term) {
       el.title = [w.term.running, w.term.cwd, w.title].filter(Boolean).join(' — ') + ` · pid ${w.pid}`;
       dressTerm(el, w);
     } else {
-      el.title = `${w.app} — ${w.title} · workspace ${w.desktop + 1}`;
+      el.title = `${w.app} — ${w.title}`;
       el.querySelector('.dot').style.background = colorOf(w.app);
       el.querySelector('.t2').textContent = shownTitle(w);
       // the app is named in words, not only by the dot's colour — unless the
@@ -2801,7 +2707,7 @@ function renderCanvas(match) {
           card(pic, w);
           pic.dataset.key = key;
         }
-      } else dress(el.lastElementChild, w);
+      }
     }
     chip(el, cstate[w.id]);          // after dressing: a new terminal has no caption before
     place(el, w);
@@ -2860,11 +2766,7 @@ function syncLens() {
     if (w.link) {
       const key = cardKey(w);
       if (el.key !== key) { el.key = key; card(el.firstChild, w); }
-      return;
     }
-    // a photograph only needs cutting again when the cut changes
-    const key = shotUrl(w.desktop) + JSON.stringify([w.crop, w.over, w.seen, w.w, w.h]);
-    if (el.key !== key) { el.key = key; dress(el.firstChild, w); }
   });
   lensEls.forEach((el, id) => { if (!live.has(id)) { el.remove(); lensEls.delete(id); } });
 }
@@ -3050,16 +2952,7 @@ async function activate(id) {
     // this one is already in front of you; focusing it means the keyboard
     const t = terms.get(id.slice(4));
     if (t) t.term.focus();
-    return;
   }
-  try {
-    const r = await fetch('/api/focus', { method: 'POST', body: JSON.stringify({ id }) });
-    const a = await r.json();
-    const w = data.windows.find(x => x.id === id);
-    if (!a.ok) toast(`Could not focus it: ${esc(a.msg || a.error || String(r.status))}`);
-    else if (w && w.desktop !== data.current) toast(`Switched to workspace ${w.desktop + 1}`, 1500);
-  } catch { toast('Could not reach the server to focus it'); }
-  poll();
 }
 
 // ---- keyboard picking -----------------------------------------------------
@@ -3113,38 +3006,19 @@ function move(dx, dy) {
   const pick = data.windows.filter(match);
   if (!pick.length) return;
   const cur = selected();
-  // the first pick is the window you were last in, if it is one of these
-  if (!cur) { sel = (pick.find(w => w.focused) || pick[0]).id; return (render(), reveal()); }
-
-  if (dx && !dy) {                       // left and right: the nearest tile that way, as seen
-    const mid = v => { const [x, y] = seatOf(v); return [x + v.w / 2, y + v.h / 2]; };
-    const [cx, cy] = mid(cur);
-    let best = null, score = Infinity;
-    pick.forEach(v => {
-      if (v.id === cur.id) return;
-      const [x, y] = mid(v), ahead = (x - cx) * dx;
-      if (ahead <= 1) return;
-      const sc = ahead + 2 * Math.abs(y - cy);   // straight across beats nearer but off to the side
-      if (sc < score) { score = sc; best = v; }
-    });
-    if (best) { sel = best.id; return (render(), reveal()); }
-  }
-  if (dy && !dx) {                       // within a workspace, then on to the next one
-    const here = ordered(cur.desktop).filter(match);
-    const at = here.findIndex(w => w.id === cur.id);
-    if (at + dy >= 0 && at + dy < here.length) { sel = here[at + dy].id; return (render(), reveal()); }
-  }
-  // the desktop's own grid is not what is on screen — the seating plan is, and
-  // it has a cell for the terminals, which no workspace layout would ever hold
-  const p = plan(), cells = [...p.at.keys()], n = cells.length;
-  let i = Math.max(0, cells.indexOf(cur.desktop));
-  for (let step = 0; step < n; step++) {
-    i += dx + dy * p.cols;
-    if (i < 0) i += n;
-    if (i >= n) i -= n;
-    const there = ordered(cells[i]).filter(match);
-    if (there.length) { sel = there[dy > 0 ? 0 : there.length - 1].id; return (render(), reveal()); }
-  }
+  if (!cur) { sel = pick[0].id; return (render(), reveal()); }
+  // the nearest tile that way, as seen: straight ahead beats nearer but off to the side
+  const mid = v => { const [x, y] = seatOf(v); return [x + v.w / 2, y + v.h / 2]; };
+  const [cx, cy] = mid(cur);
+  let best = null, score = Infinity;
+  pick.forEach(v => {
+    if (v.id === cur.id) return;
+    const [x, y] = mid(v), ahead = dx ? (x - cx) * dx : (y - cy) * dy;
+    if (ahead <= 1) return;
+    const sc = ahead + 2 * (dx ? Math.abs(y - cy) : Math.abs(x - cx));
+    if (sc < score) { score = sc; best = v; }
+  });
+  if (best) { sel = best.id; render(); reveal(); }
 }
 
 // Two modes, as in vi: NORMAL, where the keys move about the surface, and
@@ -3283,7 +3157,7 @@ document.addEventListener('keydown', e => {
     const w = (e.target.closest && e.target.closest('.tile') || {}).win || selected();
     e.preventDefault();
     if (editing) return endEdit();
-    const v = w || data && data.windows.find(x => x.focused && visible()(x));
+    const v = w;
     if (v) return startTile(v);
     return toast('Pick a window first: <kbd>↑↓←→</kbd>, then <kbd>Super+Enter</kbd>');
   }
