@@ -1,14 +1,13 @@
 #!/usr/bin/env python3
-"""Open windows by workspace — live web dashboard, stdlib only.
+"""winlist — a browser board of terminals and cards, stdlib only.
 
-Lists every visible window grouped into the workspace grid the desktop actually
-uses, and focuses one on click or keyboard pick.
+Terminals started from the page (held by pty_server.py, drawn by xterm.js),
+cards for pages, documents and pictures, groups, pings and what Claude is up
+to in each terminal. The server does not look at the desktop at all.
 
 Run:  python3 winlist_server.py           # then open http://localhost:8766
       python3 winlist_server.py --port N  # custom port
-      python3 winlist_server.py --open      # and bring the page up in the browser
-      python3 winlist_server.py --no-focus  # read-only, refuse focus requests
-      python3 winlist_server.py --no-screens  # never photograph the screen
+      python3 winlist_server.py --open      # and open the page in the browser (xdg-open)
       python3 winlist_server.py --install     # run it as a service from now on
       python3 winlist_server.py --uninstall   # back to running it by hand
 
@@ -16,13 +15,12 @@ In a terminal, r restarts it and Ctrl-C stops it. As a service it is a systemd
 user unit, winlist.service, started with the desktop session and logging to the
 journal: systemctl --user restart|stop|status winlist, journalctl --user -u winlist.
 
-Terminals the page started itself sit on the same surface as the real windows,
-drawn by xterm.js rather than photographed. pty_server.py holds them; this
-starts it when nobody has, as a process of its own, so restarting this one
-leaves your shells where they were. `pkill -f pty_server.py` ends them.
+pty_server.py holds the terminals; this starts it when nobody has, as a process
+of its own, so restarting this one leaves your shells where they were.
+`pkill -f pty_server.py` ends them.
 
-X11 only: it reads EWMH properties via xprop/xdotool, and photographs the
-workspace you are on with xwd + ImageMagick's convert.
+The terminals' look is read from ~/.Xresources with xrdb, which does ask the X
+server; if there is none, they simply get the page's defaults.
 """
 import argparse
 import collections
@@ -32,7 +30,6 @@ import json
 import os
 import re
 import shlex
-import shutil
 import signal
 import subprocess
 import sys
@@ -44,8 +41,6 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-
-WIN_ID = re.compile(r"^0x[0-9a-fA-F]+$")
 
 STARTED = time.time()   # tells a restarted server from the one it replaced (exec keeps the pid)
 
@@ -64,237 +59,9 @@ def sh(*args, timeout=5):
         return ""
 
 
-def prop(text, name):
-    """Value of one property out of a multi-property xprop dump.
-
-    xprop prints either `NAME(TYPE) = value` or, for window lists,
-    `NAME(WINDOW): window id # 0xa, 0xb`. A property the window does not
-    have comes out as `NAME:  not found.`, which is no value at all."""
-    m = re.search(r"^%s(?:\([^)]*\))?\s*[=:]\s*(.*)$" % re.escape(name), text, re.M)
-    v = m.group(1).strip() if m else ""
-    return "" if v == "not found." else v
-
-
-def unquote(s):
-    return s.strip().strip('"')
-
-
-# ---- workspace grid -------------------------------------------------------
-
-
-def grid_layout(n):
-    """(cols, rows, source) of the workspace grid, laid out row-major.
-
-    GNOME reports a flat list of workspaces and leaves _NET_DESKTOP_LAYOUT
-    unset, so the real grid lives in the wsmatrix extension's settings. Fall
-    back to the EWMH hint, then to a near-square guess.
-    """
-    dump = sh("dconf", "dump", "/org/gnome/shell/extensions/wsmatrix/")
-    cols = re.search(r"^num-columns=(\d+)", dump, re.M)
-    rows = re.search(r"^num-rows=(\d+)", dump, re.M)
-    if cols and rows:
-        return int(cols.group(1)), int(rows.group(1)), "wsmatrix"
-
-    hint = re.findall(r"\d+", prop(sh("xprop", "-root", "_NET_DESKTOP_LAYOUT"), "_NET_DESKTOP_LAYOUT"))
-    if len(hint) >= 3 and int(hint[1]):
-        c = int(hint[1])
-        return c, int(hint[2]) or -(-n // c), "_NET_DESKTOP_LAYOUT"
-
-    c = max(1, int(n ** 0.5))
-    return c, -(-n // c), "guessed"
-
-
-# ---- which app is this, really --------------------------------------------
-
-# A terminal's WM_CLASS names the terminal, not what you are looking at, so for
-# those we walk the process tree and report the program running inside.
-TERMINAL_CLASSES = {"xterm", "gnome-terminal-server", "kitty", "alacritty",
-                    "konsole", "urxvt", "st", "tilix", "terminator"}
-SHELLS = {"bash", "sh", "zsh", "fish", "dash", "tmux", "screen", "su", "sudo", "env"}
-PRETTY = {
-    "claude": "Claude Code", "vim": "Vim", "nvim": "Neovim", "emacs": "Emacs",
-    "ssh": "SSH", "htop": "htop", "top": "top", "btop": "btop", "less": "less",
-    "man": "man", "git": "git", "docker": "docker", "npm": "npm", "node": "Node",
-    "psql": "psql", "memmon": "memmon", "python3": "Python", "python": "Python",
-    "google-chrome": "Google Chrome", "chrome": "Google Chrome", "chromium": "Chromium",
-    "firefox": "Firefox", "code": "VS Code", "viber": "Viber", "viberpc": "Viber",
-    "nautilus": "Files", "gedit": "Text Editor", "libreoffice": "LibreOffice",
-    "thunderbird": "Thunderbird", "slack": "Slack", "spotify": "Spotify",
-}
-# Anything else running in a terminal is reported as plain "Terminal"; add the
-# commands worth naming here.
-NAMED_IN_TERMINAL = set(PRETTY) - {"google-chrome", "chrome", "chromium", "firefox",
-                                   "code", "viber", "viberpc", "nautilus", "gedit",
-                                   "libreoffice", "thunderbird", "slack", "spotify"}
-
-_app_cache = {}  # pid -> (expires_at, app name)
-TITLE_SUFFIX = re.compile(r"\s+[-—]\s+(Google Chrome|Chromium|Mozilla Firefox|VIM)$")
-
-
-def children(pid, depth=4):
-    """Breadth-first walk of the process tree under pid -> [(comm, args)]."""
-    found, frontier = [], [pid]
-    for _ in range(depth):
-        nxt = []
-        for p in frontier:
-            for line in sh("ps", "--ppid", str(p), "-o", "pid=,comm=,args=").splitlines():
-                parts = line.split(None, 2)
-                if len(parts) >= 2:
-                    found.append((parts[1], parts[2] if len(parts) > 2 else ""))
-                    nxt.append(parts[0])
-        frontier = nxt
-        if not frontier:
-            break
-    return found
-
-
-def pretty_class(cls):
-    """A WM_CLASS nobody named, made readable: org.gnome.Nautilus is Nautilus,
-    jetbrains-idea is Jetbrains Idea."""
-    last = (cls or "").rsplit(".", 1)[-1].replace("-", " ").replace("_", " ").strip()
-    return " ".join(p[:1].upper() + p[1:] for p in last.split()) or "Unknown"
-
-
-def resolve_app(cls, pid, ttl=8):
-    cached = _app_cache.get(pid)
-    now = time.time()
-    if cached and cached[0] > now:
-        return cached[1]
-
-    key = cls.lower()
-    app = PRETTY.get(key) or PRETTY.get(key.rsplit(".", 1)[-1]) or pretty_class(cls)
-    comm = sh("ps", "-p", str(pid), "-o", "comm=").strip() if pid else ""
-    # font-cozette & friends: an xterm launched with -class, still a terminal
-    if key in TERMINAL_CLASSES or comm in TERMINAL_CLASSES or key.startswith("font-"):
-        app = "Terminal"
-        for ccomm, cargs in children(pid):
-            if ccomm in SHELLS:
-                continue
-            if ccomm in ("python3", "python"):
-                m = re.search(r"([\w.-]+)\.py\b", cargs) or re.search(r"\b(memmon)\b", cargs)
-                name = (m.group(1) if m else "python3").removesuffix(".py")
-                app = PRETTY.get(name, name)
-            elif ccomm in NAMED_IN_TERMINAL:
-                app = PRETTY.get(ccomm, ccomm)
-            else:
-                app = "Terminal"
-            break
-
-    _app_cache[pid] = (now + ttl, app)
-    return app
-
-
-# ---- photographing a workspace --------------------------------------------
-
-# X hands out what is actually on the glass: a window sitting on another
-# workspace is unmapped, and asking for its pixels returns whatever the root
-# happens to be showing in that rectangle. So there is exactly one thing worth
-# grabbing — the whole workspace in front of you — and the map fills in cell by
-# cell as you move around, each one showing when it was last seen.
-
-SHOTS_ON = True
 PTY_PORT = 8767       # pty_server.py, if it is running: terminals of our own
 PTY_ON = True
 _pty_error = ""
-SHOT_WIDTH = 1280     # the virtual screen cuts single windows out of this
-SHOT_QUALITY = 72
-SHOT_TTL = 2.0        # seconds before the workspace on screen is worth regrabbing
-WATCH_FOR = 15.0      # keep grabbing this long after a page last asked for shots
-AFTER_FOCUS = 30.0    # ...and this long after a click sent us somewhere new
-SWITCH_SETTLE = 0.9   # let a workspace switch land before photographing it
-
-# desktop -> {"data": jpeg, "at": epoch, "clock": "10:07:12", "rects": {id: [x,y,w,h]}}
-_shots = {}
-_shots_lock = threading.Lock()
-_shot_error = ""
-_want_until = 0.0     # a page is watching the map until this moment
-_hold_until = 0.0
-
-
-def watch_shots():
-    """A page just asked for screens; keep the grabber awake for a while."""
-    global _want_until
-    _want_until = time.time() + WATCH_FOR
-
-
-def hold_shots():
-    """A click just sent us to another workspace.
-
-    Let the switch land before photographing, then keep grabbing for a while:
-    the page is in the background now that the focused window is in front of it,
-    so its polls are throttled and cannot ask for the workspace we just landed
-    on — which is the one worth having a picture of."""
-    global _hold_until, _want_until
-    now = time.time()
-    _hold_until = now + SWITCH_SETTLE
-    _want_until = max(_want_until, now + AFTER_FOCUS)
-
-
-def grab():
-    """The visible screen as a JPEG, or b"" with the reason left in _shot_error."""
-    global _shot_error
-    if not shutil.which("convert"):
-        _shot_error = "ImageMagick's convert is not installed"
-        return b""
-    try:
-        raw = subprocess.run(["xwd", "-root", "-silent"], capture_output=True, timeout=5)
-        jpg = subprocess.run(["convert", "xwd:-", "-resize", "%dx" % SHOT_WIDTH,
-                              "-quality", str(SHOT_QUALITY), "jpg:-"],
-                             input=raw.stdout, capture_output=True, timeout=10)
-    except (OSError, subprocess.SubprocessError) as e:
-        _shot_error = "capture failed (%s)" % e.__class__.__name__
-        return b""
-    if not jpg.stdout:
-        _shot_error = jpg.stderr.decode("utf-8", "replace")[:120].strip() or "capture came back empty"
-        return b""
-    _shot_error = ""
-    return jpg.stdout
-
-
-def keep_shots():
-    """Photograph the workspace in front of us while a page is watching."""
-    while True:
-        time.sleep(0.5)
-        now = time.time()
-        if now > _want_until or now < _hold_until:
-            continue
-        try:
-            desktop = int(prop(sh("xprop", "-root", "_NET_CURRENT_DESKTOP"), "_NET_CURRENT_DESKTOP"))
-        except ValueError:
-            continue
-        with _shots_lock:
-            have = _shots.get(desktop)
-        if have and now - have["at"] < SHOT_TTL:
-            continue
-        data = grab()
-        if not data:
-            time.sleep(5)  # a capture that cannot work is not worth retrying twice a second
-            continue
-        # right after the shutter, so the rectangles match what is in the photo
-        ids = re.findall(r"0x[0-9a-f]+", prop(sh("xprop", "-root", "_NET_CLIENT_LIST"),
-                                              "_NET_CLIENT_LIST"))
-        rects = {wid: [g.get("x", 0), g.get("y", 0), g.get("width", 0), g.get("height", 0)]
-                 for wid, g in geometries(ids).items()}
-        order = re.findall(r"0x[0-9a-f]+", prop(sh("xprop", "-root", "_NET_CLIENT_LIST_STACKING"),
-                                                "_NET_CLIENT_LIST_STACKING"))
-        with _shots_lock:
-            _shots[desktop] = {"data": data, "at": time.time(), "clock": time.strftime("%H:%M:%S"),
-                               "rects": rects, "order": order}
-
-
-def shot_index():
-    """What the page needs to know: which cells have a photo, and how old."""
-    now = time.time()
-    with _shots_lock:
-        return {str(d): {"clock": s["clock"], "age": round(now - s["at"], 1)}
-                for d, s in _shots.items()}
-
-
-def shot_bytes(desktop):
-    with _shots_lock:
-        s = _shots.get(desktop)
-    return s["data"] if s else b""
-
 
 # ---- sampling -------------------------------------------------------------
 
@@ -556,14 +323,10 @@ CELL_W, CELL_H, CAPTION, GAP = 9, 17, 22, 60
 
 
 def terminals(desktop, across):
-    """Sessions from pty_server.py, shaped like windows so they can share the
-    surface. They belong to no workspace — the desktop has never heard of them
-    — so they are given a cell of their own, past the last real one.
-
-    A window arrives with somewhere to be; a terminal does not, and two of them
-    at the same nowhere would sit exactly on top of each other. So they are
-    laid out left to right and wrapped at about the width of a screen, which is
-    only where they start: drag one and it stays where you put it.
+    """Sessions from pty_server.py, shaped like tiles so the page can put them
+    on its surface. They have no place of their own, so they start laid out left
+    to right and wrapped at `across`, which is only where they start: drag one
+    and it stays where you put it. `desktop` is the cell they report, always 0.
     """
     answer = pty("/sessions") if PTY_ON else None
     if not answer:
@@ -586,13 +349,10 @@ def terminals(desktop, across):
             "cls": "pty",
             "pid": t.get("pid", 0),
             "desktop": desktop,
-            "focused": False,
-            "max": False,
             "min": False,
             "x": x, "y": y,
             "w": wide, "h": high,
-            "z": 10000 + i,          # ours, so always above the photographs
-            "crop": None, "over": [], "seen": 1.0,
+            "z": 10000 + i,
             # everything the page needs to draw one and talk to it
             "term": {
                 "session": t["id"],
@@ -634,156 +394,20 @@ def start_terminals(port):
     return None
 
 
-def geometries(ids):
-    """{window id: {x, y, width, height}} for the lot, in one xdotool call."""
-    chain = []
-    for wid in ids:
-        chain += ["getwindowgeometry", "--shell", wid]
-    geoms, cur = {}, {}
-    for line in sh("xdotool", *chain).splitlines() if chain else []:
-        k, _, v = line.partition("=")
-        if k == "WINDOW":
-            cur = geoms.setdefault("0x%x" % int(v), {})
-        elif k in ("X", "Y", "WIDTH", "HEIGHT") and cur is not None:
-            cur[k.lower()] = int(v)
-    return geoms
-
-
-def union_area(rects):
-    """Area covered by a pile of rectangles, counting overlaps once."""
-    xs = sorted({v for r in rects for v in (r[0], r[0] + r[2])})
-    ys = sorted({v for r in rects for v in (r[1], r[1] + r[3])})
-    total = 0
-    for i in range(len(xs) - 1):
-        for j in range(len(ys) - 1):
-            x, y, w, h = xs[i], ys[j], xs[i + 1] - xs[i], ys[j + 1] - ys[j]
-            if any(r[0] <= x and x + w <= r[0] + r[2]
-                   and r[1] <= y and y + h <= r[1] + r[3] for r in rects):
-                total += w * h
-    return total
-
-
-def mark_covered(windows, stacks):
-    """Which parts of each window's crop are not that window at all.
-
-    The photo is of a whole workspace, so cutting a window's rectangle out of it
-    also cuts out whatever was lying on top. The stacking order at the shutter
-    says exactly which parts those are: hand them to the page as percentages of
-    the crop, along with how much of the window was left showing, and it can
-    grey out everything that is somebody else.
-    """
-    per_desktop = {}
-    for w in windows:
-        if w["crop"]:
-            per_desktop.setdefault(w["desktop"], []).append(w)
-
-    for desktop, group in per_desktop.items():
-        rank = {wid: i for i, wid in enumerate(stacks.get(desktop, []))}
-        for w in group:
-            x, y, ww, hh = w["crop"]
-            if ww <= 0 or hh <= 0:
-                continue
-            mine = rank.get(w["id"], -1)
-            hidden = []
-            for v in group:
-                if v is w or rank.get(v["id"], -1) <= mine:
-                    continue          # below us, or the same window: not in the way
-                vx, vy, vw, vh = v["crop"]
-                ax, ay = max(x, vx), max(y, vy)
-                bx, by = min(x + ww, vx + vw), min(y + hh, vy + vh)
-                if bx > ax and by > ay:
-                    hidden.append([ax - x, ay - y, bx - ax, by - ay])
-            w["over"] = [[round(r[0] * 100.0 / ww, 2), round(r[1] * 100.0 / hh, 2),
-                          round(r[2] * 100.0 / ww, 2), round(r[3] * 100.0 / hh, 2)]
-                         for r in hidden]
-            w["seen"] = round(1 - union_area(hidden) / float(ww * hh), 3) if hidden else 1.0
-
-
 def sample():
-    roots = sh("xprop", "-root", "_NET_CLIENT_LIST", "_NET_CLIENT_LIST_STACKING",
-               "_NET_NUMBER_OF_DESKTOPS", "_NET_CURRENT_DESKTOP", "_NET_DESKTOP_GEOMETRY")
-    if not roots:
-        return {"error": "no X11 window manager reachable (is DISPLAY set?)", "windows": []}
-
-    ids = re.findall(r"0x[0-9a-f]+", prop(roots, "_NET_CLIENT_LIST"))
-    stacking = re.findall(r"0x[0-9a-f]+", prop(roots, "_NET_CLIENT_LIST_STACKING"))
-    order = {wid: i for i, wid in enumerate(stacking)}  # bottom -> top
-
-    n_desktops = int(prop(roots, "_NET_NUMBER_OF_DESKTOPS") or 1)
-    current = int(prop(roots, "_NET_CURRENT_DESKTOP") or 0)
-    geom = [int(x) for x in re.findall(r"\d+", prop(roots, "_NET_DESKTOP_GEOMETRY"))] or [1920, 1080]
-    names = re.findall(r'"((?:[^"\\]|\\.)*)"', sh("xprop", "-root", "_NET_DESKTOP_NAMES"))
-    cols, rows, grid_src = grid_layout(n_desktops)
-
-    geoms = geometries(ids)
-    with _shots_lock:                       # where each window sat, and who was on
-        crops = {d: s["rects"] for d, s in _shots.items()}          # top of whom, when
-        stacks = {d: s.get("order", []) for d, s in _shots.items()}  # it was photographed
-
-    windows = []
-    for wid in ids:
-        p = sh("xprop", "-id", wid, "_NET_WM_NAME", "WM_NAME", "WM_CLASS",
-               "_NET_WM_PID", "_NET_WM_DESKTOP", "_NET_WM_STATE")
-        state = prop(p, "_NET_WM_STATE")
-        if "SKIP_TASKBAR" in state or "SKIP_PAGER" in state:
-            continue  # panels, OSDs, shell overlays
-        title = unquote(prop(p, "_NET_WM_NAME") or prop(p, "WM_NAME"))
-        if not title:
-            continue
-        try:
-            desktop = int(prop(p, "_NET_WM_DESKTOP"))
-        except ValueError:
-            continue
-        if desktop < 0 or desktop >= n_desktops:
-            continue  # sticky / on no workspace
-        try:
-            pid = int(prop(p, "_NET_WM_PID"))
-        except ValueError:
-            pid = 0
-        cls = unquote(prop(p, "WM_CLASS").split(",")[-1])
-        g = geoms.get(wid, {})
-        windows.append({
-            "id": wid,
-            "title": TITLE_SUFFIX.sub("", title).strip(),
-            "app": resolve_app(cls, pid),
-            "cls": cls,
-            "pid": pid,
-            "desktop": desktop,
-            "focused": "FOCUSED" in state,
-            "max": "MAXIMIZED_VERT" in state,
-            "min": "HIDDEN" in state,
-            "x": g.get("x", 0), "y": g.get("y", 0),
-            "w": g.get("width", 0), "h": g.get("height", 0),
-            "z": order.get(wid, 0),
-            # where to cut this window out of its workspace photo, which is not
-            # quite where it is now if it has been moved since
-            "crop": crops.get(desktop, {}).get(wid),
-            "over": [],        # the parts of that crop that are somebody else
-            "seen": 1.0,       # ...and how much of it is really this window
-        })
-
-    mark_covered(windows, stacks)
-    windows += terminals(n_desktops, geom[0])
-    windows.sort(key=lambda w: (w["desktop"], -w["z"]))  # topmost first within a workspace
+    """Everything the page draws: our terminals, the cards, the groups, the pings."""
+    windows = terminals(0, 1920)
     return {
         "captured": time.strftime("%H:%M:%S"),
-        "desktops": n_desktops,
-        "current": current,
-        "names": names[:n_desktops],
-        "grid": {"cols": cols, "rows": rows, "source": grid_src},
-        "screen": {"w": geom[0], "h": geom[1]},
         "windows": windows,
-        "shots": shot_index(),
-        "shots_on": SHOTS_ON,
-        "shot_error": _shot_error,
-        # where the page dials for a terminal, and which cell they live in
+        # where the page dials for a terminal
         "started": STARTED,
-        "pty": {"on": PTY_ON, "port": PTY_PORT, "cell": n_desktops, "error": _pty_error},
+        "pty": {"on": PTY_ON, "port": PTY_PORT, "cell": 0, "error": _pty_error},
         "look": LOOK,          # what your xterm looks like, for ours to match
         "links": board(),       # the cards on the board, the same in every browser
         "arrange": arrangement(),  # its groups and tile places; None until a page sends one
         "lost": lost_terms(),   # terminals a reboot took, for the page to offer back
-        "pings": pinged(),      # windows that want you, the same in every browser
+        "pings": pinged(),      # terminals that want you, the same in every browser
         "claude": claude_states(windows),  # what Claude is up to in each
     }
 
@@ -1183,10 +807,9 @@ def change_link(lid, body):
 
 
 # A tile can be handed to Claude as a ref: wl:<kind>:<id>, where kind is note,
-# doc, img, url, tool or diff for a card, term for a page terminal and win for
-# a desktop window. Claude asks GET /api/what?ref=… and is told what is behind
+# doc, img, url, tool or diff for a card, term for a page terminal. Claude asks GET /api/what?ref=… and is told what is behind
 # it and how to get at it: a file's path, a note's text and how to change it,
-# a terminal's folder and saved output, a window's process.
+# a terminal's folder and saved output.
 REF = re.compile(r"(?:.*[?&]ref=)?wl:([a-z]+):([0-9A-Za-z]{1,64})")
 
 
@@ -1232,23 +855,6 @@ def what(ref, base="http://localhost:8766"):
                    saved_output=_term_file(key, ".out"),
                    read_output="curl -s %s/api/terminals/%s/scrollback" % (base, key))
         return out
-    if kind == "win":
-        wid = "0x" + key.lower().removeprefix("0x")
-        if not WIN_ID.match(wid) or wid not in re.findall(r"0x[0-9a-f]+", sh("xprop", "-root", "_NET_CLIENT_LIST")):
-            return None
-        p = sh("xprop", "-id", wid, "_NET_WM_NAME", "WM_NAME", "WM_CLASS", "_NET_WM_PID", "_NET_WM_DESKTOP")
-        try:
-            pid = int(prop(p, "_NET_WM_PID"))
-        except ValueError:
-            pid = 0
-        try:
-            desktop = int(prop(p, "_NET_WM_DESKTOP")) + 1
-        except ValueError:
-            desktop = None
-        cls = unquote(prop(p, "WM_CLASS").split(",")[-1])
-        out.update(kind="window", window=wid, title=unquote(prop(p, "_NET_WM_NAME") or prop(p, "WM_NAME")),
-                   app=resolve_app(cls, pid), cls=cls, workspace=desktop, process=proc_of(pid))
-        return out
     with _links_lock:
         link = next((dict(l) for l in _links if l["id"] == key), None)
     if not link:
@@ -1270,16 +876,12 @@ def what(ref, base="http://localhost:8766"):
 
 
 def refs():
-    """Every tile there is now, as ref and title: the cards, the page's terminals and the desktop's windows."""
+    """Every tile there is now, as ref and title: the cards, and the page's terminals."""
     with _links_lock:
         out = [{"ref": "wl:%s:%s" % (card_kind(l), l["id"]), "title": l.get("title", "")} for l in _links]
     for t in ((pty("/sessions") if PTY_ON else None) or {}).get("sessions", []):
         if t.get("alive"):
             out.append({"ref": "wl:term:" + t["id"], "title": t.get("title") or t.get("running") or "shell"})
-    for wid in re.findall(r"0x[0-9a-f]+", sh("xprop", "-root", "_NET_CLIENT_LIST")):
-        title = unquote(prop(sh("xprop", "-id", wid, "_NET_WM_NAME"), "_NET_WM_NAME"))
-        if title:
-            out.append({"ref": "wl:win:" + wid, "title": title})
     return out
 
 # A window that wants you — Claude finished in it — is pinged from outside, by
@@ -1317,9 +919,8 @@ def _save_pings():
 
 def ping(wid, on=True):
     """Ping a window, or with on=False let it be. False if the id is not one we use."""
-    if not isinstance(wid, str) or not (wid.startswith("web:") or WIN_ID.match(wid)):
+    if not isinstance(wid, str) or not wid.startswith("web:"):
         return False
-    wid = wid if wid.startswith("web:") else wid.lower()
     with _pings_lock:
         if on:
             _pings[wid] = time.time()
@@ -1347,10 +948,8 @@ _claude_lock = threading.Lock()
 
 def claude_state(wid, state):
     """Note what Claude is doing in a window. False if the id or state is not one we use."""
-    if state not in CLAUDE_STATES + ("gone",) or not isinstance(wid, str) \
-            or not (wid.startswith("web:") or WIN_ID.match(wid)):
+    if state not in CLAUDE_STATES + ("gone",) or not isinstance(wid, str) or not wid.startswith("web:"):
         return False
-    wid = wid if wid.startswith("web:") else wid.lower()
     with _claude_lock:
         if state == "gone":             # SessionEnd: Claude quit, the chip goes with it
             _claude.pop(wid, None)
@@ -1391,7 +990,7 @@ def claude_under(pids):
 def claude_states(windows):
     """{window id: {state, at}} for windows still there, minus a stale 'working',
     and minus a page terminal whose Claude has quit (none left under its shell for
-    CLAUDE_GONE seconds). An X window's Claude can't be seen, so it keeps the timeout."""
+    CLAUDE_GONE seconds)."""
     now = time.time()
     live = {w["id"] for w in windows}
     shells = {w["id"]: w.get("pid") for w in windows if w["id"].startswith("web:") and w.get("pid")}
@@ -1414,20 +1013,6 @@ def claude_states(windows):
         return {wid: {"state": st, "at": at} for wid, (st, at) in _claude.items()}
 
 
-def focus(wid):
-    """Raise a window and switch to its workspace."""
-    if wid.startswith("web:"):
-        return False, "that terminal lives in the page, not on the desktop"
-    if not WIN_ID.match(wid):
-        return False, "bad window id"
-    if wid.lower() not in [w.lower() for w in
-                           re.findall(r"0x[0-9a-f]+", sh("xprop", "-root", "_NET_CLIENT_LIST"))]:
-        return False, "no such window"
-    sh("xdotool", "windowactivate", wid)
-    return True, "ok"
-
-
-BROWSERS = {"Google Chrome", "Chromium", "Firefox"}
 PAGE_TITLE = "Open windows"
 DEFAULT_PORT = 8766
 
@@ -1438,36 +1023,13 @@ def page_title(port):
     return PAGE_TITLE if port == DEFAULT_PORT else "%s :%d" % (PAGE_TITLE, port)
 
 
-def find_page_window(title):
-    """The browser window showing our page, if one is up."""
-    pattern = "^%s( [-—] .*)?$" % re.escape(title)   # browsers append their own name
-    for num in re.findall(r"\d+", sh("xdotool", "search", "--name", pattern)):
-        wid = "0x%x" % int(num)
-        cls = unquote(sh("xprop", "-id", wid, "WM_CLASS").split(",")[-1])
-        if PRETTY.get(cls.lower()) in BROWSERS:
-            return wid
-    return None
-
-
-def show_page(url, port):
-    """Bring the page up, reusing a browser window already showing it.
-
-    Plain xdg-open adds a tab on every launch, and leaves it in whichever
-    window the browser picked — which may be on another workspace entirely.
-    So look for the page first, and raise whatever we end up with."""
-    want = page_title(port)
-    wid = find_page_window(want)
-    if wid:
-        sh("xdotool", "windowactivate", wid)
-        return "raised the window already showing it"
-    sh("xdg-open", url)
-    for _ in range(12):
-        time.sleep(0.25)
-        wid = find_page_window(want)
-        if wid:
-            sh("xdotool", "windowactivate", wid)
-            break
-    return "opened it in the browser"
+def show_page(url):
+    """Open the page in the desktop's browser, and let go of it."""
+    try:
+        subprocess.Popen(["xdg-open", url], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                         stderr=subprocess.DEVNULL, start_new_session=True)
+    except OSError:
+        pass
 
 
 # ---- page -----------------------------------------------------------------
@@ -1501,8 +1063,6 @@ def same_page(origin, host, named=False):
 
 
 class Handler(BaseHTTPRequestHandler):
-    allow_focus = True
-
     def log_message(self, *a):
         pass
 
@@ -1560,18 +1120,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(json.dumps({"error": "nothing saved"}), code=404)
             return self._send(out, "application/octet-stream", cache="no-store")
         if self.path.startswith("/api/windows"):
-            if SHOTS_ON and "screens=1" in self.path:
-                watch_shots()
             self._send(json.dumps(sample()))
-        elif self.path.startswith("/api/screen/"):
-            try:
-                data = shot_bytes(int(self.path.split("/")[3].split("?")[0]))
-            except (IndexError, ValueError):
-                data = b""
-            if not data:
-                return self._send(json.dumps({"error": "no photo of that workspace yet"}), code=404)
-            # the url carries the capture time, so a given one never changes
-            self._send(data, "image/jpeg", cache="private, max-age=300")
         elif self.path.startswith("/api/file?"):
             # a page under any other name could be a site pointed here to read
             if not same_page(None, self.headers.get("Host", ""), named=True):
@@ -1684,8 +1233,6 @@ class Handler(BaseHTTPRequestHandler):
             if made is None:
                 return self._send(json.dumps({"error": _pty_error}), code=502)
             return self._send(json.dumps(made), code=201 if "id" in made else 400)
-        if self.path.startswith("/api/focus"):
-            return self.do_focus()
         if self.path.startswith("/api/usage"):
             try:
                 n = int(self.headers.get("Content-Length", 0))
@@ -1785,19 +1332,6 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(json.dumps({"error": _pty_error}), code=502)
         self._send(json.dumps(gone))
 
-    def do_focus(self):
-        if not self.allow_focus:
-            return self._send(json.dumps({"error": "focus disabled (--no-focus)"}), code=403)
-        try:
-            n = int(self.headers.get("Content-Length", 0))
-            wid = json.loads(self.rfile.read(n) or b"{}").get("id", "")
-        except (ValueError, json.JSONDecodeError):
-            return self._send(json.dumps({"error": "bad request"}), code=400)
-        ok, msg = focus(str(wid))
-        if ok:
-            hold_shots()  # the new workspace is worth a photo, but only once it is there
-        self._send(json.dumps({"ok": ok, "msg": msg}), code=200 if ok else 400)
-
 
 def relaunch(srv):
     """Replace this process with a fresh run of the same command line.
@@ -1849,10 +1383,11 @@ UNIT_PATH = os.path.expanduser("~/.config/systemd/user/" + UNIT)
 
 # KillMode=process: stopping the service ends this process only, so the
 # terminal server it started stays up with your shells in it, as it does when
-# a run by hand is restarted. It needs the desktop: X for the windows, the
-# session's DISPLAY, which the user manager has once GNOME has started.
+# a run by hand is restarted. It starts with the desktop session so that
+# --open and the terminals' look (xrdb) find its DISPLAY, which the user
+# manager has once GNOME has started.
 UNIT_TEXT = """[Unit]
-Description=winlist: open windows by workspace, on %(url)s
+Description=winlist: terminals and cards on a browser board, on %(url)s
 After=graphical-session.target
 PartOf=graphical-session.target
 
@@ -1964,21 +1499,16 @@ def uninstall():
 
 
 def main():
-    global SHOTS_ON, SHOT_WIDTH, PTY_PORT, PTY_ON
+    global PTY_PORT, PTY_ON
     ap = argparse.ArgumentParser()
     ap.add_argument("--port", type=int, default=DEFAULT_PORT)
     ap.add_argument("--host", default="127.0.0.1")
     ap.add_argument("--open", action="store_true", help="show the page in the browser once serving")
-    ap.add_argument("--no-focus", action="store_true", help="serve read-only, refuse focus requests")
-    ap.add_argument("--no-screens", action="store_true",
-                    help="never photograph the screen; the map stays a diagram")
-    ap.add_argument("--shot-width", type=int, default=SHOT_WIDTH, metavar="PX",
-                    help="width of each workspace photo (default %d)" % SHOT_WIDTH)
     ap.add_argument("--pty-port", type=int, default=PTY_PORT, metavar="N",
                     help="port for the terminals (default %d); one already "
                          "listening there is used as it stands" % PTY_PORT)
     ap.add_argument("--no-terminals", action="store_true",
-                    help="do not hold terminals at all; the surface is real windows only")
+                    help="do not hold terminals at all")
     ap.add_argument("--install", action="store_true",
                     help="run as a systemd user service, with the other flags given here, "
                          "from now on and with every desktop session")
@@ -1989,9 +1519,6 @@ def main():
     if args.install:
         return install([a for a in sys.argv[1:] if a not in ("--install", "--open")],
                        f"http://{args.host}:{args.port}/")
-    Handler.allow_focus = not args.no_focus
-    SHOTS_ON = not args.no_screens
-    SHOT_WIDTH = max(320, args.shot_width)
     PTY_ON = not args.no_terminals
     PTY_PORT = args.pty_port
     LOOK.update(xterm_look())
@@ -2001,7 +1528,8 @@ def main():
     except OSError as e:
         # the common case: launched a second time while one is already serving
         if args.open:
-            say(f"winlist is already serving {url} — {show_page(url, args.port)}")
+            say(f"winlist is already serving {url}")
+            show_page(url)
             return
         if service_active():
             say(f"the winlist service is serving {url} — "
@@ -2010,10 +1538,8 @@ def main():
             say(f"cannot listen on {args.host}:{args.port} ({e}) — "
                 f"another winlist is probably already running")
         sys.exit(1)
-    if SHOTS_ON:
-        threading.Thread(target=keep_shots, daemon=True).start()
     if args.open:
-        threading.Thread(target=show_page, args=(url, args.port), daemon=True).start()
+        threading.Thread(target=show_page, args=(url,), daemon=True).start()
 
     how = start_terminals(PTY_PORT) if PTY_ON else None
     say(f"winlist → {url}  (r to restart, Ctrl-C to stop)")

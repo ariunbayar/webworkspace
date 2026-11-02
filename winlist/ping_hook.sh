@@ -9,9 +9,6 @@ sess=$(printf %s "$in" | sed -n 's/.*"session_id" *: *"\([A-Za-z0-9-]*\)".*/\1/p
 id=
 if [ -n "$WINLIST_TERM" ]; then
   id="web:$WINLIST_TERM"
-elif [ -n "$WINDOWID" ]; then
-  # xterm gives decimal; winlist's ids are xprop's: 0x, lower case, no padding
-  id=$(printf '0x%x' "$WINDOWID" 2>/dev/null)
 fi
 [ -n "$id" ] || exit 0
 case "$ev" in

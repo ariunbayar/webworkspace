@@ -367,3 +367,9 @@ Each entry:
 - A: Yes: ⋯ → Bookmark is now a row of 1-9. The tile's own number is lit, numbers in use are dimmed and name their tile on hover; pressing one moves that bookmark here, pressing its own takes it off. No Shift+number, by choice.
 - Why: the user asked for it (2026-11-02); always the lowest free number made the numbers hard to keep in your head.
 - Status: done (PR)
+
+### The desktop's own windows are gone from the board
+- Q: Keep showing the real GNOME/X11 windows as tiles?
+- A: No. The server no longer asks X anything for the board: no window list (xprop, xdotool), no workspace photographs (xwd, convert), no workspace grid (dconf), no focusing a real window (/api/focus), no /api/screen, and no --no-focus, --no-screens or --shot-width. /api/windows now lists our terminals only; cards, groups, pings and Claude state are unchanged. --open just runs xdg-open. ping_hook.sh only knows page terminals ($WINLIST_TERM). On the page: no window tiles, thumbnails or workspace cells; ↑↓←→ pick the nearest tile that way; Reset layout is gone (it only put windows back); ws2 is gone from the filter; help, footer and the architecture dialog say so. xterm_look() still reads xrdb for the terminal colours.
+- Why: the user no longer uses the windows on the board (2026-11-02). About 700 lines go.
+- Status: done (PR)
