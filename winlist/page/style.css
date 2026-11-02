@@ -12,6 +12,9 @@
   .bar { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:14px }
   input[type=search] { flex:1 1 200px; max-width:300px; padding:6px 9px; font:inherit;
     border:1px solid var(--line); border-radius:6px; background:var(--panel); color:var(--fg) }
+  #qlist { position:fixed; z-index:9000; width:min(92vw,420px); max-height:calc(12 * 30px); overflow:auto; padding:4px;
+            border:1px solid var(--line); border-radius:8px; background:var(--panel); color:var(--fg); box-shadow:0 6px 20px #0003 }
+  #qlist[hidden] { display:none }
   .keys { margin-left:auto; color:var(--dim); font-size:11px }
 
   /* the whole browser window, without going properly fullscreen: the page just

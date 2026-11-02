@@ -367,3 +367,9 @@ Each entry:
 - A: Yes: ⋯ → Bookmark is now a row of 1-9. The tile's own number is lit, numbers in use are dimmed and name their tile on hover; pressing one moves that bookmark here, pressing its own takes it off. No Shift+number, by choice.
 - Why: the user asked for it (2026-11-02); always the lowest free number made the numbers hard to keep in your head.
 - Status: done (PR)
+
+### / lists the matches and previews them
+- Q: Can / switch to a tile from a list, the view following the one you're on, and going back if you choose none?
+- A: Yes. Typing in / opens a list of up to 12 matching tiles under the box (kind, name, bookmark number). ↑↓ or a hover lights one and the view goes to it, picked (zooming in if it's too small to read). Enter or a click keeps it and clears the filter; Shift+Enter also goes into it. Esc or clicking away puts back the view and pick you started from. Enter with nothing lit still goes to the first match, as before. Chrome's own list of past searches is off (autocomplete="off").
+- Why: the user asked for it (2026-11-02); the dropdown they saw was Chrome's search history, not tiles.
+- Status: done (PR)
