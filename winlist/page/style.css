@@ -107,6 +107,12 @@
   .tmitem { padding:5px 9px; border-radius:4px; cursor:pointer; white-space:nowrap }
   .tmitem:hover { background:var(--line) }
   .tmitem.danger { color:#cf222e }
+  .tmnums { display:flex; align-items:center; gap:2px; padding:4px 6px 4px 9px; white-space:nowrap }
+  .tmnums span { margin-right:6px }
+  .tmnums b { width:18px; line-height:18px; text-align:center; border-radius:4px; cursor:pointer; font-weight:600 }
+  .tmnums b:hover { background:var(--line) }
+  .tmnums b.taken { opacity:.45 }
+  .tmnums b.mine { background:var(--accent); color:#fff; opacity:1 }
   .tmitem.confirm { background:#cf222e; color:#fff; font-weight:600 }
   .tile.gone .cap .note { color:var(--accent); opacity:1 }
   .cap .note { flex:none; font-size:11px; opacity:.75 }
