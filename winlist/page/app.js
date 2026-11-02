@@ -541,6 +541,84 @@ const openQ = () => { if (bare) setBare(false); $('#q').classList.add('on'); $('
 const foldQ = () => { if (!$('#q').value) $('#q').classList.remove('on'); };
 $('#q').addEventListener('blur', foldQ);
 
+// ---- / finds a tile: a list under the box, the view following the one lit --
+// ↑↓ or a hover lights a row and the view goes there, picked; Enter keeps it
+// (Shift+Enter goes into it), and Esc or a press away puts back the view and
+// pick you started from. Keeping one clears the filter: you went somewhere.
+let qStart = null, qRows = [], qAt = -1;
+const qlist = $('#qlist');
+function qFind() {
+  const match = visible();
+  qRows = $('#q').value.trim() && data ? data.windows.filter(match).slice(0, 12) : [];
+  qAt = -1;
+  qlist.textContent = '';
+  qRows.forEach((w, i) => {
+    const el = document.createElement('div'), t = w.term && terms.get(w.term.session);
+    el.className = 'palrow';
+    el.innerHTML = `<span class="palkind">${{ term: 'terminal', card: 'card', husk: 'ended', window: 'window' }[kindOf(w.id)]}</span>`
+      + `<span class="palname">${esc(w.link ? shownTitle(w) : w.title || (t && t.title) || w.app || '')}</span>`
+      + (markOf(w.id) ? `<kbd>${markOf(w.id)}</kbd>` : '');
+    el.onmousemove = () => { if (qAt !== i) qLight(i); };
+    qlist.append(el);
+  });
+  const r = $('#q').getBoundingClientRect();
+  qlist.style.left = r.left + 'px';
+  qlist.style.top = r.bottom + 4 + 'px';
+  qlist.hidden = !qRows.length;
+}
+function qLight(i) {
+  if (!qStart) qStart = { zoom, origin: [...origin], sel };
+  qAt = i;
+  [...qlist.children].forEach((el, j) => el.classList.toggle('on', j === i));
+  qlist.children[i].scrollIntoView({ block: 'nearest' });
+  goToPing(qRows[i].id);
+}
+function qDone(keep, enter) {
+  const w = keep && qRows[qAt];
+  qlist.hidden = true;
+  qRows = []; qAt = -1;
+  if (w) {
+    qStart = null;
+    $('#q').value = '';
+    $('#q').blur();
+    sel = w.id;
+    render();
+    if (enter) activate(w.id);
+    return;
+  }
+  if (qStart) {
+    ({ zoom, origin, sel } = qStart);
+    qStart = null;
+    store.set('zoom', zoom); store.set('origin', origin);
+    render();
+  }
+}
+$('#q').addEventListener('input', qFind);
+$('#q').addEventListener('keydown', e => {
+  const step = e.key === 'ArrowDown' ? 1 : e.key === 'ArrowUp' ? -1 : 0;
+  if (step && qRows.length) {
+    e.preventDefault();
+    return qLight(qAt < 0 ? (step > 0 ? 0 : qRows.length - 1) : (qAt + step + qRows.length) % qRows.length);
+  }
+  if (e.key === 'Enter' && qAt >= 0) { e.preventDefault(); e.stopPropagation(); return qDone(true, e.shiftKey); }
+  if (e.key === 'Escape') {                         // the box clears, and the view goes back
+    e.preventDefault(); e.stopPropagation();
+    const back = !!qStart;
+    qDone(false);
+    $('#q').value = '';
+    $('#q').blur();
+    if (!back) sel = null;
+    render();
+  }
+});
+// a press on the list must not take the focus from the box first
+qlist.addEventListener('pointerdown', e => {
+  e.preventDefault();
+  const row = e.target.closest('.palrow');
+  if (row) { qAt = [...qlist.children].indexOf(row); qDone(true); }
+});
+$('#q').addEventListener('blur', () => { if (!qlist.hidden) qDone(false); });
+
 // A window that has closed leaves its place behind in the layout. It is let go
 // once it has been missing for a minute of polls — not on the first, since a
 // window can blink out while it is being remapped — and a terminal's place is
