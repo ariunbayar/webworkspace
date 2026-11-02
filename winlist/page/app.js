@@ -556,7 +556,7 @@ function qFind() {
     const el = document.createElement('div'), t = w.term && terms.get(w.term.session);
     el.className = 'palrow';
     el.innerHTML = `<span class="palkind">${{ term: 'terminal', card: 'card', husk: 'ended', window: 'window' }[kindOf(w.id)]}</span>`
-      + `<span class="palname">${esc(w.title || (t && t.title) || w.app || '')}</span>`
+      + `<span class="palname">${esc(w.link ? shownTitle(w) : w.title || (t && t.title) || w.app || '')}</span>`
       + (markOf(w.id) ? `<kbd>${markOf(w.id)}</kbd>` : '');
     el.onmousemove = () => { if (qAt !== i) qLight(i); };
     qlist.append(el);
