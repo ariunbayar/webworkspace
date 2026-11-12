@@ -379,3 +379,9 @@ Each entry:
 - A: No. The server no longer asks X anything for the board: no window list (xprop, xdotool), no workspace photographs (xwd, convert), no workspace grid (dconf), no focusing a real window (/api/focus), no /api/screen, and no --no-focus, --no-screens or --shot-width. /api/windows now lists our terminals only; cards, groups, pings and Claude state are unchanged. --open just runs xdg-open. ping_hook.sh only knows page terminals ($WINLIST_TERM). On the page: no window tiles, thumbnails or workspace cells; ↑↓←→ pick the nearest tile that way; Reset layout is gone (it only put windows back); ws2 is gone from the filter; help, footer and the architecture dialog say so. xterm_look() still reads xrdb for the terminal colours.
 - Why: the user no longer uses the windows on the board (2026-11-02). About 700 lines go.
 - Status: done (PR)
+
+### Notes keep their line breaks
+- **Q:** A note showed its new lines only while typing (INSERT); read back, lines ran together.
+- **A:** Notes render with markdown `breaks: true`, so each typed new line shows as one. Documents stay plain markdown.
+- **Why:** Markdown joins single new lines into one paragraph; a note is typed text, not a document.
+- **Status:** done

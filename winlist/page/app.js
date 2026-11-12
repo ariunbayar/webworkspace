@@ -1461,6 +1461,8 @@ function linkWin(l) {
 const isMdPath = p => /\.(md|markdown)$/i.test(p);
 const docs = new Map();             // path -> {mtime, html, md, at} or {error}
 const md = new marked.Marked({ gfm: true });
+// a note keeps every line break as typed; documents stay plain markdown
+const noteMd = new marked.Marked({ gfm: true, breaks: true });
 md.use({ renderer: {
   // a file can carry HTML, and this page can type into terminals: none of it runs
   html: () => '',
@@ -1636,7 +1638,7 @@ function noteCard(pic, w) {
   pic.style.cssText = '';
   if (noteEdit !== 'link:' + id) {
     pic.innerHTML = `<div class="docwrap" tabindex="-1"><div class="md"></div></div>`;
-    pic.querySelector('.md').innerHTML = w.link.text ? md.parse(w.link.text)
+    pic.querySelector('.md').innerHTML = w.link.text ? noteMd.parse(w.link.text)
       : '<p class="gone">Empty note — Enter to write</p>';
     return;
   }
