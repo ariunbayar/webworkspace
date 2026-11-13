@@ -771,13 +771,13 @@ function rename(g, name) {
 }
 
 // the tools chip: what the group's folder can run, from its tmp/ scripts and
-// its .winlist-tools file, read afresh each time it is opened
+// its tmp/.winlist-tools file, read afresh each time it is opened
 async function showTools(g, chip) {
   closeTools();
   const res = await fetch('/api/tools?dir=' + encodeURIComponent(g.dir))
     .then(r => r.json()).catch(() => null);
   if (!res || !res.tools) return void toast('Could not read the tools: ' + esc((res && res.error) || 'no answer from the server'), 4000);
-  if (!res.tools.length) return void toast(`No tools in ${esc(shortPath(g.dir))}: add executable <code>tmp/*.sh</code> scripts, or <code>Name: command</code> lines in <code>.winlist-tools</code>`, 6000);
+  if (!res.tools.length) return void toast(`No tools in ${esc(shortPath(g.dir))}: add executable <code>tmp/*.sh</code> scripts, or <code>Name: command</code> lines in <code>tmp/.winlist-tools</code>`, 6000);
   const menu = document.createElement('div');
   menu.id = 'tools';
   menu.setAttribute('role', 'menu');
@@ -822,7 +822,7 @@ async function toolButton(g, t) {
 }
 
 // a tool is run afresh each press, in a new terminal beside its button, with
-// whatever the script or .winlist-tools says now
+// whatever the script or tmp/.winlist-tools says now
 async function runTool(l, w) {
   const res = await fetch('/api/tools?dir=' + encodeURIComponent(l.dir)).then(r => r.json()).catch(() => null);
   const t = res && res.tools && res.tools.find(t => t.name === l.tool);

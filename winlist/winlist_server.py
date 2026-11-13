@@ -734,7 +734,7 @@ def send_link(url=None, title=None, path=None, image=None, keep=None, tool=None,
     on the card), a PR's changes (diff: the PR's address) or a button for one of a project's tools (tool, by name, in
     folder). None, and why, if it won't do.
     A tool card holds the name only: what it runs is looked up when pressed,
-    so an edit to the script, or to .winlist-tools, is what runs next.
+    so an edit to the script, or to tmp/.winlist-tools, is what runs next.
     keep is a card a browser held from before the board lived here: taken as
     it was, file or no file, with its place. origin is "page" when a page
     added it by hand; anything else is "api": sent from outside, to the Inbox.
@@ -1405,7 +1405,7 @@ WantedBy=graphical-session.target
 
 # ---- project tools: what a group's folder knows how to run -----------------
 
-TOOLS_FILE = ".winlist-tools"
+TOOLS_FILE = os.path.join("tmp", ".winlist-tools")   # beside the scripts, in the ignored tmp/
 LEAD = re.compile(r"^#\s*\S+\s+[—-]+\s+(.+)$")   # "# dev-server.sh — what it does"
 
 
@@ -1426,8 +1426,9 @@ def project_tools(folder):
     """[{name, about, argv}] for a project folder, or an error.
 
     Two sources, as the action selector reads them: executable scripts at the
-    top of the folder's tmp/ (dev-server.sh, deploy.sh), and a .winlist-tools
-    file of `Name: command` lines for anything else. Each runs in bash and
+    top of the folder's tmp/ (dev-server.sh, deploy.sh), and a tmp/.winlist-tools
+    file of `Name: command` lines for anything else, such as one script run
+    with different flags. Each runs in bash and
     leaves a shell behind, so Ctrl-C stops a server without losing its tile:
     the trap is a handler, not an ignore, so the tool itself still gets the
     Ctrl-C while bash lives on past it.
@@ -1448,7 +1449,7 @@ def project_tools(folder):
                 line = line.strip()
                 name, sep, cmd = line.partition(":")
                 if line and not line.startswith("#") and sep and cmd.strip():
-                    add(name.strip(), cmd.strip(), "from " + TOOLS_FILE)
+                    add(name.strip(), cmd.strip(), cmd.strip())
     except OSError:
         pass
     tmp = os.path.join(folder, "tmp")

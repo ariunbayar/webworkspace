@@ -385,3 +385,9 @@ Each entry:
 - **A:** Notes render with markdown `breaks: true`, so each typed new line shows as one. Documents stay plain markdown.
 - **Why:** Markdown joins single new lines into one paragraph; a note is typed text, not a document.
 - **Status:** done
+
+### Tools file lives in tmp/
+- **Q:** A script with several kinds of runs (flags) showed as one tool. How should a project list each kind?
+- **A:** As `Name: command` lines in `tmp/.winlist-tools`, one per kind; each is its own tool under ▸ tools. The file moved from the project's top folder to `tmp/`, beside the scripts, which every project has and keeps out of git. A tool from the file is described by its command.
+- **Why:** No new format to learn, and the scripts stay plain. A top-level file would have to be ignored in each repo.
+- **Status:** done
