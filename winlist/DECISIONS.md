@@ -388,6 +388,6 @@ Each entry:
 
 ### Tools file lives in tmp/
 - **Q:** A script with several kinds of runs (flags) showed as one tool. How should a project list each kind?
-- **A:** As `Name: command` lines in `tmp/.winlist-tools`, one per kind; each is its own tool under ▸ tools. The file moved from the project's top folder to `tmp/`, beside the scripts, which every project has and keeps out of git. A tool from the file is described by its command.
-- **Why:** No new format to learn, and the scripts stay plain. A top-level file would have to be ignored in each repo.
+- **A:** As `Name: command` lines in `tmp/.winlist-tools`, one per kind; each is its own tool under ▸ tools. The file moved from the project's top folder to `tmp/`, which every project has and keeps out of git. It is now the only source: `tmp/*.sh` scripts are no longer listed by themselves, so the file is the whole list, in its order. A tool is described by its command.
+- **Why:** No new format to learn, and the scripts stay plain. One source means no duplicates and no surprise entries. A top-level file would have to be ignored in each repo.
 - **Status:** done
