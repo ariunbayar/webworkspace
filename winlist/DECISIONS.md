@@ -386,8 +386,8 @@ Each entry:
 - **Why:** Markdown joins single new lines into one paragraph; a note is typed text, not a document.
 - **Status:** done
 
-### Tools file lives in tmp/
+### Tools file lives in tmp/, in YAML
 - **Q:** A script with several kinds of runs (flags) showed as one tool. How should a project list each kind?
-- **A:** As `Name: command` lines in `tmp/.winlist-tools`, one per kind; each is its own tool under ▸ tools. The file moved from the project's top folder to `tmp/`, which every project has and keeps out of git. It is now the only source: `tmp/*.sh` scripts are no longer listed by themselves, so the file is the whole list, in its order. A tool is described by its command.
-- **Why:** No new format to learn, and the scripts stay plain. One source means no duplicates and no surprise entries. A top-level file would have to be ignored in each repo.
+- **A:** In `tmp/.winlist-tools.yml`, a YAML list: each tool has `name`, `run` and an optional one-line `about` (else the first line of `run`). `run: |` holds a script over several lines. It is the only source: `tmp/*.sh` scripts are no longer listed by themselves and the old top-level `.winlist-tools` is not read, so the file is the whole list, in its order. A bad file shows its error when ▸ tools is opened.
+- **Why:** One line of `Name: command` mixed the title and the command, and could not hold more fields or a script over several lines; YAML can grow (a description now, more later). `tmp/` is in every project and kept out of git. One source means no duplicates and no surprise entries.
 - **Status:** done

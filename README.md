@@ -72,9 +72,19 @@ and you can read it.
 A group (`g`) can carry a folder: click `+ folder` in its caption and type a
 path. A terminal (`t`) or Claude Code (`c`) opened inside that group starts
 there, and `▸ tools` in the caption lists what the project can run: the
-`Name: command` lines of its `tmp/.winlist-tools` file, and nothing else (one
-script run with different flags is a line each, say
-`Deploy + nginx: ./tmp/deploy.sh --with-nginx`). Picking one puts
+tools in its `tmp/.winlist-tools.yml`, and nothing else:
+
+```yaml
+- name: Deploy + nginx
+  about: nginx first, then API + Web   # optional; else the first line of run
+  run: ./tmp/deploy.sh --with-nginx
+- name: Fresh start
+  run: |                               # several lines run as one bash script
+    git pull
+    npm ci
+    ./tmp/dev-server.sh
+```
+ Picking one puts
 its button on the surface, in the group, a card like any other: press `▶`
 (or pick it and press Enter) and the tool runs in a new terminal beside it.
 A GitHub PR card has a `Diff` button: it puts a diff card beside the PR's, with
