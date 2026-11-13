@@ -1413,7 +1413,8 @@ def project_tools(folder):
 
     One source: the folder's tmp/.winlist-tools.yml, a YAML list of tools,
     each `name` and `run` (a command, or a script over several lines with
-    `run: |`) and an optional one-line `about`. Nothing else is guessed, so the
+    `run: |`), an optional one-line `about`, and `confirm: true` for one that
+    takes a second press to run. Nothing else is guessed, so the
     file is the whole list, in its order; no file is no tools. Each runs in bash and
     leaves a shell behind, so Ctrl-C stops a server without losing its tile:
     the trap is a handler, not an ignore, so the tool itself still gets the
@@ -1446,6 +1447,7 @@ def project_tools(folder):
         cmd = str(t["run"]).strip()
         about = str(t.get("about") or "").strip() or cmd.splitlines()[0]
         found.append({"name": str(t["name"]).strip(), "about": about, "cmd": cmd,
+                      "confirm": t.get("confirm") is True,
                       "argv": ["bash", "-c", "trap : INT\n%s\nexec %s -i" % (cmd, shlex.quote(shell))]})
     return found, None
 

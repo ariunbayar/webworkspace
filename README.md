@@ -78,6 +78,7 @@ tools in its `tmp/.winlist-tools.yml`, and nothing else:
 - name: Deploy + nginx
   about: nginx first, then API + Web   # optional; else the first line of run
   run: ./tmp/deploy.sh --with-nginx
+  confirm: true                        # optional; runs on a second press within 3 s
 - name: Fresh start
   run: |                               # several lines run as one bash script
     git pull

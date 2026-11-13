@@ -179,6 +179,7 @@
             text-overflow:ellipsis; white-space:nowrap }
   .runbtn:hover { filter:brightness(1.12) }
   .runbtn:active { transform:translateY(1px) }
+  .runbtn.armed { background:var(--bg, #fff); color:var(--accent); box-shadow:inset 0 0 0 2px var(--accent) }
   .card .ttl span { min-width:0; overflow:hidden; text-overflow:ellipsis }
   .card .ttl img { width:16px; height:16px; flex:none }
   /* a markdown file, drawn at its own size and scaled with the surface like a
