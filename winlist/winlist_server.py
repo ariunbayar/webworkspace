@@ -190,7 +190,8 @@ def pty(path, method="GET", body=None, timeout=0.3):
 # The page's terminals are remembered here, so a reboot or a new pty_server
 # can offer them back: session id -> {cwd, cols, rows, claude, at, face}. The
 # server knows the first four, and its last title; the page says where a tile
-# sits and its face. Closed on purpose, or ended, and it is forgotten.
+# sits and its face. Closed on purpose, or ended, and it is forgotten; but a
+# Claude Code terminal that Claude quit in is kept (ended) to be resumed.
 # pty_server keeps each one's last output and commands beside it, in terms/.
 TERMS_FILE = os.path.join(os.environ.get("XDG_STATE_HOME") or os.path.expanduser("~/.local/state"),
                           "winlist", "terms.json")
@@ -264,6 +265,12 @@ def note_terms(sessions):
         _live = {t["id"] for t in sessions}
         for t in sessions:
             if not t.get("alive"):
+                known = _terms.get(t["id"])
+                if known and known.get("ended"):
+                    continue
+                if known and resumable(t, known):
+                    known["ended"] = True       # kept as a placeholder to resume, until closed
+                    continue
                 if _terms.pop(t["id"], None) is not None:
                     _forget_files(t["id"])
                 continue
@@ -276,13 +283,27 @@ def note_terms(sessions):
             _save_terms()
 
 
+def resumable(t, known):
+    """A Claude Code terminal (started as claude, `c` on the page) that quit on
+    purpose (/exit, Ctrl-D: exit 0) with its session known: it can be resumed."""
+    argv = t.get("argv") or []
+    return bool(argv) and os.path.basename(argv[0]) == "claude" and t.get("exit") == 0 \
+        and bool(known.get("session"))
+
+
+def ended(sid):
+    with _terms_lock:
+        return bool(_terms.get(sid, {}).get("ended"))
+
+
 def lost_terms():
-    """Remembered terminals whose sessions are gone: the new pty_server never had them."""
+    """Remembered terminals whose sessions are gone: the new pty_server never
+    had them, or Claude quit in them and they wait to be resumed (ended)."""
     with _terms_lock:
         if _live is None:
             return []
         return [dict(v, id=k, cwd_ok=os.path.isdir(v.get("cwd") or ""), cmds=_last_cmds(k))
-                for k, v in _terms.items() if k not in _live and "cwd" in v]
+                for k, v in _terms.items() if (k not in _live or v.get("ended")) and "cwd" in v]
 
 
 def term_session(window, session):
@@ -335,6 +356,8 @@ def terminals(desktop, across):
         note_terms(answer["sessions"])
     out, x, y, tall = [], 0, 0, 0
     for i, t in enumerate(answer.get("sessions", [])):
+        if not t.get("alive") and ended(t["id"]):
+            continue                            # shown as its placeholder (lost_terms) instead
         name = t.get("title") or t.get("running") or "shell"
         where = t.get("cwd") or ""
         wide = t.get("cols", 80) * CELL_W
