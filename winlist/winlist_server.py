@@ -645,7 +645,28 @@ def image_file(path):
 
 def board():
     with _links_lock:
-        return [dict(l) for l in _links]
+        cards = [dict(l) for l in _links]
+    for c in cards:                     # a tool card says what it runs now, from the file as it is
+        if c.get("tool"):
+            t = next((t for t in tools_now(c.get("dir", "")) if t["name"] == c["tool"]), None)
+            if t:
+                c.update(about=t["about"], cmd=t["cmd"], confirm=t["confirm"])
+    return cards
+
+
+_tools_seen = {}                        # folder -> (the file's mtime, its tools)
+
+
+def tools_now(folder):
+    """project_tools, read again only when the file changed: the board asks every poll."""
+    try:
+        mtime = os.stat(os.path.join(os.path.expanduser(folder), TOOLS_FILE)).st_mtime
+    except OSError:
+        return []
+    seen = _tools_seen.get(folder)
+    if not seen or seen[0] != mtime:
+        seen = _tools_seen[folder] = (mtime, project_tools(folder)[0] or [])
+    return seen[1]
 
 
 def _save_links():
@@ -734,7 +755,7 @@ def send_link(url=None, title=None, path=None, image=None, keep=None, tool=None,
     on the card), a PR's changes (diff: the PR's address) or a button for one of a project's tools (tool, by name, in
     folder). None, and why, if it won't do.
     A tool card holds the name only: what it runs is looked up when pressed,
-    so an edit to the script, or to .winlist-tools, is what runs next.
+    so an edit to tmp/.winlist-tools.yml, or to what it runs, is what runs next.
     keep is a card a browser held from before the board lived here: taken as
     it was, file or no file, with its place. origin is "page" when a page
     added it by hand; anything else is "api": sent from outside, to the Inbox.
@@ -1405,29 +1426,17 @@ WantedBy=graphical-session.target
 
 # ---- project tools: what a group's folder knows how to run -----------------
 
-TOOLS_FILE = ".winlist-tools"
-LEAD = re.compile(r"^#\s*\S+\s+[—-]+\s+(.+)$")   # "# dev-server.sh — what it does"
-
-
-def script_about(path):
-    """The one-line summary a script gives in its opening comment, if any."""
-    try:
-        with open(path, errors="replace") as f:
-            for _, line in zip(range(12), f):
-                m = LEAD.match(line.strip())
-                if m:
-                    return m.group(1).strip().rstrip(".")
-    except OSError:
-        pass
-    return ""
+TOOLS_FILE = os.path.join("tmp", ".winlist-tools.yml")   # in the project's ignored tmp/
 
 
 def project_tools(folder):
     """[{name, about, argv}] for a project folder, or an error.
 
-    Two sources, as the action selector reads them: executable scripts at the
-    top of the folder's tmp/ (dev-server.sh, deploy.sh), and a .winlist-tools
-    file of `Name: command` lines for anything else. Each runs in bash and
+    One source: the folder's tmp/.winlist-tools.yml, a YAML list of tools,
+    each `name` and `run` (a command, or a script over several lines with
+    `run: |`), an optional one-line `about`, and `confirm: true` for one that
+    takes a second press to run. Nothing else is guessed, so the
+    file is the whole list, in its order; no file is no tools. Each runs in bash and
     leaves a shell behind, so Ctrl-C stops a server without losing its tile:
     the trap is a handler, not an ignore, so the tool itself still gets the
     Ctrl-C while bash lives on past it.
@@ -1435,32 +1444,32 @@ def project_tools(folder):
     folder = os.path.expanduser(folder)
     if not os.path.isdir(folder):
         return None, "no such folder"
-    shell = os.environ.get("SHELL", "/bin/bash")
-    found = []
-
-    def add(name, cmd, about):
-        found.append({"name": name, "about": about, "cmd": cmd,
-                      "argv": ["bash", "-c", "trap : INT\n%s\nexec %s -i" % (cmd, shlex.quote(shell))]})
-
     try:
         with open(os.path.join(folder, TOOLS_FILE)) as f:
-            for line in f:
-                line = line.strip()
-                name, sep, cmd = line.partition(":")
-                if line and not line.startswith("#") and sep and cmd.strip():
-                    add(name.strip(), cmd.strip(), "from " + TOOLS_FILE)
+            text = f.read()
     except OSError:
-        pass
-    tmp = os.path.join(folder, "tmp")
+        return [], None
     try:
-        names = sorted(os.listdir(tmp))
-    except OSError:
-        names = []
-    for n in names:
-        path = os.path.join(tmp, n)
-        if n.endswith(".sh") and os.path.isfile(path) and os.access(path, os.X_OK):
-            add(n[:-3].replace("-", " ").replace("_", " ").capitalize(),
-                "./tmp/" + shlex.quote(n), script_about(path))
+        import yaml
+    except ImportError:
+        return None, "reading %s needs PyYAML (pip install pyyaml)" % TOOLS_FILE
+    try:
+        items = yaml.safe_load(text) or []
+    except yaml.YAMLError as e:
+        mark = getattr(e, "problem_mark", None)
+        return None, "%s: not valid YAML%s" % (TOOLS_FILE, " (line %d)" % (mark.line + 1) if mark else "")
+    if not isinstance(items, list):
+        return None, "%s: expected a list of tools (- name: … run: …)" % TOOLS_FILE
+    shell = os.environ.get("SHELL", "/bin/bash")
+    found = []
+    for i, t in enumerate(items, 1):
+        if not isinstance(t, dict) or not str(t.get("name") or "").strip() or not str(t.get("run") or "").strip():
+            return None, "%s: tool %d needs a name and a run" % (TOOLS_FILE, i)
+        cmd = str(t["run"]).strip()
+        about = str(t.get("about") or "").strip() or cmd.splitlines()[0]
+        found.append({"name": str(t["name"]).strip(), "about": about, "cmd": cmd,
+                      "confirm": t.get("confirm") is True,
+                      "argv": ["bash", "-c", "trap : INT\n%s\nexec %s -i" % (cmd, shlex.quote(shell))]})
     return found, None
 
 

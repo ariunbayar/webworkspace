@@ -385,3 +385,21 @@ Each entry:
 - **A:** Notes render with markdown `breaks: true`, so each typed new line shows as one. Documents stay plain markdown.
 - **Why:** Markdown joins single new lines into one paragraph; a note is typed text, not a document.
 - **Status:** done
+
+### Tools file lives in tmp/, in YAML
+- **Q:** A script with several kinds of runs (flags) showed as one tool. How should a project list each kind?
+- **A:** In `tmp/.winlist-tools.yml`, a YAML list: each tool has `name`, `run` and an optional one-line `about` (else the first line of `run`). `run: |` holds a script over several lines. It is the only source: `tmp/*.sh` scripts are no longer listed by themselves and the old top-level `.winlist-tools` is not read, so the file is the whole list, in its order. A bad file shows its error when ▸ tools is opened.
+- **Why:** One line of `Name: command` mixed the title and the command, and could not hold more fields or a script over several lines; YAML can grow (a description now, more later). `tmp/` is in every project and kept out of git. One source means no duplicates and no surprise entries.
+- **Status:** done
+
+### A tool can ask for a second press
+- **Q:** A deploy button runs on one press; a slip should not start a deploy.
+- **A:** A tool with `confirm: true` in the YAML arms on the first press (Enter or click): the button turns outlined and says "Press again to run …" for 3 s. A second press then runs it; otherwise it goes back. Tools without it run on one press as before.
+- **Why:** Per tool, since a dev server you start every morning should stay one press. Read when pressed, so editing the file changes it at once.
+- **Status:** done
+
+### A tool card shows its command
+- **Q:** Can a tool's card show the command line it runs?
+- **A:** Yes: under the button, in monospace, the `run` from the YAML (a script over several lines shows each line). The server fills a tool card's command and `about` from the file every poll, read again only when the file changes, so an edit shows on the card at once and older cards get it too.
+- **Why:** The button name alone hides which flags a press runs.
+- **Status:** done

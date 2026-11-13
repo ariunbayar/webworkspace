@@ -770,14 +770,14 @@ function rename(g, name) {
   };
 }
 
-// the tools chip: what the group's folder can run, from its tmp/ scripts and
-// its .winlist-tools file, read afresh each time it is opened
+// the tools chip: what the group's folder can run, from its tmp/.winlist-tools.yml
+// file, read afresh each time it is opened
 async function showTools(g, chip) {
   closeTools();
   const res = await fetch('/api/tools?dir=' + encodeURIComponent(g.dir))
     .then(r => r.json()).catch(() => null);
   if (!res || !res.tools) return void toast('Could not read the tools: ' + esc((res && res.error) || 'no answer from the server'), 4000);
-  if (!res.tools.length) return void toast(`No tools in ${esc(shortPath(g.dir))}: add executable <code>tmp/*.sh</code> scripts, or <code>Name: command</code> lines in <code>.winlist-tools</code>`, 6000);
+  if (!res.tools.length) return void toast(`No tools in ${esc(shortPath(g.dir))}: list them in <code>tmp/.winlist-tools.yml</code> (<code>- name: … run: …</code>)`, 6000);
   const menu = document.createElement('div');
   menu.id = 'tools';
   menu.setAttribute('role', 'menu');
@@ -822,11 +822,31 @@ async function toolButton(g, t) {
 }
 
 // a tool is run afresh each press, in a new terminal beside its button, with
-// whatever the script or .winlist-tools says now
+// whatever the script or tmp/.winlist-tools.yml says now. One marked
+// `confirm: true` (a deploy) runs on a second press within ARM_MS; the first
+// only arms the button, so a slip starts nothing
+const ARM_MS = 3000;
+let armed = null;                     // { id, timer } of the button waiting for its second press
+function disarm() {
+  if (!armed) return;
+  clearTimeout(armed.timer);
+  const { id, w } = armed;
+  armed = null;
+  const pic = w && tileEls.get(id) && tileEls.get(id).querySelector('.pic.tool');
+  if (pic) toolCard(pic, w);
+}
 async function runTool(l, w) {
   const res = await fetch('/api/tools?dir=' + encodeURIComponent(l.dir)).then(r => r.json()).catch(() => null);
   const t = res && res.tools && res.tools.find(t => t.name === l.tool);
   if (!t) return void toast(`No tool ${esc(l.tool)} in ${esc(shortPath(l.dir))} any more`, 4000);
+  if (t.confirm && !(armed && armed.id === w.id)) {
+    disarm();
+    armed = { id: w.id, w, timer: setTimeout(disarm, ARM_MS) };
+    const pic = tileEls.get(w.id) && tileEls.get(w.id).querySelector('.pic.tool');
+    if (pic) toolCard(pic, w);
+    return;
+  }
+  disarm();
   const [x, y] = seatOf(w);
   newTerm({ argv: t.argv, cwd: l.dir, corner: [x + w.w + GRID, y] });
 }
@@ -1701,7 +1721,7 @@ async function askGitHub() {
 // what a card shows; it is drawn again only when this changes
 function cardKey(w) {
   const gh = ghOf(w);
-  return w.link.tool ? 'tool ' + w.link.tool + ' ' + w.link.dir
+  return w.link.tool ? ['tool', w.link.tool, w.link.dir, w.link.cmd, w.link.about].join('\n')
     : w.link.image ? w.link.image
     : w.link.note ? 'note ' + (noteEdit === w.id ? 'edit' : w.link.text || '')
     : w.link.diff ? diffKey(w)
@@ -1736,8 +1756,13 @@ function toolCard(pic, w) {
   pic.className = 'pic card tool';
   pic.style.cssText = '';
   pic.innerHTML = `<button class="runbtn" title="Run ${esc(w.link.tool)} in a new terminal (or Enter)">▶ <span></span></button>`
-    + `<div class="url"></div>`;
+    + `<code class="cli"></code><div class="url"></div>`;
   pic.querySelector('.runbtn span').textContent = w.link.tool;
+  pic.querySelector('.cli').textContent = w.link.cmd || '';   // what it runs, as the file says now
+  if (armed && armed.id === w.id) {   // waiting for the second press: say so on the button
+    pic.querySelector('.runbtn').classList.add('armed');
+    pic.querySelector('.runbtn span').textContent = 'Press again to run ' + w.link.tool;
+  }
   pic.querySelector('.url').textContent = [shortPath(w.link.dir), w.link.about].filter(Boolean).join(' · ');
 }
 
