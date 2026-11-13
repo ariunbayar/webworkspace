@@ -403,3 +403,9 @@ Each entry:
 - **A:** Yes: under the button, in monospace, the `run` from the YAML (a script over several lines shows each line). The server fills a tool card's command and `about` from the file every poll, read again only when the file changes, so an edit shows on the card at once and older cards get it too.
 - **Why:** The button name alone hides which flags a press runs.
 - **Status:** done
+
+### A Claude terminal that quits stays, to resume
+- **Q:** When Claude quits on purpose, can its tile stay as a placeholder to resume the session?
+- **A:** Yes, for a Claude Code terminal (`c`, started as `claude`) that exits with 0 (/exit, Ctrl-D) and whose session the ping hook reported. Its tile becomes a husk, as after a restart: dimmed last output, "Claude quit" in the caption, Resume and Close. Resume runs `claude --resume <session>` in its folder, where the tile was; Close forgets it. It is kept in terms.json until closed, so it survives restarts, and is left out of the "did not survive the restart" banner. A crash (non-zero exit), or Claude started by hand in a shell, behaves as before.
+- **Why:** Quitting closed the tile and the session id was only in Claude's last line.
+- **Status:** done

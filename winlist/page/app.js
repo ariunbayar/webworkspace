@@ -938,7 +938,7 @@ function renderGroups() {
 // said over the surface, where it is seen, not only in the bar that is folded
 // away — and before the first answer too, when there is nothing else to show
 function showTrouble() {
-  const lost = restoring ? [] : (data && data.lost) || [];
+  const lost = restoring ? [] : ((data && data.lost) || []).filter(r => !r.ended);   // not the ones Claude quit in
   const trouble = failures >= 2 ? `Lost the server — retrying. Is it running? <code>python3 winlist/winlist_server.py</code>`
     : data && data.error ? esc(data.error)
     : lost.length ? `${lost.length} terminal${lost.length > 1 ? 's' : ''} did not survive the restart. `
@@ -976,7 +976,7 @@ async function restoreTerm(r, keep) {
       going.delete(r.id);
       return 0;                     // stays a husk, to try again
     }
-    const at = layout['husk:' + r.id] || r.at;     // where the husk was dragged to
+    const at = layout['husk:' + r.id] || r.at || layout['web:' + r.id];     // where the husk was dragged to, or sat
     if (at) layout['web:' + made.id] = at;
     if (r.face) faces[made.id] = r.face;
     if (out.length) pendingOut.set(made.id, out);
@@ -995,7 +995,7 @@ async function restoreTerms(keep) {
   restoring = true;
   showTrouble();
   let moved = 0;
-  for (const r of (data.lost || []).slice()) moved += await restoreTerm(r, keep);
+  for (const r of (data.lost || []).filter(r => !r.ended)) moved += await restoreTerm(r, keep);
   restoreNote = moved ? `${moved} folder${moved > 1 ? 's are' : ' is'} gone: started in ~ instead.` : '';
   if (restoreNote) setTimeout(() => { restoreNote = ''; showTrouble(); }, 8000);
   restoring = false;
@@ -1008,7 +1008,9 @@ $('#banner').addEventListener('click', e => {
 
 // A terminal the restart took stays on the surface as a husk: its old spot and
 // size, its last title, its last commands and its last output, dimmed and
-// read-only. Restore starts a shell in its folder; Close forgets it.
+// read-only. Restore starts a shell in its folder; Close forgets it. A Claude
+// Code terminal Claude quit in (/exit) is one too, ended: Resume runs
+// claude --resume with its session, there and in its folder.
 const husks = new Map();            // old session id -> {el, t, term, key}
 function renderHusks() {
   const lost = ((data && data.lost) || []).filter(r => !going.has(r.id));
@@ -1021,7 +1023,7 @@ function renderHusks() {
       el.innerHTML = `<div class="cap"><span class="dot"></span><span class="t2"></span><span class="note"></span></div>`
         + `<div class="termbody"><div class="termwrap"><div class="termhost"></div></div>`
         + `<div class="hover"><div class="hcmds"></div>`
-        + `<div class="hbtn"><button data-act="restore">Restore</button><button data-act="close">Close</button></div></div></div>`;
+        + `<div class="hbtn"><button data-act="restore">${r.ended ? 'Resume' : 'Restore'}</button><button data-act="close">Close</button></div></div></div>`;
       // buttons are answered in pointerdown, before a drag takes the pointer
       // captive; the caption is the handle, as on a terminal
       el.addEventListener('pointerdown', e => {
@@ -1051,7 +1053,7 @@ function renderHusks() {
     if (h.key !== key) {                  // as text: titles and commands are whatever a program printed
       h.key = key;
       el.querySelector('.t2').textContent = r.title || (r.claude ? 'claude' : 'shell');
-      el.querySelector('.note').textContent = shortPath(r.cwd) + ' · gone';
+      el.querySelector('.note').textContent = shortPath(r.cwd) + (r.ended ? ' · Claude quit' : ' · gone');
       el.querySelector('.dot').style.background = colorOf('Terminal');
       el.title = r.cwd || '';
       el.querySelector('.hcmds').replaceChildren(...(r.cmds || []).map(c => {
@@ -1061,7 +1063,8 @@ function renderHusks() {
       }));
     }
     measure(t);
-    Object.assign(h.w, { at: r.at || [0, 0], w: t.natural[0], h: t.natural[1] });
+    Object.assign(h.w, { at: r.at || layout['web:' + r.id] || [0, 0],   // an ended one: where its tile was
+                       w: t.natural[0], h: t.natural[1] });
     place(el, h.w);
   });
   husks.forEach((h, id) => {
