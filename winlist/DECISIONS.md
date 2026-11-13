@@ -397,3 +397,9 @@ Each entry:
 - **A:** A tool with `confirm: true` in the YAML arms on the first press (Enter or click): the button turns outlined and says "Press again to run …" for 3 s. A second press then runs it; otherwise it goes back. Tools without it run on one press as before.
 - **Why:** Per tool, since a dev server you start every morning should stay one press. Read when pressed, so editing the file changes it at once.
 - **Status:** done
+
+### A tool card shows its command
+- **Q:** Can a tool's card show the command line it runs?
+- **A:** Yes: under the button, in monospace, the `run` from the YAML (a script over several lines shows each line). The server fills a tool card's command and `about` from the file every poll, read again only when the file changes, so an edit shows on the card at once and older cards get it too.
+- **Why:** The button name alone hides which flags a press runs.
+- **Status:** done

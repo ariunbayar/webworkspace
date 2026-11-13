@@ -645,7 +645,28 @@ def image_file(path):
 
 def board():
     with _links_lock:
-        return [dict(l) for l in _links]
+        cards = [dict(l) for l in _links]
+    for c in cards:                     # a tool card says what it runs now, from the file as it is
+        if c.get("tool"):
+            t = next((t for t in tools_now(c.get("dir", "")) if t["name"] == c["tool"]), None)
+            if t:
+                c.update(about=t["about"], cmd=t["cmd"], confirm=t["confirm"])
+    return cards
+
+
+_tools_seen = {}                        # folder -> (the file's mtime, its tools)
+
+
+def tools_now(folder):
+    """project_tools, read again only when the file changed: the board asks every poll."""
+    try:
+        mtime = os.stat(os.path.join(os.path.expanduser(folder), TOOLS_FILE)).st_mtime
+    except OSError:
+        return []
+    seen = _tools_seen.get(folder)
+    if not seen or seen[0] != mtime:
+        seen = _tools_seen[folder] = (mtime, project_tools(folder)[0] or [])
+    return seen[1]
 
 
 def _save_links():

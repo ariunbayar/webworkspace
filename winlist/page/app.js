@@ -1721,7 +1721,7 @@ async function askGitHub() {
 // what a card shows; it is drawn again only when this changes
 function cardKey(w) {
   const gh = ghOf(w);
-  return w.link.tool ? 'tool ' + w.link.tool + ' ' + w.link.dir
+  return w.link.tool ? ['tool', w.link.tool, w.link.dir, w.link.cmd, w.link.about].join('\n')
     : w.link.image ? w.link.image
     : w.link.note ? 'note ' + (noteEdit === w.id ? 'edit' : w.link.text || '')
     : w.link.diff ? diffKey(w)
@@ -1756,8 +1756,9 @@ function toolCard(pic, w) {
   pic.className = 'pic card tool';
   pic.style.cssText = '';
   pic.innerHTML = `<button class="runbtn" title="Run ${esc(w.link.tool)} in a new terminal (or Enter)">▶ <span></span></button>`
-    + `<div class="url"></div>`;
+    + `<code class="cli"></code><div class="url"></div>`;
   pic.querySelector('.runbtn span').textContent = w.link.tool;
+  pic.querySelector('.cli').textContent = w.link.cmd || '';   // what it runs, as the file says now
   if (armed && armed.id === w.id) {   // waiting for the second press: say so on the button
     pic.querySelector('.runbtn').classList.add('armed');
     pic.querySelector('.runbtn span').textContent = 'Press again to run ' + w.link.tool;
