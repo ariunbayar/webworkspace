@@ -834,6 +834,16 @@ def send_link(url=None, title=None, path=None, image=None, keep=None, tool=None,
     return link, None
 
 
+def stuck(s):
+    """A card's attachment from what a page sent: {t: session id, side: r|l|t|b,
+    off: along that edge}, or None."""
+    if (isinstance(s, dict) and isinstance(s.get("t"), str) and re.fullmatch(r"\d{1,9}", s["t"])
+            and s.get("side") in ("r", "l", "t", "b")
+            and isinstance(s.get("off"), (int, float)) and not isinstance(s["off"], bool) and abs(s["off"]) < 1e7):
+        return {"t": s["t"], "side": s["side"], "off": round(s["off"])}
+    return None
+
+
 def change_link(lid, body):
     """A card moved or resized on some page, or a note typed in; body None takes it off the board."""
     with _links_lock:
@@ -844,6 +854,12 @@ def change_link(lid, body):
             _links.remove(link)
         else:
             link.update(placed(body))
+            if "stick" in body:             # attached to a terminal's edge, or let go (null)
+                s = stuck(body["stick"])
+                if s:
+                    link["stick"] = s
+                else:
+                    link.pop("stick", None)
             if link.get("note") and isinstance(body.get("text"), str):
                 link["text"] = body["text"][:200000]
         _save_links()

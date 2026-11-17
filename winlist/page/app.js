@@ -715,6 +715,7 @@ function carryGroup(e, g, el) {
       const t = tileEls.get(w.id);
       if (t) place(t, w);
     });
+    followSticks();                    // cards attached to a terminal in it, wherever they sit
   };
   const done = undo => {
     off();
@@ -1104,6 +1105,7 @@ function render() {
   if (!data) return showTrouble();
   const match = visible(), q = $('#q').value.trim();
   renderGroups();
+  if (followSticks()) saveLayout();     // a terminal moved here or on another page
   renderCanvas(match);
   renderHusks();
   drawMark();
@@ -1849,6 +1851,8 @@ function arrivedCard(l) {
     const [x, y] = seatOf(t);
     to = groups.findLast(v => inGroup(v, [x, y]));
     layout[w.id] = spotBeside(t, w);
+    const s = stickFor(w, layout[w.id], t, 3 * GRID);   // beside it: attached to it
+    if (s) { setStick(l, s); layout[w.id] = stuckSpot(w, s); }
   } else layout[w.id] = clearSpot([g.x + GRID, g.y + GRID * 2], w.id);   // the caption takes the top row
   saveLayout();
   announce(w.id);
@@ -1901,7 +1905,11 @@ function closeLink(id) {
 }
 
 function place(el, w) {
-  const [x, y] = seatOf(w);
+  let [x, y] = seatOf(w);
+  const s = w.link && w.link.stick, st = s && s.side === 'b' && terms.get(s.t);
+  // a terminal's caption stays at screen size, so its bottom edge moves with
+  // the zoom: a card under it moves with that edge
+  if (st && st.capH) y += st.capH / zoom - st.capH;
   el.style.left = Math.round(x * zoom) + 'px';      // on whole pixels, as the surface is
   el.style.top = Math.round(y * zoom) + 'px';
   const scaled = zoom === 1 ? '' : `scale(${zoom})`;  // at 1:1 nothing is resampled at all
@@ -1973,9 +1981,13 @@ function drag(e, w, el) {
     }
     layout[w.id] = [snap(from[0] + dx / zoom), snap(from[1] + dy / zoom)];
     place(el, w);
+    if (w.link) { stickDrag = w.id; lightStick(stickFor(w, layout[w.id])); }
+    else if (w.term) followSticks();
   };
   const done = settle => {
     off();
+    stickDrag = null;
+    lightStick(null);
     el.classList.remove('dragging');
     showGrid(false);
     letGo = null;
@@ -1989,6 +2001,12 @@ function drag(e, w, el) {
       track('drag', { kind: kindOf(w.id) });
       fitGrid(w, el);
       place(el, w);
+      if (w.link) {                  // against a terminal's edge: attached there; anywhere else: free
+        const s = stickFor(w, seatOf(w));
+        setStick(w.link, s);
+        if (s) { layout[w.id] = stuckSpot(w, s); place(el, w); }
+      }
+      followSticks();
     }
     if (moved) { saveLayout(); if (w.husk) tellTerms(); }
     if (!settle) return;
@@ -2321,6 +2339,7 @@ function resizeTo(w, el, t, edge) {
   w.w = t.natural[0];
   w.h = t.natural[1];
   place(el, w);
+  followSticks();
   if (t.ws && t.ws.readyState === 1) {
     t.ws.send(JSON.stringify({ resize: { cols, rows } }));
   }
@@ -2416,6 +2435,70 @@ function spotBeside(t, w) {
   let at = down(right);
   for (let x = dn(tx); !at && x <= tx + t.w; x += GRID) if (free(x, below)) at = [x, below];
   return at || down(dn(tx - w.w - GRID)) || clearSpot([right, ty], w.id);
+}
+
+// ---- cards attached to a terminal ----------------------------------------
+// A card dropped against a terminal's edge (within STICK_RANGE of it, and
+// alongside it) is attached there: it snaps STICK_GAP off that edge and from
+// then on follows the terminal wherever it goes, dragged, carried with its
+// group or resized. Dragged off the edge, it is free again; so is every card
+// of a terminal that is closed. The attachment lives on the card, on the
+// server: {t: session id, side: r|l|t|b, off: how far along that edge}.
+const STICK_RANGE = GRID, STICK_GAP = GRID / 4;
+let stickDrag = null;                 // the card being dragged: followSticks leaves it be
+function stickFor(w, [x, y], only, range = STICK_RANGE) {
+  let best = null;
+  for (const v of data.windows) {
+    if (!v.term || !v.term.alive || (only && v !== only)) continue;
+    const [tx, ty] = seatOf(v), tw = v.w, th = v.h, cw = w.w, ch = w.h;
+    const alongV = y < ty + th && y + ch > ty, alongH = x < tx + tw && x + cw > tx;
+    for (const [side, d, ok, off] of [
+      ['r', Math.abs(x - (tx + tw)), alongV, y - ty], ['l', Math.abs(x + cw - tx), alongV, y - ty],
+      ['b', Math.abs(y - (ty + th)), alongH, x - tx], ['t', Math.abs(y + ch - ty), alongH, x - tx]]) {
+      if (ok && d <= range + STICK_GAP && (!best || d < best.d)) best = { t: v.term.session, side, off: Math.round(off), d };
+    }
+  }
+  if (best) delete best.d;
+  return best;
+}
+function stuckSpot(w, s = w.link && w.link.stick) {
+  const v = s && data.windows.find(v => v.term && v.term.session === s.t);
+  if (!v) return null;
+  const [tx, ty] = seatOf(v);
+  return s.side === 'r' ? [tx + v.w + STICK_GAP, ty + s.off]
+    : s.side === 'l' ? [tx - w.w - STICK_GAP, ty + s.off]
+    : s.side === 'b' ? [tx + s.off, ty + v.h + STICK_GAP]
+    : [tx + s.off, ty - w.h - STICK_GAP];
+}
+// every attached card to where its terminal now is; true when one moved
+function followSticks() {
+  let moved = false;
+  for (const w of data.windows) {
+    if (!w.link) continue;
+    const el = tileEls.get(w.id);
+    if (el) el.classList.toggle('stuck', !!w.link.stick);
+    if (!w.link.stick || w.id === stickDrag) continue;
+    const at = stuckSpot(w), had = layout[w.id];
+    if (!at || (had && had[0] === at[0] && had[1] === at[1])) continue;
+    layout[w.id] = at;
+    if (el) place(el, w);
+    moved = true;
+  }
+  return moved;
+}
+function setStick(l, s) {
+  if (JSON.stringify(l.stick || null) === JSON.stringify(s || null)) return;
+  if (s) l.stick = s; else delete l.stick;
+  sendCard(l, { stick: s || null });
+  track(s ? 'stick' : 'unstick', { side: s ? s.side : undefined });
+}
+// while a card is dragged, the edge it would attach to is lit
+let stickLit = null;
+function lightStick(s) {
+  const el = s && tileEls.get('web:' + s.t);
+  if (stickLit && stickLit !== el) { stickLit.classList.remove('stickto'); delete stickLit.dataset.side; }
+  stickLit = el || null;
+  if (el) { el.classList.add('stickto'); el.dataset.side = s.side; }
 }
 
 // A new terminal opens at the drop point, and the view stays where it is: you
@@ -2633,6 +2716,7 @@ function drawMarks() {
 
 async function closeTerm(id) {
   if (markOf('web:' + id)) setMark('web:' + id, false);
+  for (const l of links) if (l.stick && l.stick.t === id) setStick(l, null);   // its cards are free
   await fetch('/api/terminals/' + id, { method: 'DELETE' }).catch(() => {});
   delete faces[id];                          // gone for good: nothing to put back
   store.set('faces', faces);

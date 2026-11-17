@@ -409,3 +409,9 @@ Each entry:
 - **A:** Yes, for a Claude Code terminal (`c`, started as `claude`) that exits with 0 (/exit, Ctrl-D) and whose session the ping hook reported. Its tile becomes a husk, as after a restart: dimmed last output, "Claude quit" in the caption, Resume and Close. Resume runs `claude --resume <session>` in its folder, where the tile was; Close forgets it. It is kept in terms.json until closed, so it survives restarts, and is left out of the "did not survive the restart" banner. A crash (non-zero exit), or Claude started by hand in a shell, behaves as before.
 - **Why:** Quitting closed the tile and the session id was only in Claude's last line.
 - **Status:** done
+
+### Cards attach to a terminal
+- **Q:** Can a card moved close to a terminal (or a Claude session) stick to it?
+- **A:** Yes. Drop a card against a terminal's edge (within a grid step, and alongside it): the edge lights while dragging, the card snaps just off it and shows 🔗 in its caption. From then on it follows the terminal: dragged, carried with its group, resized. Drag it off the edge to free it. Cards sent with `term` (open-here, Claude's links) start attached to that terminal. Closing the terminal frees its cards (they stay). Terminals only, not card to card; several cards can sit on one side. The attachment is kept on the card on the server (`stick: {t, side, off}`), so every page shows it.
+- **Why:** A card only started beside its terminal; moving the terminal left it behind.
+- **Status:** done
