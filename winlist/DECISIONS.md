@@ -415,3 +415,9 @@ Each entry:
 - **A:** Yes. Drop a card against a terminal's edge (within a grid step, and alongside it): the edge lights while dragging, the card snaps just off it and shows 🔗 in its caption. From then on it follows the terminal: dragged, carried with its group, resized. Drag it off the edge to free it. Cards sent with `term` (open-here, Claude's links) start attached to that terminal. Closing the terminal frees its cards (they stay). Terminals only, not card to card; several cards can sit on one side. The attachment is kept on the card on the server (`stick: {t, side, off}`), so every page shows it.
 - **Why:** A card only started beside its terminal; moving the terminal left it behind.
 - **Status:** done
+
+### Groups on the minimap
+- **Q:** Can the minimap show the groups?
+- **A:** Yes: each group is drawn under the tiles as a faint area with a dashed edge and its name at the top left (when there is room). The map's fit takes the groups in too, so an empty one is on it.
+- **Why:** The map showed tiles only, so where one project ends and the next begins was lost at that size.
+- **Status:** done

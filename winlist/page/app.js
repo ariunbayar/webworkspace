@@ -1206,8 +1206,11 @@ function drawMap(W, H) {
   // the map, or the ground would move under the pointer
   if (!mapFit || !mapFit.held) {
     const [b0, b1, b2, b3] = bounds(), v = [-origin[0] / zoom, -origin[1] / zoom];
-    const x0 = Math.min(b0, v[0]), y0 = Math.min(b1, v[1]);
-    const x1 = Math.max(b2, v[0] + W / zoom), y1 = Math.max(b3, v[1] + H / zoom);
+    // the groups too, an empty one included
+    const gx0 = Math.min(...groups.map(g => g.x)), gy0 = Math.min(...groups.map(g => g.y));
+    const gx1 = Math.max(...groups.map(g => g.x + g.w)), gy1 = Math.max(...groups.map(g => g.y + g.h));
+    const x0 = Math.min(b0, v[0], gx0), y0 = Math.min(b1, v[1], gy0);
+    const x1 = Math.max(b2, v[0] + W / zoom, gx1), y1 = Math.max(b3, v[1] + H / zoom, gy1);
     const pad = 0.04 * Math.max(x1 - x0, y1 - y0);
     const k = Math.min(MW / (x1 - x0 + 2 * pad), MH / (y1 - y0 + 2 * pad));
     mapFit = { k, x: x0 - pad - (MW / k - (x1 - x0 + 2 * pad)) / 2, y: y0 - pad - (MH / k - (y1 - y0 + 2 * pad)) / 2 };
@@ -1215,6 +1218,32 @@ function drawMap(W, H) {
   const { k, x, y } = mapFit, c = cv.getContext('2d'), css = getComputedStyle(cv);
   c.setTransform(dpr, 0, 0, dpr, 0, 0);
   c.clearRect(0, 0, MW, MH);
+  // groups under the tiles: a faint area, a dashed edge and the name, if it fits
+  const ink = css.color;
+  c.font = '9px system-ui, sans-serif';
+  c.textBaseline = 'top';
+  groups.forEach(g => {
+    const gx = (g.x - x) * k, gy = (g.y - y) * k, gw = g.w * k, gh = g.h * k;
+    c.globalAlpha = 0.07;
+    c.fillStyle = ink;
+    c.fillRect(gx, gy, gw, gh);
+    c.globalAlpha = 0.45;
+    c.strokeStyle = ink;
+    c.lineWidth = 1;
+    c.setLineDash([3, 2]);
+    c.strokeRect(gx + 0.5, gy + 0.5, gw - 1, gh - 1);
+    c.setLineDash([]);
+    if (gw > 24 && gh > 12) {
+      c.globalAlpha = 0.8;
+      c.fillStyle = ink;
+      c.save();
+      c.beginPath();
+      c.rect(gx, gy, gw - 2, gh);
+      c.clip();
+      c.fillText(g.name || 'Group', gx + 3, gy + 2);
+      c.restore();
+    }
+  });
   const match = visible();
   data.windows.forEach(w => {
     const [wx, wy] = seatOf(w);
