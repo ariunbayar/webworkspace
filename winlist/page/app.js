@@ -980,9 +980,12 @@ async function restoreTerm(r, keep) {
     const at = layout['husk:' + r.id] || r.at || layout['web:' + r.id];     // where the husk was dragged to, or sat
     if (at) layout['web:' + made.id] = at;
     if (r.face) faces[made.id] = r.face;
+    const n = markOf('web:' + r.id);   // its bookmark goes with it to the new session
+    if (n) { marks[n] = 'web:' + made.id; store.set('marks', marks); }
     if (out.length) pendingOut.set(made.id, out);
     if (!r.cwd_ok) moved++;
   }
+  if (!keep && markOf('web:' + r.id)) setMark('web:' + r.id, false);   // closed: its bookmark too
   await fetch('/api/terminals/' + r.id, { method: 'DELETE' }).catch(() => {});   // forgets it
   savedOuts.delete(r.id);
   delete layout['husk:' + r.id];
@@ -2702,10 +2705,10 @@ function jumpMark(n) {
     if (!g) return;
     fitGroup(g);
   } else {
-    const w = data && data.windows.find(v => v.id === id), pan = $('#pan');
+    const w = markTile(id), pan = $('#pan');
     if (!w) return toast('Bookmark ' + n + ' is not on the board right now', 1600);
     const [x, y] = seatOf(w);
-    sel = id;
+    sel = w.husk ? null : id;          // a placeholder can't be picked, only seen
     zoom = 1;
     // tall tiles show their top: the caption and the start of what's in them
     origin = [Math.round(pan.clientWidth / 2 - x - w.w / 2),
@@ -2716,9 +2719,22 @@ function jumpMark(n) {
   }
   markBack = { ...back, zoom, at: origin.join() };
 }
+// a bookmarked terminal that Claude quit in (or a restart took) is its
+// placeholder until it is resumed, and keeps its bookmark the while
+function markTile(id) {
+  const w = data && data.windows.find(v => v.id === id);
+  if (w || !id.startsWith('web:')) return w;
+  const h = husks.get(id.slice(4));
+  return h && h.w.w ? h.w : null;
+}
 function markName(id) {
   if (id.startsWith('group:')) { const g = groups.find(v => 'group:' + v.id === id); return g ? g.name || 'group' : ''; }
-  const w = data && data.windows.find(v => v.id === id), t = w && w.term && terms.get(w.term.session);
+  const w = markTile(id);
+  if (w && w.husk) {
+    const r = ((data && data.lost) || []).find(v => v.id === w.husk);
+    return (r && r.title) || (r && r.claude ? 'claude' : 'shell');
+  }
+  const t = w && w.term && terms.get(w.term.session);
   return w ? w.title || (t && t.title) || w.app || '' : '';
 }
 let bmsHtml = '';
@@ -2740,6 +2756,7 @@ function drawMarks() {
     b.textContent = n;
   };
   tileEls.forEach((el, id) => put(el.querySelector('.cap'), markOf(id)));
+  husks.forEach((h, id) => put(h.el.querySelector('.cap'), markOf('web:' + id)));
   groupEls.forEach((el, id) => put(el.querySelector('.gcap'), markOf('group:' + id)));
 }
 
