@@ -421,3 +421,9 @@ Each entry:
 - **A:** Yes: each group is drawn under the tiles as a faint area with a dashed edge and its name at the top left (when there is room). The map's fit takes the groups in too, so an empty one is on it.
 - **Why:** The map showed tiles only, so where one project ends and the next begins was lost at that size.
 - **Status:** done
+
+### A placeholder keeps its terminal's bookmark
+- **Q:** When Claude quits, its tile becomes a placeholder, but its bookmark stopped working. Can it keep it?
+- **A:** Yes. A bookmark on a terminal that became a placeholder (Claude quit, or a restart took it) points at the placeholder: the number shows on its caption, its chip and palette row stay, and the key goes to it. Resume (or Restore) moves the bookmark to the new terminal; Close removes it.
+- **Why:** The bookmark still named the old terminal, which was no longer on the board, so it looked gone and did nothing.
+- **Status:** done
