@@ -771,6 +771,16 @@ def placed(body):
             and abs(body[k]) < 1e7}
 
 
+def same_key(card):
+    """What makes two cards the same link: the address without a trailing / or
+    a #fragment, or the same image or file. None for cards never matched."""
+    for k in ("url", "image", "path"):
+        if isinstance(card.get(k), str):
+            v = card[k].split("#")[0] if k != "path" else card[k]
+            return k, (v.rstrip("/") or v) if k != "path" else v
+    return None
+
+
 def send_link(url=None, title=None, path=None, image=None, keep=None, tool=None, folder=None, origin="api",
               term=None, cwd=None, note=False, diff=None):
     """A card for the board: a web page (url), a markdown file (path), a
@@ -825,6 +835,12 @@ def send_link(url=None, title=None, path=None, image=None, keep=None, tool=None,
     else:
         return None, "give a url, a path to a markdown file, or an image"
     with _links_lock:
+        key = None if keep or origin == "page" else same_key(card)   # sent from outside only
+        old = key and next((l for l in _links if same_key(l) == key), None)
+        if old:                             # already on the board: flash it, no second card
+            old["again"] = "%x" % time.time_ns()
+            _save_links()
+            return dict(old, repeat=True), None
         link = dict(card, id="%x" % time.time_ns(), origin="page" if origin == "page" else "api")
         for k, v in (("term", term), ("cwd", cwd)):
             if isinstance(v, str) and 0 < len(v) <= 4096:
@@ -1331,7 +1347,7 @@ class Handler(BaseHTTPRequestHandler):
                                   body.get("term"), body.get("cwd"), body.get("note") is True, body.get("diff"))
             if not link:
                 return self._send(json.dumps({"error": err}), code=400)
-            return self._send(json.dumps(link), code=201)
+            return self._send(json.dumps(link), code=200 if link.get("repeat") else 201)
         return self._send(json.dumps({"error": "not found"}), code=404)
 
     def _card(self, body):

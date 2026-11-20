@@ -322,6 +322,7 @@
            max-width:calc(100vw - 32px) }
   #toast { bottom:52px; opacity:0; transition:opacity .3s }
   #toast.on { opacity:1; transition:none }
+  #toast.link { pointer-events:auto; cursor:pointer }
   /* a file dragged in from outside: the whole page is where it can go */
   #dropzone { position:fixed; inset:10px; z-index:99; pointer-events:none; display:grid; place-items:center;
               border:3px dashed var(--accent); border-radius:12px; background:color-mix(in srgb, var(--bg) 70%, transparent);

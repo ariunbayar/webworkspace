@@ -427,3 +427,9 @@ Each entry:
 - **A:** Yes. A bookmark on a terminal that became a placeholder (Claude quit, or a restart took it) points at the placeholder: the number shows on its caption, its chip and palette row stay, and the key goes to it. Resume (or Restore) moves the bookmark to the new terminal; Close removes it.
 - **Why:** The bookmark still named the old terminal, which was no longer on the board, so it looked gone and did nothing.
 - **Status:** done
+
+### The same link sent again flashes its card
+- **Q:** When a link is sent to the board that already has a card, can it flash that card instead of making a second one?
+- **A:** Yes. Same link means the same URL ignoring a trailing `/` and a `#fragment`, the same image, or the same file path. Notes, tool and diff cards, restores and cards added from the page itself are never matched, and only cards still on the board count (a closed one gets a new card). The existing card is not moved or re-attached, even if another terminal sent it, and the view does not move. It pulses like a new arrival, and a toast "Already open: <title>" jumps to it when clicked. The API answers 200 with the card and `"repeat": true` (201 for a new one).
+- **Why:** Sending the same page twice piled up duplicate cards.
+- **Status:** done

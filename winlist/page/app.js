@@ -111,9 +111,11 @@ const saveLayout = () => {
   }
 };
 let toastTimer = 0;
-function toast(html, ms = 2600) {
+function toast(html, ms = 2600, click = null) {
   const t = $('#toast');
   t.innerHTML = html;
+  t.onclick = click;                       // a toast with something to do takes clicks
+  t.classList.toggle('link', !!click);
   t.classList.add('on');
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => t.classList.remove('on'), ms);
@@ -1465,7 +1467,17 @@ function takeLinks(list, asked) {
     layout['link:' + l.id] = [l.x, l.y];
     knownAt.set(l.id, l.x + ',' + l.y);
   }
+  // sent again from outside: the card stays put and flashes. The first sight
+  // after a load only remembers, so a reload does not flash every card.
+  for (const l of links) {
+    const was = againSeen.get(l.id);
+    againSeen.set(l.id, l.again || '');
+    if (was === undefined || was === (l.again || '')) continue;
+    announce('link:' + l.id);
+    toast('Already open: ' + esc(cardTitle(l)), 4000, () => jumpCard('link:' + l.id));
+  }
 }
+const againSeen = new Map();        // card id -> its last `again` seen here
 
 // Cards were once kept by each browser. Hand this one's to the server, where
 // it sat and how big, and drop what the server still had waiting from then:
@@ -2691,6 +2703,22 @@ function setMark(id, n) {
 // a row of 1-9 in the ⋯ menu: its own number lit, numbers in use dimmed
 // (pressing one moves it here), its own again takes it off
 const markItem = id => ({ nums: id });
+// bring a tile to the middle at full size, picked
+function centreOn(w) {
+  const pan = $('#pan'), [x, y] = seatOf(w);
+  sel = w.husk ? null : w.id;          // a placeholder can't be picked, only seen
+  zoom = 1;
+  // tall tiles show their top: the caption and the start of what's in them
+  origin = [Math.round(pan.clientWidth / 2 - x - w.w / 2),
+            Math.round(w.h > pan.clientHeight - 48 ? 24 - y : pan.clientHeight / 2 - y - w.h / 2)];
+  store.set('zoom', zoom); store.set('origin', origin);
+  render();
+  wholePixels();
+}
+function jumpCard(id) {
+  const w = markTile(id);
+  if (w) centreOn(w);
+}
 function jumpMark(n) {
   const id = marks[n];
   if (!id) return toast('No bookmark ' + n + ': set one from a tile\'s ⋯ menu', 1600);
@@ -2705,17 +2733,9 @@ function jumpMark(n) {
     if (!g) return;
     fitGroup(g);
   } else {
-    const w = markTile(id), pan = $('#pan');
+    const w = markTile(id);
     if (!w) return toast('Bookmark ' + n + ' is not on the board right now', 1600);
-    const [x, y] = seatOf(w);
-    sel = w.husk ? null : id;          // a placeholder can't be picked, only seen
-    zoom = 1;
-    // tall tiles show their top: the caption and the start of what's in them
-    origin = [Math.round(pan.clientWidth / 2 - x - w.w / 2),
-              Math.round(w.h > pan.clientHeight - 48 ? 24 - y : pan.clientHeight / 2 - y - w.h / 2)];
-    store.set('zoom', zoom); store.set('origin', origin);
-    render();
-    wholePixels();
+    centreOn(w);
   }
   markBack = { ...back, zoom, at: origin.join() };
 }
