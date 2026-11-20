@@ -377,6 +377,9 @@ const ACTIONS = [
   }],
   // the whole arrangement goes, so it is marked and asks once more (see runPal)
 ].map(([name, key, run, danger]) => ({ kind: 'action', name, key, extra: '', run, danger }));
+// the name is read each time the list is built (palItems spreads it), so the one row starts and stops
+ACTIONS.push({ kind: 'action', get name() { return dbg ? 'Stop debugging' : 'Debug an area'; }, key: 'd', extra: '',
+  run: () => debugArea() });
 let palRows = [], palAt = 0, palArmed = null;
 
 // the groups and tiles as they are right now, so the list is never stale
@@ -637,12 +640,14 @@ function forgetGone() {
 
 async function poll() {
   const asked = Date.now();
+  if (dbg) dbgEv('poll.start');
   try {
     const r = await fetch('/api/windows');
     const got = await r.json();
     // an error answer is no board: keep the last good one
     if (!r.ok || !Array.isArray(got.windows)) throw new Error(got.error || r.status);
     data = got;
+    if (dbg) dbgPoll(got);
     takeArrange(got.arrange, asked);
     data.windows.forEach(w => { if (scales[w.id]) { w.w *= scales[w.id]; w.h *= scales[w.id]; } });
     takePings(data.pings || [], asked);
@@ -660,6 +665,7 @@ async function poll() {
     started = data.started;
   } catch { failures++; }
   render();
+  if (dbg) dbgEv('poll.end', { ok: !failures });
 }
 
 // every word has to be somewhere in what the tile is: its title, app, the
@@ -3497,6 +3503,7 @@ document.addEventListener('keydown', e => {
   if (k === 'n') { e.preventDefault(); return void newNote(); }
   if (k === 'y') { e.preventDefault(); return void copyRef(); }
   if (k === 'g') { e.preventDefault(); return newGroup(); }
+  if (k === 'd') { e.preventDefault(); return debugArea(); }
   if (k === 'z') { e.preventDefault(); return setLens(!lensOn); }
   if (/^[1-9]$/.test(k) && !e.ctrlKey && !e.altKey && !e.metaKey) { e.preventDefault(); return jumpMark(+k); }
   if (k === 'm') { e.preventDefault(); return setMap(!mapPinned); }
@@ -3552,7 +3559,7 @@ track('open', { vw: innerWidth, vh: innerHeight, bare, zoom: Math.round(zoom * 1
 // few that belong to the page are counted, never what is typed
 // A key the page does nothing with is counted as 'other', with no character:
 // a row of them would spell out whatever was being typed
-const PAGE_KEYS = new Set(['a', '?', ':', '/', 'Escape', 'b', 't', 'c', 'u', 'o', 'p', 'n', 'y', 'g', 'z', 'm', '1', '2', '3', '4', '5', '6', '7', '8', '9',
+const PAGE_KEYS = new Set(['a', '?', ':', '/', 'Escape', 'b', 't', 'c', 'u', 'o', 'p', 'n', 'y', 'g', 'd', 'z', 'm', '1', '2', '3', '4', '5', '6', '7', '8', '9',
   'Enter', ' ', 'h', 'j', 'k', 'l', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'PageUp', 'PageDown']);
 document.addEventListener('keydown', e => {
   // a box is anything that takes text: a group's name and folder are edited in
@@ -3642,3 +3649,187 @@ $('#q').addEventListener('input', () => {
 [[helpbox, 'help'], [archbox, 'arch']].forEach(([box, ev]) => new MutationObserver(() => {
   if (box.open) track(ev);
 }).observe(box, { attributes: true, attributeFilter: ['open'] }));
+
+// ---- debug an area: record what happens in a part of the board ---------------
+// For a tile that misbehaves (a card flickering between two spots, a terminal
+// that will not keep its size). Mark a rectangle, keep working in it, stop, and
+// the log lands on the board as a card for Claude to read. It records where
+// tiles are put and by whom (the call chain), what the server and this page
+// say a terminal's size is, where attached cards want to be, when each poll
+// ran, and the user's input as names only — the usage log's privacy rule:
+// never a key typed into a terminal or document, a title, a URL or a path.
+// Everything is in board coordinates, so panning and zooming do not matter.
+let dbg = null;           // while recording: { area, t0, n, bytes, frame, last, press, stop }
+const DBG_EVENTS = 50000;
+const DBG_BYTES = 1800000;  // the text viewer opens a file up to 2 MB, so the log has to fit in that
+
+function debugArea() {
+  if (dbg) return stopDebug();
+  const pan = $('#pan'), shade = document.createElement('div'), box = document.createElement('div');
+  shade.id = 'dbgpick';
+  box.id = 'dbgbox';
+  shade.append(box);
+  pan.append(shade);
+  toast('Drag a rectangle to debug · <kbd>Esc</kbd> cancels', 5000);
+  const bd = pan.getBoundingClientRect();
+  const toBoard = (x, y) => [(x - bd.left - origin[0]) / zoom, (y - bd.top - origin[1]) / zoom];
+  let sx = 0, sy = 0, down = false;
+  const done = () => { shade.remove(); removeEventListener('keydown', key, true); };
+  const key = e => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); done(); } };
+  addEventListener('keydown', key, true);       // before the page's own Esc, which would pick nothing
+  const draw = e => {
+    Object.assign(box.style, { left: Math.min(sx, e.clientX) - bd.left + 'px', top: Math.min(sy, e.clientY) - bd.top + 'px',
+      width: Math.abs(e.clientX - sx) + 'px', height: Math.abs(e.clientY - sy) + 'px' });
+  };
+  shade.onpointerdown = e => { e.stopPropagation(); e.preventDefault(); down = true;   // the board must not pan as well
+    sx = e.clientX; sy = e.clientY; shade.setPointerCapture(e.pointerId); draw(e); };
+  shade.onpointermove = e => { if (down) draw(e); };
+  shade.onpointerup = e => {
+    done();
+    const [x0, y0] = toBoard(Math.min(sx, e.clientX), Math.min(sy, e.clientY));
+    const [x1, y1] = toBoard(Math.max(sx, e.clientX), Math.max(sy, e.clientY));
+    if ((x1 - x0) * zoom < 30 || (y1 - y0) * zoom < 30) return toast('That is too small to debug');
+    startDebug([x0, y0, x1 - x0, y1 - y0].map(Math.round));
+  };
+}
+
+function startDebug(area) {
+  const frame = document.createElement('div');
+  frame.id = 'dbgframe';
+  frame.innerHTML = '<div class="dbglabel"><span></span><button type="button">Stop</button></div>';
+  $('#canvas').append(frame);                    // in the board, so it follows a pan by itself
+  const ac = new AbortController(), o = { capture: true, signal: ac.signal };
+  dbg = { area, tracked: new Set(), t0: performance.now(), start: Date.now(), n: 0, bytes: 0, cut: false, events: [], frame, ac,
+          last: new Map(), seen: new Map(), press: null, zoom: 0, raf: 0 };
+  frame.querySelector('button').onclick = stopDebug;
+  const mine = e => e.target.closest && e.target.closest('#dbgframe');
+  const inside = e => { const b = $('#pan').getBoundingClientRect(), x = (e.clientX - b.left - origin[0]) / zoom,
+    y = (e.clientY - b.top - origin[1]) / zoom; return x >= area[0] && x <= area[0] + area[2] && y >= area[1] && y <= area[1] + area[3]; };
+  const tileOf = e => { const t = e.target.closest && e.target.closest('.tile'); return t && t.win ? t.win.id : null; };
+  for (const type of ['pointerdown', 'pointerup']) addEventListener(type, e => {
+    if (mine(e)) return;
+    // a pull on a terminal's corner is a resize, a press on a tile may become a drag
+    if (type === 'pointerdown') dbg.press = e.target.closest('.grip') ? 'resize' : tileOf(e) ? 'press' : null;
+    else dbg.press = null;
+    if (inside(e)) dbgEv(type, { tile: tileOf(e), kind: kindOf(tileOf(e)), pt: e.pointerType });
+  }, o);
+  addEventListener('pointercancel', () => { dbg.press = null; }, o);
+  addEventListener('wheel', e => { if (!mine(e) && inside(e)) dbgEv('wheel', { dy: Math.round(e.deltaY), z: Math.round(zoom * 100) / 100 }); }, o);
+  addEventListener('keydown', e => {
+    // a box, a terminal, a document: what is typed there is none of our business
+    const typing = e.target.tagName === 'TEXTAREA' || e.target.tagName === 'INPUT' || !!e.target.isContentEditable
+      || !!(e.target.closest && e.target.closest('.docwrap, [contenteditable=""], [contenteditable="true"], dialog[open], [role=dialog], [role=menu]'));
+    if (typing || ['Shift', 'Control', 'Alt', 'Meta'].includes(e.key)) return;
+    const mods = (e.ctrlKey ? 'C-' : '') + (e.altKey ? 'A-' : '') + (e.metaKey ? 'S-' : '') + (e.shiftKey && e.key.length > 1 ? 's-' : '');
+    dbgEv('key', { k: PAGE_KEYS.has(e.key) ? mods + (e.key === ' ' ? 'Space' : e.key) : 'other', sel, mode: editing || 'normal' });
+  }, o);
+  // zoom changes are logged when they happen; the frame is redrawn with them
+  const tick = () => {
+    if (!dbg) return;
+    const [x, y, w, h] = area;
+    if (dbg.zoom !== zoom) { if (dbg.zoom) dbgEv('zoom', { z: Math.round(zoom * 100) / 100 }); dbg.zoom = zoom; }
+    Object.assign(frame.style, { left: x * zoom + 'px', top: y * zoom + 'px', width: w * zoom + 'px', height: h * zoom + 'px' });
+    frame.querySelector('span').textContent = dbg.n + ' events · ' + Math.round((performance.now() - dbg.t0) / 1000) + ' s';
+    dbg.raf = requestAnimationFrame(tick);
+  };
+  tick();
+  dbgSticks();
+  toast('Debugging this area: <kbd>d</kbd> or Stop ends it', 3000);
+}
+
+// one line per event, a ms stamp since the start; stops growing at the caps and says so once
+function dbgEv(ev, props) {
+  if (!dbg || dbg.cut) return;
+  const line = { t: Math.round(performance.now() - dbg.t0), ev, ...props };
+  const text = JSON.stringify(line);
+  if (dbg.n >= DBG_EVENTS || dbg.bytes + text.length > DBG_BYTES) {
+    dbg.cut = true;
+    dbg.events.push({ t: line.t, ev: 'truncated', n: dbg.n });
+    return;
+  }
+  dbg.events.push(line);
+  dbg.n++;
+  dbg.bytes += text.length + 1;
+}
+const dbgHits = (a, r) => r[0] < a[0] + a[2] && r[0] + r[2] > a[0] && r[1] < a[1] + a[3] && r[1] + r[3] > a[1];
+
+// function names only from the call chain: no URLs, lines or text, and the
+// debug code's own frames left out. Chrome says "at name (url)", Firefox "name@url"
+function dbgChain() {
+  const skip = new Set(['dbgChain', 'dbgPlace', 'dbgPlaced', 'place']);
+  return (new Error().stack || '').split('\n').map(l => {
+    const m = /^\s*at\s+(?:async\s+)?([^\s(]+)\s+\(/.exec(l) || /^\s*([^@\s]*)@/.exec(l);
+    return m ? m[1].replace(/^Object\./, '') || 'anon' : /^\s*at\s/.test(l) ? 'anon' : null;
+  }).filter(n => n && !skip.has(n)).slice(0, 6);
+}
+
+// Every place() lands here, after it has run. Only a tile whose seat or size
+// differs from the one logged last is a line; old is null the first time seen.
+// Seat and size are the model's (seatOf, w.w/w.h), so a zoom alone is no change.
+// A tile once seen inside the area stays watched after it leaves, so a card
+// pushed out by its terminal (or by a bug) is still followed.
+function dbgIn(id, ...rects) {
+  if (dbg.tracked.has(id)) return true;
+  if (!rects.some(r => r && dbgHits(dbg.area, r))) return false;
+  dbg.tracked.add(id);
+  return true;
+}
+function dbgPlace(w) {
+  const [x, y] = seatOf(w), now = [x, y, w.w, w.h].map(v => Math.round(v * 10) / 10);
+  const was = dbg.last.get(w.id);
+  dbg.last.set(w.id, now);
+  if (was && was.join() === now.join()) return;
+  if (!dbgIn(w.id, now, was)) return;
+  dbgEv('place', { id: w.id, kind: kindOf(w.id), old: was || null, new: now, zoom: Math.round(zoom * 100) / 100,
+    by: dbgChain(), user: editing ? 'keys' : dbg.press || document.querySelector('.dragging') && 'drag' || null });
+  if (w.link && w.link.stick) dbgSticks(w);
+}
+place = (f => function dbgPlaced(el, w) {
+  const r = f.apply(this, arguments);
+  if (dbg) dbgPlace(w);
+  return r;
+})(place);
+
+// attached cards: the stick and where it puts the card, whenever either changes
+function dbgSticks(only) {
+  for (const w of only ? [only] : data ? data.windows : []) {
+    const s = w.link && w.link.stick;
+    if (!s || !dbgIn(w.id, [...seatOf(w), w.w, w.h])) continue;
+    const spot = (stuckSpot(w) || []).map(Math.round), key = JSON.stringify([s, spot]);
+    if (dbg.seen.get(w.id) === key) continue;
+    dbg.seen.set(w.id, key);
+    dbgEv('stick', { id: w.id, stick: { t: s.t, side: s.side, off: s.off }, spot: spot.length ? spot : null });
+  }
+}
+
+// on each poll, for a terminal in the area: what the server says its size is
+// beside what this page measured (called before the page rescales or measures)
+function dbgPoll(got) {
+  for (const w of got.windows) {
+    if (!w.term) continue;
+    const t = terms.get(w.term.session), at = layout[w.id];
+    if (!dbgIn(w.id, [...(at || [w.x || 0, w.y || 0]), w.w, w.h], t && t.natural && at && [...at, ...t.natural])) continue;
+    dbgEv('term.size', { id: w.id, server: [w.w, w.h], page: t && t.natural || null });
+  }
+  dbgSticks();
+}
+
+async function stopDebug() {
+  const d = dbg;
+  if (!d) return;
+  dbg = null;
+  cancelAnimationFrame(d.raf);
+  d.ac.abort();
+  d.frame.remove();
+  const header = { area: d.area, start: new Date(d.start).toISOString(), ms: Math.round(performance.now() - d.t0),
+    page: [innerWidth, innerHeight], zoom, events: d.n, truncated: d.cut, page_started: started };
+  try {
+    const r = await fetch('/api/debug', { method: 'POST', body: JSON.stringify({ header, events: d.events }) });
+    const out = await r.json();
+    if (!r.ok) return toast('Could not save the log: ' + esc(out.error || r.status), 5000);
+    toast('Debug log: ' + esc(shortPath(out.path)), 6000);
+    const c = await fetch('/api/links', { method: 'POST', body: JSON.stringify({ from: 'page', path: out.path }) });
+    const l = await c.json();
+    if (c.ok) addCard(l, [d.area[0] + d.area[2] + GRID, d.area[1]]);   // beside the area it is about
+  } catch { toast('Could not save the log', 4000); }
+}
