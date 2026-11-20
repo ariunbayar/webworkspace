@@ -33,6 +33,9 @@ try {
 } catch {}
 
 let data = null, failures = 0, sel = null;
+// Shift+click gathers tiles: with two or more here the ⋯ menu (`.`) closes them
+// together. `sel` stays the last one touched; fewer than two is just a pick.
+const multi = new Set();
 let started = null;                        // which run of the server we are talking to
 let bare = store.get('bare', true);        // top bar folded away, the surface takes the page
 let layout = store.get('layout', {});      // window id -> [x, y] on the virtual screen
@@ -373,7 +376,7 @@ const ACTIONS = [
   ['Move/size picked tile', 'Super+Enter', () => {
     const w = selected();
     if (w) startTile(w);
-    else toast('Pick a window first: <kbd>↑↓←→</kbd>, then <kbd>Super+Enter</kbd>');
+    else toast('Click a tile first, then <kbd>Super+Enter</kbd>');
   }],
   // the whole arrangement goes, so it is marked and asks once more (see runPal)
 ].map(([name, key, run, danger]) => ({ kind: 'action', name, key, extra: '', run, danger }));
@@ -519,6 +522,13 @@ addEventListener('keyup', e => {
 }, true);
 for (const t of ['pointerdown', 'wheel']) addEventListener(t, () => { ctrlClean = false; ctrlLast = 0; }, true);
 addEventListener('blur', () => { ctrlClean = false; ctrlLast = 0; });
+// a touch carries no modifier state on some systems, so Shift is tracked from the
+// keyboard itself: Shift held + a finger on a tile still gathers it
+let shiftHeld = false;
+addEventListener('keydown', e => { if (e.key === 'Shift') shiftHeld = true; }, true);
+addEventListener('keyup', e => { if (e.key === 'Shift') shiftHeld = false; }, true);
+addEventListener('blur', () => { shiftHeld = false; });
+const shifted = e => e.shiftKey || shiftHeld;
 // and on whole screen pixels too: half a pixel off and the text smears
 function wholePixels() {
   const box = $('#pan').getBoundingClientRect();
@@ -965,7 +975,7 @@ function renderGroups() {
         if (name.isContentEditable || dir.isContentEditable || e.target === dir || e.target === tools) return e.stopPropagation();
         if (e.target.closest('.more')) {
           e.stopPropagation();
-          return pressMore(e, () => tileMenu(e.target.closest('.more'), [markItem('group:' + el.group.id), { label: 'Remove group (its windows stay)', close: () => {
+          return pressMore(e, () => tileMenu(e.target.closest('.more'), [markItem('group:' + el.group.id), { label: 'Remove group (its windows stay)', key: 'x', close: () => {
             if (markOf('group:' + el.group.id)) setMark('group:' + el.group.id, false);
             groups = groups.filter(v => v !== el.group);
             saveGroups();
@@ -1098,9 +1108,10 @@ function renderHusks() {
       el.addEventListener('pointerdown', e => {
         const act = e.target.dataset.act, cur = (data.lost || []).find(x => x.id === r.id) || r;
         if (act) { e.preventDefault(); return restoreTerm(cur, act === 'restore'); }
+        if (shifted(e) && !e.button && !e.target.closest('.grip')) { e.preventDefault(); e.stopPropagation(); return toggleMulti('husk:' + r.id); }
         if (e.target.closest('.grip')) return grab(e, husks.get(r.id).w, el);
         if (e.target.closest('.cap')) return drag(e, husks.get(r.id).w, el);
-        if (sel !== 'husk:' + r.id) { sel = 'husk:' + r.id; render(); }     // a click on the screen picks it
+        if (sel !== 'husk:' + r.id || multi.size) { multi.clear(); sel = 'husk:' + r.id; render(); }     // a click on the screen picks it
       });
       const ps = profiles(), face = ps.find(p => p.name === (faces[r.id] || r.face)) || ps[0] || { font: look().font, size: look().size };
       const term = new Terminal({
@@ -1125,7 +1136,7 @@ function renderHusks() {
       });
     }
     const { el, t } = h, key = JSON.stringify([r.title, r.cwd, r.cmds]);
-    el.classList.toggle('sel', h.w.id === sel);     // picked like a terminal, though it is no window of data
+    el.classList.toggle('sel', h.w.id === sel || multi.has(h.w.id));     // picked like a terminal, though it is no window of data
     el.win = h.w;                                   // as a terminal's tile has, for Super+Enter inside it
     if (h.key !== key) {                  // as text: titles and commands are whatever a program printed
       h.key = key;
@@ -1180,6 +1191,12 @@ function tellTerms() {
 function render() {
   if (!data) return showTrouble();
   const match = visible(), q = $('#q').value.trim();
+  if (multi.size) {                     // one that went away leaves the set
+    const live = new Set(pickable().map(w => w.id));
+    [...multi].forEach(id => live.has(id) || multi.delete(id));
+    if (multi.size < 2) { if (multi.size) sel = [...multi][0]; multi.clear(); }
+  }
+  $('#nsel').textContent = multi.size >= 2 ? multi.size + ' selected' : '';
   renderGroups();
   if (followSticks()) saveLayout();     // a terminal moved here or on another page
   renderCanvas(match);
@@ -2127,6 +2144,7 @@ function drag(e, w, el) {
     }
     if (moved) { saveLayout(); if (w.husk) tellTerms(); }
     if (!settle) return;
+    if (!moved) multi.clear();       // a click is a single pick again; a drag moves only this tile
     if (w.husk) { sel = w.id; render(); return; }     // picked, never typed into
     // a click on a terminal in NORMAL only picks it: Enter is what types into it
     const typing = inInsert();
@@ -2775,6 +2793,7 @@ let tmenuOff = null;
 function tileMenu(anchor, items) {
   if (tmenuOff) tmenuOff();
   tmenu.textContent = '';
+  const hot = new Map();       // a shortcut key -> its item
   items.forEach(it => {
     if (it.nums) {
       const row = document.createElement('div'), mine = markOf(it.nums);
@@ -2793,24 +2812,34 @@ function tileMenu(anchor, items) {
     const b = document.createElement('div');
     b.className = 'tmitem' + (it.close ? ' danger' : '');
     const label = () => typeof it.label === 'function' ? it.label() : it.label;
-    b.textContent = label();
+    const say = t => { b.firstChild.textContent = t; };
+    b.innerHTML = '<span></span>' + (it.key ? `<span class="tmk">${esc(it.key)}</span>` : '');
+    say(label());
     b.onclick = () => {
-      if (it.close && !b.classList.contains('confirm')) {
+      if (it.close && !b.classList.contains('confirm')) {     // the first press only arms it
         b.classList.add('confirm');
-        b.textContent = 'Confirm: ' + label().replace(/^./, c => c.toLowerCase()) + ' ✕';
+        say(it.armed || 'Confirm: ' + label().replace(/^./, c => c.toLowerCase()) + ' ✕');
         return;
       }
       if (!it.keep) put();
       (it.close || it.run)();
-      if (it.keep) b.textContent = label();
+      if (it.keep) say(label());
     };
+    if (it.key) hot.set(it.key, b);
     tmenu.append(b);
   });
   const r = anchor.getBoundingClientRect();
   tmenu.hidden = false;
   tmenu.style.left = Math.max(4, Math.min(r.right - tmenu.offsetWidth, innerWidth - tmenu.offsetWidth - 4)) + 'px';
   tmenu.style.top = Math.min(r.bottom + 2, innerHeight - tmenu.offsetHeight - 4) + 'px';
-  const key = e => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); put(); } };
+  const key = e => {
+    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); return put(); }
+    if (e.ctrlKey || e.altKey || e.metaKey || e.key.length !== 1) return;
+    // an item's own key presses it; no other letter reaches the page under the menu
+    e.preventDefault(); e.stopPropagation();
+    const b = hot.get(e.key.toLowerCase());
+    if (b) b.onclick();
+  };
   const away = e => { if (!tmenu.contains(e.target)) put(); };
   const put = () => {
     tmenu.hidden = true;
@@ -2823,10 +2852,44 @@ function tileMenu(anchor, items) {
   tmenuOff = put;
 }
 const faceName = id => { const t = terms.get(id); return t && (profiles()[t.prof] || {}).name || ''; };
+const cardMenu = (w, anchor) => tileMenu(anchor, [markItem(w.id), { label: 'Remove card', key: 'x', close: () => closeLink(w.id) }]);
+const closeHusk = id => { const r = ((data && data.lost) || []).find(x => x.id === id); return r && restoreTerm(r, false); };
+// `.` opens the ⋯ menu of the picked tile; with several gathered, one menu
+// holds the one thing they share: Close them all, armed by its first press.
+function openTileMenu() {
+  const ids = multi.size >= 2 ? [...multi] : sel ? [sel] : [];
+  const w = pickable().find(v => v.id === (multi.has(sel) ? sel : ids[ids.length - 1])), el = w && elOf(w);
+  if (!w || !el) return void toast('Click a tile first, then <kbd>.</kbd> for its options');
+  const anchor = el.querySelector('.more') || el.querySelector('.cap') || el;
+  if (ids.length > 1) {
+    const ws = ids.map(id => pickable().find(v => v.id === id)).filter(Boolean);
+    const nT = ws.filter(v => v.term).length, nH = ws.filter(v => v.husk).length, n = ws.length;
+    const note = [nT && nT + (nT > 1 ? ' terminals' : ' terminal'), nH && nH + (nH > 1 ? ' placeholders' : ' placeholder')].filter(Boolean).join(', ');
+    return tileMenu(anchor, [{ label: 'Close ' + n, key: 'x', close: () => closeMany(ws),
+      armed: 'Close ' + n + (note ? ' (' + note + ')' : '') + '? x again' }]);
+  }
+  if (w.term) return termMenu(w, anchor);
+  if (w.link) return cardMenu(w, anchor);
+  if (w.husk) return tileMenu(anchor, [{ label: 'Close placeholder', key: 'x', close: () => closeHusk(w.husk) }]);
+  toast('That tile has no options');
+}
+// each kind goes the way its own ⋯ closes it; nothing is left picked, and the view stays
+async function closeMany(ws) {
+  let n = 0;
+  for (const w of ws) {
+    if (w.term) { await closeTerm(w.term.session); n++; }
+    else if (w.link) { closeLink(w.id); n++; }
+    else if (w.husk) { await closeHusk(w.husk); n++; }
+  }
+  multi.clear();
+  sel = null;
+  render();
+  toast('Closed ' + n);
+}
 function termMenu(w, anchor) {
   const id = w.term.session, items = [];
-  if (profiles().length > 1) items.push({ label: () => 'Font: ' + faceName(id) + '  ↻', run: () => swapFace(id), keep: true });
-  items.push(markItem(w.id), { label: 'Close terminal', close: () => closeTerm(id) });
+  if (profiles().length > 1) items.push({ label: () => 'Font: ' + faceName(id) + '  ↻', run: () => swapFace(id), keep: true, key: 'f' });
+  items.push(markItem(w.id), { label: 'Close terminal', key: 'x', close: () => closeTerm(id) });
   tileMenu(anchor, items);
 }
 
@@ -2984,6 +3047,10 @@ function renderCanvas(match) {
           return runTool(win.link, win, e.shiftKey || !!e.target.closest('.rerun'));
         }
         if (e.target.closest('.diffbtn')) { e.preventDefault(); e.stopPropagation(); return openDiff(win); }
+        if (shifted(e) && !e.button && !e.target.closest('.more, .grip')) {    // gathers, never drags or types
+          e.preventDefault(); e.stopPropagation();
+          return toggleMulti(win.id);
+        }
         if (win.term) {
           // the drag takes the pointer captive, and a captured pointer's click
           // is delivered to the tile rather than to what was under it — so the
@@ -2997,27 +3064,27 @@ function renderCanvas(match) {
         } else if (win.link && e.target.closest('.grip')) {
           return grabLink(e, win, el);
         } else if (win.link && e.target.closest('.more')) {
-          return pressMore(e, () => tileMenu(e.target.closest('.more'), [markItem(win.id), { label: 'Remove card', close: () => closeLink(win.id) }]));
+          return pressMore(e, () => cardMenu(win, e.target.closest('.more')));
         } else if (inInsert()) {
           return;                // in INSERT a photograph is just more surface: it pans
         }
         drag(e, win, el);
       });
       if (w.link) el.addEventListener('dblclick', e => {
-        if (!e.target.closest('.more, .grip')) { via = 'dbl'; activate(w.id); }
+        if (!shifted(e) && !e.target.closest('.more, .grip')) { via = 'dbl'; activate(w.id); }
       });
       // a terminal is typed into on a double click, as Enter does: the one
       // click only picks it. Once it has the keyboard, a double click in it
       // is xterm's again, to select a word
       if (w.term) el.addEventListener('dblclick', e => {
-        if (!inInsert() && !e.target.closest('.more, .grip')) { via = 'dbl'; activate(w.id); }
+        if (!shifted(e) && !inInsert() && !e.target.closest('.more, .grip')) { via = 'dbl'; activate(w.id); }
       });
       tileEls.set(w.id, el);
       $('#tiles').append(el);
     }
     el.win = w;                       // the drag handler always wants the fresh one
     el.className = 'tile' + (w.term ? ' term' : '') + (w.link ? ' link' : '')
-      + (match(w) ? '' : ' off') + (w.id === sel ? ' sel' : '') + (pings.has(w.id) ? ' ping' : '') + (arrivals.has(w.id) ? ' arrive' : '')
+      + (match(w) ? '' : ' off') + (w.id === sel || multi.has(w.id) ? ' sel' : '') + (pings.has(w.id) ? ' ping' : '') + (arrivals.has(w.id) ? ' arrive' : '')
       + (cstate[w.id] ? ' cs-' + cstate[w.id].state : '') + (w.link && w.link.stick ? ' stuck' : '');
     if (w.link && w.link.stick) el.dataset.stuck = w.link.stick.side; else delete el.dataset.stuck;
     if (w.term) {
@@ -3216,7 +3283,7 @@ $('#pan').addEventListener('pointerdown', e => {
   };
   // a press that did not carry the surface anywhere picks the drop point
   const done = ev => {
-    if (ev && ev.type === 'pointerup' && !far && pointers.size < 2) setAnchor(ev.clientX, ev.clientY);
+    if (ev && ev.type === 'pointerup' && !far && pointers.size < 2) { setAnchor(ev.clientX, ev.clientY); clearMulti(); }
     if (far) track('pan', { d: Math.round(Math.hypot(px - sx, py - sy) / 100) * 100 });
     else if (typingIn && ev && ev.type === 'pointerup' && inInsert()) {   // a still click: leave typing, as before
       track('leave', { why: 'bg' });
@@ -3283,6 +3350,7 @@ function toFront(el) {
 
 let via = null;                        // see how(), in the usage log
 async function activate(id) {
+  multi.clear();
   sel = id;
   toFront(tileEls.get(id));            // focusing it brings it to the front, as a drag does
   render();
@@ -3337,6 +3405,18 @@ function selected() {
   return pickable().find(w => w.id === sel) || null;
 }
 
+// Shift+click: in or out of the multi-selection. The first one starts it from
+// the tile already picked. Under two it is no selection: the lone tile is the pick.
+function toggleMulti(id) {
+  if (!multi.size && sel === id) { sel = null; return render(); }
+  if (!multi.size && sel) multi.add(sel);
+  if (multi.has(id)) multi.delete(id); else multi.add(id);
+  sel = multi.has(id) ? id : [...multi].pop() || null;
+  if (multi.size < 2) { sel = [...multi][0] || null; multi.clear(); }
+  render();
+}
+function clearMulti() { if (multi.size) { multi.clear(); render(); } }
+
 function reveal() {
   if (!sel) return;
   const w = selected();
@@ -3352,26 +3432,6 @@ function reveal() {
   store.set('origin', origin);
   placeCanvas();
   markEdges();
-}
-
-function move(dx, dy) {
-  const match = visible();
-  const pick = pickable().filter(match);
-  if (!pick.length) return;
-  const cur = selected();
-  if (!cur) { sel = pick[0].id; return (render(), reveal()); }
-  // the nearest tile that way, as seen: straight ahead beats nearer but off to the side
-  const mid = v => { const [x, y] = seatOf(v); return [x + v.w / 2, y + v.h / 2]; };
-  const [cx, cy] = mid(cur);
-  let best = null, score = Infinity;
-  pick.forEach(v => {
-    if (v.id === cur.id) return;
-    const [x, y] = mid(v), ahead = dx ? (x - cx) * dx : (y - cy) * dy;
-    if (ahead <= 1) return;
-    const sc = ahead + 2 * (dx ? Math.abs(y - cy) : Math.abs(x - cx));
-    if (sc < score) { score = sc; best = v; }
-  });
-  if (best) { sel = best.id; render(); reveal(); }
 }
 
 // Two modes, as in vi: NORMAL, where the keys move about the surface, and
@@ -3526,7 +3586,7 @@ document.addEventListener('keydown', e => {
     if (editing) return endEdit();
     const v = w;
     if (v) return startTile(v);
-    return toast('Pick a window first: <kbd>↑↓←→</kbd>, then <kbd>Super+Enter</kbd>');
+    return toast('Click a tile first, then <kbd>Super+Enter</kbd>');
   }
   if (e.target.tagName === 'TEXTAREA') return;   // a terminal has the keyboard
   const doc = e.target.closest && e.target.closest('.docwrap');
@@ -3572,7 +3632,7 @@ document.addEventListener('keydown', e => {
   if (k === ':') { e.preventDefault(); return showPalette(); }
   if (k === '/') { e.preventDefault(); openQ(); return; }
   if (k === 'Escape') {
-    if ($('#q').value || sel) { $('#q').value = ''; foldQ(); sel = null; return render(); }
+    if ($('#q').value || sel || multi.size) { $('#q').value = ''; foldQ(); multi.clear(); sel = null; return render(); }
     return bare ? undefined : setBare(true);
   }
   if (k === 'b') { e.preventDefault(); return setBare(!bare); }
@@ -3591,9 +3651,14 @@ document.addEventListener('keydown', e => {
   // a placeholder takes no typing: Enter and Space leave it be
   if (k === 'Enter' || k === ' ') { const w = selected(); if (w && !w.husk) { e.preventDefault(); via = k === ' ' ? 'space' : 'enter'; activate(w.id); } return; }
   if (k === 'PageUp' || k === 'PageDown') { e.preventDefault(); return scrollPicked(k === 'PageUp' ? -1 : 1); }
-  const moves = { ArrowUp: [0, -1], k: [0, -1], ArrowDown: [0, 1], j: [0, 1],
-                  ArrowLeft: [-1, 0], h: [-1, 0], ArrowRight: [1, 0], l: [1, 0] };
-  if (moves[k]) { e.preventDefault(); move(...moves[k]); }
+  if (k === '.') { e.preventDefault(); return openTileMenu(); }
+  // the arrows pan the board: a quarter of the view, Shift three quarters
+  const pans = { ArrowUp: [0, 1], ArrowDown: [0, -1], ArrowLeft: [1, 0], ArrowRight: [-1, 0] };
+  if (pans[k]) {
+    e.preventDefault();
+    const pan = $('#pan'), f = e.shiftKey ? 0.75 : 0.25;
+    shift(pans[k][0] * pan.clientWidth * f, pans[k][1] * pan.clientHeight * f);
+  }
 });
 
 setBare(bare);
@@ -3642,7 +3707,7 @@ track('open', { vw: innerWidth, vh: innerHeight, bare, zoom: Math.round(zoom * 1
 // A key the page does nothing with is counted as 'other', with no character:
 // a row of them would spell out whatever was being typed
 const PAGE_KEYS = new Set(['a', '?', ':', '/', 'Escape', 'b', 't', 'c', 'u', 'o', 'p', 'n', 'y', 'g', 'd', 'z', 'm', '1', '2', '3', '4', '5', '6', '7', '8', '9',
-  'Enter', ' ', 'h', 'j', 'k', 'l', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'PageUp', 'PageDown']);
+  'Enter', ' ', '.', 'x', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'PageUp', 'PageDown']);
 document.addEventListener('keydown', e => {
   // a box is anything that takes text: a group's name and folder are edited in
   // place (contenteditable), and a dialog's keys are its own

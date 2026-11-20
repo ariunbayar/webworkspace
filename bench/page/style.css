@@ -102,6 +102,8 @@
               border-radius:6px; background:var(--panel); color:var(--fg); box-shadow:0 4px 16px #0003; font-size:12px }
   #tilemenu[hidden] { display:none }
   .tmitem { padding:5px 9px; border-radius:4px; cursor:pointer; white-space:nowrap }
+  .tmitem { display:flex; justify-content:space-between; gap:18px }
+  .tmk { opacity:.55; font:600 11px ui-monospace,monospace }
   .tmitem:hover { background:var(--line) }
   .tmitem.danger { color:#cf222e }
   .tmnums { display:flex; align-items:center; gap:2px; padding:4px 6px 4px 9px; white-space:nowrap }
@@ -374,6 +376,7 @@
   .husk .hbtn button { padding:2px 12px; font:12px sans-serif; color:#fff; background:rgba(255,255,255,.1);
                        border:1px solid rgba(255,255,255,.35); border-radius:4px; cursor:pointer }
   .husk .hbtn button:first-child { background:var(--accent); border-color:var(--accent) }
+  #nsel { font:600 10.5px ui-monospace,monospace; color:var(--accent); margin-right:8px }
   #zpct { font:600 10.5px ui-monospace,monospace; color:var(--dim) }
   /* small quiet triangles on the frame's edge, pointing at windows out of view */
   .edge { position:absolute; width:8px; height:8px; margin:-4px 0 0 -4px; pointer-events:none;

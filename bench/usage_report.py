@@ -44,7 +44,7 @@ def load(path):
 
 # the keys the page itself acts on (app.js PAGE_KEYS); anything else in the log
 # is typing that the page used to let through, before #41
-PAGE_KEYS = set("a ? : / Escape b t c u o p n y g 1 z m Enter Space h j k l "
+PAGE_KEYS = set("a ? : / Escape b t c u o p n y g 1 z m Enter Space h j k l . x "
                 "ArrowUp ArrowDown ArrowLeft ArrowRight PageUp PageDown".split())
 TYPED_GAP = 3000    # ms between keys in one run of typing
 
