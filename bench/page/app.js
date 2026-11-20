@@ -845,7 +845,9 @@ async function toolButton(g, t) {
 // a tool is run afresh each press, in a new terminal beside its button, with
 // whatever the script or tmp/.bench-tools.yml says now. One marked
 // `confirm: true` (a deploy) runs on a second press within ARM_MS; the first
-// only arms the button, so a slip starts nothing
+// only arms the button, so a slip starts nothing. The armed state is read and
+// cleared before the fetch, and a press while that button's fetch is still out
+// is dropped, so a double-click on the confirming press runs the tool once
 const ARM_MS = 3000;
 let armed = null;                     // { id, timer } of the button waiting for its second press
 function disarm() {
@@ -856,11 +858,17 @@ function disarm() {
   const pic = w && tileEls.get(id) && tileEls.get(id).querySelector('.pic.tool');
   if (pic) toolCard(pic, w);
 }
+const toolBusy = new Set();           // ids of buttons with a press still resolving
 async function runTool(l, w) {
+  if (toolBusy.has(w.id)) return;
+  const wasArmed = !!(armed && armed.id === w.id);
+  if (wasArmed) disarm();
+  toolBusy.add(w.id);
   const res = await fetch('/api/tools?dir=' + encodeURIComponent(l.dir)).then(r => r.json()).catch(() => null);
+  toolBusy.delete(w.id);
   const t = res && res.tools && res.tools.find(t => t.name === l.tool);
   if (!t) return void toast(`No tool ${esc(l.tool)} in ${esc(shortPath(l.dir))} any more`, 4000);
-  if (t.confirm && !(armed && armed.id === w.id)) {
+  if (t.confirm && !wasArmed) {
     disarm();
     armed = { id: w.id, w, timer: setTimeout(disarm, ARM_MS) };
     const pic = tileEls.get(w.id) && tileEls.get(w.id).querySelector('.pic.tool');
