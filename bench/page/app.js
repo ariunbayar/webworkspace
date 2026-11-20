@@ -3699,7 +3699,7 @@ function startDebug(area) {
   frame.innerHTML = '<div class="dbglabel"><span></span><button type="button">Stop</button></div>';
   $('#canvas').append(frame);                    // in the board, so it follows a pan by itself
   const ac = new AbortController(), o = { capture: true, signal: ac.signal };
-  dbg = { area, t0: performance.now(), start: Date.now(), n: 0, bytes: 0, cut: false, events: [], frame, ac,
+  dbg = { area, tracked: new Set(), t0: performance.now(), start: Date.now(), n: 0, bytes: 0, cut: false, events: [], frame, ac,
           last: new Map(), seen: new Map(), press: null, zoom: 0, raf: 0 };
   frame.querySelector('button').onclick = stopDebug;
   const mine = e => e.target.closest && e.target.closest('#dbgframe');
@@ -3766,12 +3766,20 @@ function dbgChain() {
 // Every place() lands here, after it has run. Only a tile whose seat or size
 // differs from the one logged last is a line; old is null the first time seen.
 // Seat and size are the model's (seatOf, w.w/w.h), so a zoom alone is no change.
+// A tile once seen inside the area stays watched after it leaves, so a card
+// pushed out by its terminal (or by a bug) is still followed.
+function dbgIn(id, ...rects) {
+  if (dbg.tracked.has(id)) return true;
+  if (!rects.some(r => r && dbgHits(dbg.area, r))) return false;
+  dbg.tracked.add(id);
+  return true;
+}
 function dbgPlace(w) {
   const [x, y] = seatOf(w), now = [x, y, w.w, w.h].map(v => Math.round(v * 10) / 10);
   const was = dbg.last.get(w.id);
   dbg.last.set(w.id, now);
   if (was && was.join() === now.join()) return;
-  if (!dbgHits(dbg.area, now) && !(was && dbgHits(dbg.area, was))) return;
+  if (!dbgIn(w.id, now, was)) return;
   dbgEv('place', { id: w.id, kind: kindOf(w.id), old: was || null, new: now, zoom: Math.round(zoom * 100) / 100,
     by: dbgChain(), user: editing ? 'keys' : dbg.press || document.querySelector('.dragging') && 'drag' || null });
   if (w.link && w.link.stick) dbgSticks(w);
@@ -3786,7 +3794,7 @@ place = (f => function dbgPlaced(el, w) {
 function dbgSticks(only) {
   for (const w of only ? [only] : data ? data.windows : []) {
     const s = w.link && w.link.stick;
-    if (!s || !dbgHits(dbg.area, [...seatOf(w), w.w, w.h])) continue;
+    if (!s || !dbgIn(w.id, [...seatOf(w), w.w, w.h])) continue;
     const spot = (stuckSpot(w) || []).map(Math.round), key = JSON.stringify([s, spot]);
     if (dbg.seen.get(w.id) === key) continue;
     dbg.seen.set(w.id, key);
@@ -3800,7 +3808,7 @@ function dbgPoll(got) {
   for (const w of got.windows) {
     if (!w.term) continue;
     const t = terms.get(w.term.session), at = layout[w.id];
-    if (!dbgHits(dbg.area, [...(at || [w.x || 0, w.y || 0]), w.w, w.h]) && !(t && t.natural && at && dbgHits(dbg.area, [...at, ...t.natural]))) continue;
+    if (!dbgIn(w.id, [...(at || [w.x || 0, w.y || 0]), w.w, w.h], t && t.natural && at && [...at, ...t.natural])) continue;
     dbgEv('term.size', { id: w.id, server: [w.w, w.h], page: t && t.natural || null });
   }
   dbgSticks();
