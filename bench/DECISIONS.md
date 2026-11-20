@@ -442,6 +442,7 @@ Each entry:
 ### An attached card's spot is worked out by each page, not stored
 - **Q:** Why did an attached card flicker between its terminal and far away, and its backdrop come and go?
 - **A:** Each page measures a terminal's size itself (font metrics differ, e.g. 648 vs 456 wide), and every page was saving the card's x/y it computed from that. The poll then brought the other page's value back, so the card jumped back and forth. Now an attached card's spot comes from `stuckSpot` on each page (also when the poll brings its server x/y in), and `saveLayout` does not send x/y for an attached card whose terminal is on the board. Only a card with no server spot yet (arrival) sends one; a detached card keeps and saves its own x/y.
+  2026-11-20: `stuckSpot` and `stickFor` use the terminal's measured size (`termSize`) when this page has it. The poll puts the server's smaller size back before `renderCanvas` re-measures, which put a `b` card under the terminal's bottom edge for a frame.
 - **Why:** The position is derived from the terminal's size, which is local; sharing a derived value between pages that disagree on its input makes them fight.
 - **Status:** Done.
 - **Status:** trying
