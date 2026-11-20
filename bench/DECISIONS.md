@@ -470,3 +470,9 @@ Each entry:
 - **A:** `d` (palette: "Debug an area") lets you drag a rectangle in board coordinates; a red dashed frame with an event count, the time and a Stop button marks it, and never blocks the tiles under it. Until you stop, it logs every `place()` that changes a tile touching the area (old and new rect, zoom, the call chain as function names, whether a drag, resize or Super+Enter is on), terminals' server size beside the page's measured one on each poll, attached cards' stick and spot when they change, each poll's start and end, and input as names only (pointer down/up with the tile id, wheel, board keys; never keys typed in a terminal, document or box). Stop sends it to `POST /api/debug`, which writes `~/.local/state/winlist/debug/<time>.jsonl` (header line first) and answers the path; a path card for it appears beside the area. Capped at 50,000 events and about 1.8 MB (the text viewer's limit is 2 MB), with a `truncated` line when it hits either.
 - **Why:** The flicker needed the order of moves, polls and size disagreements, which no screenshot shows. The log is the usage log's privacy rule applied to a timeline.
 - **Status:** trying
+
+### Panning the board keeps you typing
+- **Q:** While typing in a terminal, should dragging the board background to pan drop you to NORMAL?
+- **A:** No. A background drag that actually moves keeps the keyboard in the terminal you were typing in (still INSERT). A still click on the background still leaves typing, and a press on another tile works as before. Leaving typing is logged as `leave` with `why` of `bg`, `tile`, `card` or `key` (Ctrl+Space, or Super+Enter from INSERT); names only, no text. Known trade-off: keys typed while a pan is in progress go to the terminal.
+- **Why:** The usage log showed 121 drops to NORMAL in a week from panning, each costing an Enter to get back.
+- **Status:** trying
