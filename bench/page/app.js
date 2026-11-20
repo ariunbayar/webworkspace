@@ -522,6 +522,13 @@ addEventListener('keyup', e => {
 }, true);
 for (const t of ['pointerdown', 'wheel']) addEventListener(t, () => { ctrlClean = false; ctrlLast = 0; }, true);
 addEventListener('blur', () => { ctrlClean = false; ctrlLast = 0; });
+// a touch carries no modifier state on some systems, so Shift is tracked from the
+// keyboard itself: Shift held + a finger on a tile still gathers it
+let shiftHeld = false;
+addEventListener('keydown', e => { if (e.key === 'Shift') shiftHeld = true; }, true);
+addEventListener('keyup', e => { if (e.key === 'Shift') shiftHeld = false; }, true);
+addEventListener('blur', () => { shiftHeld = false; });
+const shifted = e => e.shiftKey || shiftHeld;
 // and on whole screen pixels too: half a pixel off and the text smears
 function wholePixels() {
   const box = $('#pan').getBoundingClientRect();
@@ -1101,7 +1108,7 @@ function renderHusks() {
       el.addEventListener('pointerdown', e => {
         const act = e.target.dataset.act, cur = (data.lost || []).find(x => x.id === r.id) || r;
         if (act) { e.preventDefault(); return restoreTerm(cur, act === 'restore'); }
-        if (e.shiftKey && !e.button && !e.target.closest('.grip')) { e.preventDefault(); e.stopPropagation(); return toggleMulti('husk:' + r.id); }
+        if (shifted(e) && !e.button && !e.target.closest('.grip')) { e.preventDefault(); e.stopPropagation(); return toggleMulti('husk:' + r.id); }
         if (e.target.closest('.grip')) return grab(e, husks.get(r.id).w, el);
         if (e.target.closest('.cap')) return drag(e, husks.get(r.id).w, el);
         if (sel !== 'husk:' + r.id || multi.size) { multi.clear(); sel = 'husk:' + r.id; render(); }     // a click on the screen picks it
@@ -3040,7 +3047,7 @@ function renderCanvas(match) {
           return runTool(win.link, win, e.shiftKey || !!e.target.closest('.rerun'));
         }
         if (e.target.closest('.diffbtn')) { e.preventDefault(); e.stopPropagation(); return openDiff(win); }
-        if (e.shiftKey && !e.button && !e.target.closest('.more, .grip')) {    // gathers, never drags or types
+        if (shifted(e) && !e.button && !e.target.closest('.more, .grip')) {    // gathers, never drags or types
           e.preventDefault(); e.stopPropagation();
           return toggleMulti(win.id);
         }
@@ -3064,13 +3071,13 @@ function renderCanvas(match) {
         drag(e, win, el);
       });
       if (w.link) el.addEventListener('dblclick', e => {
-        if (!e.shiftKey && !e.target.closest('.more, .grip')) { via = 'dbl'; activate(w.id); }
+        if (!shifted(e) && !e.target.closest('.more, .grip')) { via = 'dbl'; activate(w.id); }
       });
       // a terminal is typed into on a double click, as Enter does: the one
       // click only picks it. Once it has the keyboard, a double click in it
       // is xterm's again, to select a word
       if (w.term) el.addEventListener('dblclick', e => {
-        if (!e.shiftKey && !inInsert() && !e.target.closest('.more, .grip')) { via = 'dbl'; activate(w.id); }
+        if (!shifted(e) && !inInsert() && !e.target.closest('.more, .grip')) { via = 'dbl'; activate(w.id); }
       });
       tileEls.set(w.id, el);
       $('#tiles').append(el);
