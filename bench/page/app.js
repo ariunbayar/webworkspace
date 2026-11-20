@@ -1065,7 +1065,8 @@ function renderHusks() {
         const act = e.target.dataset.act, cur = (data.lost || []).find(x => x.id === r.id) || r;
         if (act) { e.preventDefault(); return restoreTerm(cur, act === 'restore'); }
         if (e.target.closest('.grip')) return grab(e, husks.get(r.id).w, el);
-        if (e.target.closest('.cap')) drag(e, husks.get(r.id).w, el);
+        if (e.target.closest('.cap')) return drag(e, husks.get(r.id).w, el);
+        if (sel !== 'husk:' + r.id) { sel = 'husk:' + r.id; render(); }     // a click on the screen picks it
       });
       const ps = profiles(), face = ps.find(p => p.name === (faces[r.id] || r.face)) || ps[0] || { font: look().font, size: look().size };
       const term = new Terminal({
@@ -1090,6 +1091,8 @@ function renderHusks() {
       });
     }
     const { el, t } = h, key = JSON.stringify([r.title, r.cwd, r.cmds]);
+    el.classList.toggle('sel', h.w.id === sel);     // picked like a terminal, though it is no window of data
+    el.win = h.w;                                   // as a terminal's tile has, for Super+Enter inside it
     if (h.key !== key) {                  // as text: titles and commands are whatever a program printed
       h.key = key;
       el.querySelector('.t2').textContent = r.title || (r.claude ? 'claude' : 'shell');
@@ -2087,7 +2090,7 @@ function drag(e, w, el) {
     }
     if (moved) { saveLayout(); if (w.husk) tellTerms(); }
     if (!settle) return;
-    if (w.husk) return;              // nothing to pick or type into
+    if (w.husk) { sel = w.id; render(); return; }     // picked, never typed into
     // a click on a terminal in NORMAL only picks it: Enter is what types into it
     const typing = inInsert();
     // a card only picks on a click: opening a page is a double click's worth
@@ -2807,7 +2810,7 @@ const markItem = id => ({ nums: id });
 // bring a tile to the middle at full size, picked
 function centreOn(w) {
   const pan = $('#pan'), [x, y] = seatOf(w);
-  sel = w.husk ? null : w.id;          // a placeholder can't be picked, only seen
+  sel = w.id;
   zoom = 1;
   // tall tiles show their top: the caption and the start of what's in them
   origin = [Math.round(pan.clientWidth / 2 - x - w.w / 2),
@@ -3261,14 +3264,19 @@ function scrollPicked(dir) {
   const dw = tileEls.get(w.id) && tileEls.get(w.id).querySelector('.docwrap');
   if (dw) dw.scrollBy(0, dir * dw.clientHeight * 0.9);
 }
+// A placeholder is no window of data.windows (the server knows no window for
+// it), so everything that walks windows leaves it alone. What the keyboard
+// picks among is the windows plus the placeholders that have a size yet.
+const pickable = () => [...data.windows, ...[...husks.values()].filter(h => h.w.w).map(h => h.w)];
+const elOf = w => w.husk ? (husks.get(w.husk) || {}).el : tileEls.get(w.id);
 function selected() {
   if (!data) return null;
-  return data.windows.find(w => w.id === sel) || null;
+  return pickable().find(w => w.id === sel) || null;
 }
 
 function reveal() {
   if (!sel) return;
-  const w = data.windows.find(x => x.id === sel);
+  const w = selected();
   const pan = $('#pan');
   if (!w || !pan.clientWidth) return;
   const [x, y] = seatOf(w);
@@ -3285,7 +3293,7 @@ function reveal() {
 
 function move(dx, dy) {
   const match = visible();
-  const pick = data.windows.filter(match);
+  const pick = pickable().filter(match);
   if (!pick.length) return;
   const cur = selected();
   if (!cur) { sel = pick[0].id; return (render(), reveal()); }
@@ -3340,13 +3348,14 @@ function tileMoved() {
   else if (w.term) followSticks();
 }
 function endEdit() {
-  const w = selected(), el = w && tileEls.get(w.id);
+  const w = selected(), el = w && elOf(w);
   editing = null;
   stickDrag = null;
   lightStick(null);
   if (el) { dropStick(w, el); followSticks(); }
   showGrid(false);
   saveLayout();
+  if (w && w.husk) tellTerms();      // the server keeps its spot and size for Restore
   showMode();
   poll();
   if (editBack) { via = 'back'; activate(editBack); }
@@ -3375,7 +3384,7 @@ function fitGrid(w, el) {
   }
 }
 function nudge(dx, dy, grow) {
-  const w = selected(), el = w && tileEls.get(w.id);
+  const w = selected(), el = w && elOf(w);
   if (!el) return endEdit();
   const [x, y] = seatOf(w);
   if (!grow) {
@@ -3393,7 +3402,7 @@ function nudge(dx, dy, grow) {
     if (l) { l.w = w.w; l.h = w.h; sendCard(l, { w: l.w, h: l.h }); }
     return;
   }
-  if (!w.term) {                     // a photograph: the edge you step, the other follows
+  if (!w.term && !w.husk) {          // a photograph: the edge you step, the other follows
     const s0 = scales[w.id] || 1;
     const s = dx ? Math.max(90, stepTo(x + w.w, dx) - x) / (w.w / s0)
                  : Math.max(60, stepTo(y + w.h, dy) - y) / (w.h / s0);
@@ -3404,8 +3413,8 @@ function nudge(dx, dy, grow) {
     place(el, w);
     return;
   }
-  const t = terms.get(w.term.session);
-  if (!t || !t.cell || !w.term.alive) return;
+  const t = w.husk ? husks.get(w.husk).t : terms.get(w.term.session);   // a placeholder sizes as its grip does
+  if (!t || !t.cell || (w.term && !w.term.alive)) return;
   // the edge sits half a character either side of a grid line, so the next
   // line can be too close to change the count: keep going until it does
   let edge = [x + w.w, y + w.h];
@@ -3515,7 +3524,8 @@ document.addEventListener('keydown', e => {
   if (k === 'z') { e.preventDefault(); return setLens(!lensOn); }
   if (/^[1-9]$/.test(k) && !e.ctrlKey && !e.altKey && !e.metaKey) { e.preventDefault(); return jumpMark(+k); }
   if (k === 'm') { e.preventDefault(); return setMap(!mapPinned); }
-  if (k === 'Enter' || k === ' ') { const w = selected(); if (w) { e.preventDefault(); via = k === ' ' ? 'space' : 'enter'; activate(w.id); } return; }
+  // a placeholder takes no typing: Enter and Space leave it be
+  if (k === 'Enter' || k === ' ') { const w = selected(); if (w && !w.husk) { e.preventDefault(); via = k === ' ' ? 'space' : 'enter'; activate(w.id); } return; }
   if (k === 'PageUp' || k === 'PageDown') { e.preventDefault(); return scrollPicked(k === 'PageUp' ? -1 : 1); }
   const moves = { ArrowUp: [0, -1], k: [0, -1], ArrowDown: [0, 1], j: [0, 1],
                   ArrowLeft: [-1, 0], h: [-1, 0], ArrowRight: [1, 0], l: [1, 0] };
