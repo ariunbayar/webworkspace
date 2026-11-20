@@ -908,6 +908,12 @@ def change_link(lid, body):
                     link["stick"] = s
                 else:
                     link.pop("stick", None)
+            if link.get("tool") and "run" in body:   # the terminal this button last started, or null
+                r = body["run"]
+                if isinstance(r, str) and re.fullmatch(r"[0-9A-Za-z_-]{1,64}", r):
+                    link["run"] = r
+                else:
+                    link.pop("run", None)
             if link.get("note") and isinstance(body.get("text"), str):
                 link["text"] = body["text"][:200000]
         _save_links()
@@ -1576,7 +1582,10 @@ def project_tools(folder):
         about = str(t.get("about") or "").strip() or cmd.splitlines()[0]
         found.append({"name": str(t["name"]).strip(), "about": about, "cmd": cmd,
                       "confirm": t.get("confirm") is True,
-                      "argv": ["bash", "-c", "trap : INT\n%s\nexec %s -i" % (cmd, shlex.quote(shell))]})
+                      # the printf is the "command finished" signal the page listens for (OSC 777): it
+                      # comes after the command and before the shell that is left behind
+                      "argv": ["bash", "-c", "trap : INT\n%s\nprintf '\\033]777;bench-tool-done\\007'\nexec %s -i"
+                               % (cmd, shlex.quote(shell))]})
     return found, None
 
 

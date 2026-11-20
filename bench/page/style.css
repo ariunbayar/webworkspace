@@ -182,6 +182,13 @@
             text-overflow:ellipsis; white-space:nowrap }
   .runbtn:hover { filter:brightness(1.12) }
   .runbtn:active { transform:translateY(1px) }
+  .runbtn.live { background:#2e7d4f }
+  .rundot { display:inline-block; width:8px; height:8px; margin-right:7px; border-radius:50%; background:#fff;
+            animation:rundot 1.2s ease-in-out infinite }
+  @keyframes rundot { 50% { opacity:.3 } }
+  .rerun { font:inherit; font-size:14px; color:var(--fg); background:none; border:1px solid var(--line, #8886);
+           border-radius:6px; padding:2px 8px; cursor:pointer; margin-top:2px }
+  .rerun:hover { background:var(--accent); color:#fff }
   .runbtn.armed { background:var(--bg, #fff); color:var(--accent); box-shadow:inset 0 0 0 2px var(--accent) }
   .card .ttl span { min-width:0; overflow:hidden; text-overflow:ellipsis }
   .card .ttl img { width:16px; height:16px; flex:none }
