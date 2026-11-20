@@ -2535,11 +2535,13 @@ function followSticks() {
   }
   return moved;
 }
-// One backdrop per terminal that has attached cards: the box around its tile
-// and theirs, read from the styles place() gave them (so the bottom caption
-// offset, zoom and drags are all already in them). place() queues a redraw, so
-// every path that moves a tile without a render is covered, one per frame.
-const stickEls = new Map();
+// The backdrop of a terminal that has attached cards: one padded rounded box
+// per tile (the terminal and each card), all the same opaque colour, so they
+// merge into one outline hugging the tiles with nothing tinted in between.
+// Read from the styles place() gave the tiles (caption offset, zoom and drags
+// are already in them). place() queues a redraw, so every path that moves a tile
+// without a render is covered, one per frame.
+const stickEls = new Map();             // tile id -> its box
 let sticksQueued = false;
 function queueSticks() {
   if (sticksQueued) return;
@@ -2549,14 +2551,12 @@ function queueSticks() {
 function drawSticks() {
   sticksQueued = false;
   const boxes = new Map();
-  const grow = (key, el) => {
+  const add = (id, el) => {
     if (!el || el.classList.contains('off')) return;
     const x = parseFloat(el.style.left), y = parseFloat(el.style.top);
-    const r = [x, y, x + parseFloat(el.style.width), y + parseFloat(el.style.height)];
-    if (r.some(isNaN)) return;
-    const b = boxes.get(key);
-    if (b) { b[0] = Math.min(b[0], r[0]); b[1] = Math.min(b[1], r[1]); b[2] = Math.max(b[2], r[2]); b[3] = Math.max(b[3], r[3]); }
-    else boxes.set(key, r);
+    const w = parseFloat(el.style.width), h = parseFloat(el.style.height);
+    if ([x, y, w, h].some(isNaN)) return;
+    boxes.set(id, [x, y, w, h]);
   };
   const host = new Map();                 // terminal session -> its window
   for (const w of data.windows) if (w.term) host.set(w.term.session, w);
@@ -2566,8 +2566,8 @@ function drawSticks() {
     if (!tel || tel.classList.contains('off')) continue;
     const cel = tileEls.get(w.id);
     if (!cel || cel.classList.contains('off')) continue;
-    grow(s.t, tel);
-    grow(s.t, cel);
+    add(t.id, tel);
+    add(w.id, cel);
   }
   const pad = STICK_GAP * zoom;
   boxes.forEach((r, k) => {
@@ -2580,10 +2580,8 @@ function drawSticks() {
     }
     el.style.left = r[0] - pad + 'px';
     el.style.top = r[1] - pad + 'px';
-    el.style.width = r[2] - r[0] + 2 * pad - 2 + 'px';    // border-box minus the 1px border
-    el.style.height = r[3] - r[1] + 2 * pad - 2 + 'px';
-    const cs = cstate[host.get(k).id];
-    if (cs && cs.state) el.dataset.cs = cs.state; else delete el.dataset.cs;
+    el.style.width = r[2] + 2 * pad + 'px';
+    el.style.height = r[3] + 2 * pad + 'px';
   });
   stickEls.forEach((el, k) => { if (!boxes.has(k)) { el.remove(); stickEls.delete(k); } });
 }
