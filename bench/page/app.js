@@ -2510,11 +2510,17 @@ function spotBeside(t, w) {
 // server: {t: session id, side: r|l|t|b, off: how far along that edge}.
 const STICK_RANGE = GRID, STICK_GAP = GRID / 4;
 let stickDrag = null;                 // the card being dragged: followSticks leaves it be
+// A terminal's size as this page measures it (renderCanvas sets it later than
+// the poll replaces data, and followSticks runs in between), else the server's.
+function termSize(v) {
+  const t = v.term && terms.get(v.term.session);
+  return t && t.natural ? t.natural : [v.w, v.h];
+}
 function stickFor(w, [x, y], only, range = STICK_RANGE) {
   let best = null;
   for (const v of data.windows) {
     if (!v.term || !v.term.alive || (only && v !== only)) continue;
-    const [tx, ty] = seatOf(v), tw = v.w, th = v.h, cw = w.w, ch = w.h;
+    const [tx, ty] = seatOf(v), [tw, th] = termSize(v), cw = w.w, ch = w.h;
     const alongV = y < ty + th && y + ch > ty, alongH = x < tx + tw && x + cw > tx;
     for (const [side, d, ok, off] of [
       ['r', Math.abs(x - (tx + tw)), alongV, y - ty], ['l', Math.abs(x + cw - tx), alongV, y - ty],
@@ -2528,10 +2534,10 @@ function stickFor(w, [x, y], only, range = STICK_RANGE) {
 function stuckSpot(w, s = w.link && w.link.stick) {
   const v = s && data.windows.find(v => v.term && v.term.session === s.t);
   if (!v) return null;
-  const [tx, ty] = seatOf(v);
-  return s.side === 'r' ? [tx + v.w + STICK_GAP, ty + s.off]
+  const [tx, ty] = seatOf(v), [tw, th] = termSize(v);
+  return s.side === 'r' ? [tx + tw + STICK_GAP, ty + s.off]
     : s.side === 'l' ? [tx - w.w - STICK_GAP, ty + s.off]
-    : s.side === 'b' ? [tx + s.off, ty + v.h + STICK_GAP]
+    : s.side === 'b' ? [tx + s.off, ty + th + STICK_GAP]
     : [tx + s.off, ty - w.h - STICK_GAP];
 }
 // every attached card to where its terminal now is; true when one moved
