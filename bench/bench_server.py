@@ -685,7 +685,7 @@ _tools_seen = {}                        # folder -> (the file's mtime, its tools
 def tools_now(folder):
     """project_tools, read again only when the file changed: the board asks every poll."""
     try:
-        mtime = os.stat(os.path.join(os.path.expanduser(folder), TOOLS_FILE)).st_mtime
+        mtime = os.stat(tools_file(os.path.expanduser(folder))).st_mtime
     except OSError:
         return []
     seen = _tools_seen.get(folder)
@@ -1484,6 +1484,14 @@ WantedBy=graphical-session.target
 # ---- project tools: what a group's folder knows how to run -----------------
 
 TOOLS_FILE = os.path.join("tmp", ".bench-tools.yml")   # in the project's ignored tmp/
+OLD_TOOLS_FILE = os.path.join("tmp", ".winlist-tools.yml")   # the name before the rename to bench
+
+
+def tools_file(folder):
+    """The folder's tools file: the bench name, or the old winlist one if only that exists."""
+    new = os.path.join(folder, TOOLS_FILE)
+    old = os.path.join(folder, OLD_TOOLS_FILE)
+    return old if not os.path.exists(new) and os.path.exists(old) else new
 
 
 def project_tools(folder):
@@ -1502,7 +1510,7 @@ def project_tools(folder):
     if not os.path.isdir(folder):
         return None, "no such folder"
     try:
-        with open(os.path.join(folder, TOOLS_FILE)) as f:
+        with open(tools_file(folder)) as f:
             text = f.read()
     except OSError:
         return [], None

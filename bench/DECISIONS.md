@@ -443,5 +443,5 @@ Each entry:
 ### The project is called bench
 - **Q:** Should the project keep the name winlist?
 - **A:** No: renamed from winlist to bench on 2026-11-20, by a vote. The state folder `~/.local/state/winlist` keeps its old name so saved boards, cards and terminals survive. The `WINLIST_*` variables are still read as fallbacks (and set beside the `BENCH_*` ones in new terminals). A `winlist -> bench` symlink stays at the repo root for running processes and hooks. Ports, API paths and JSON field names are unchanged.
-- **Why:** The board is more than a list of windows now; a name that says what it is.
+- **Why:** The board is more than a list of windows now. The sessions' vote favoured Corkboard (7 of 9), but the user picked bench: short, works as a command, and fits live terminals sitting beside cards. Old browser keys (`winlist.*`) and old `tmp/.winlist-tools.yml` files are still read.
 - **Status:** done

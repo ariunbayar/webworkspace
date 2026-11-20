@@ -23,6 +23,14 @@ const store = {
                catch { return fb; } },
   set(k, v) { try { localStorage.setItem('bench.' + k, JSON.stringify(v)); } catch {} },
 };
+// renamed from winlist on 2026-11-20: carry this browser's old keys over, once
+try {
+  Object.keys(localStorage).filter(k => k.startsWith('winlist.')).forEach(k => {
+    const n = 'bench.' + k.slice(8);
+    if (localStorage.getItem(n) === null) localStorage.setItem(n, localStorage.getItem(k));
+    localStorage.removeItem(k);
+  });
+} catch {}
 
 let data = null, failures = 0, sel = null;
 let started = null;                        // which run of the server we are talking to
