@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
-"""winlist — a browser board of terminals and cards, stdlib only.
+"""bench — a browser board of terminals and cards, stdlib only.
 
 Terminals started from the page (held by pty_server.py, drawn by xterm.js),
 cards for pages, documents and pictures, groups, pings and what Claude is up
 to in each terminal. The server does not look at the desktop at all.
 
-Run:  python3 winlist_server.py           # then open http://localhost:8766
-      python3 winlist_server.py --port N  # custom port
-      python3 winlist_server.py --open      # and open the page in the browser (xdg-open)
-      python3 winlist_server.py --install     # run it as a service from now on
-      python3 winlist_server.py --uninstall   # back to running it by hand
+Run:  python3 bench_server.py           # then open http://localhost:8766
+      python3 bench_server.py --port N  # custom port
+      python3 bench_server.py --open      # and open the page in the browser (xdg-open)
+      python3 bench_server.py --install     # run it as a service from now on
+      python3 bench_server.py --uninstall   # back to running it by hand
 
 In a terminal, r restarts it and Ctrl-C stops it. As a service it is a systemd
-user unit, winlist.service, started with the desktop session and logging to the
-journal: systemctl --user restart|stop|status winlist, journalctl --user -u winlist.
+user unit, bench.service, started with the desktop session and logging to the
+journal: systemctl --user restart|stop|status bench, journalctl --user -u bench.
 
 pty_server.py holds the terminals; this starts it when nobody has, as a process
 of its own, so restarting this one leaves your shells where they were.
@@ -187,6 +187,8 @@ def pty(path, method="GET", body=None, timeout=0.3):
         return None
 
 
+# The state folder keeps its pre-rename name on purpose, so existing boards, cards and terminals carry over.
+STATE_NAME = "winlist"   # deliberate: ~/.local/state/winlist (the project is now called bench)
 # The page's terminals are remembered here, so a reboot or a new pty_server
 # can offer them back: session id -> {cwd, cols, rows, claude, at, face}. The
 # server knows the first four, and its last title; the page says where a tile
@@ -194,7 +196,7 @@ def pty(path, method="GET", body=None, timeout=0.3):
 # Claude Code terminal that Claude quit in is kept (ended) to be resumed.
 # pty_server keeps each one's last output and commands beside it, in terms/.
 TERMS_FILE = os.path.join(os.environ.get("XDG_STATE_HOME") or os.path.expanduser("~/.local/state"),
-                          "winlist", "terms.json")
+                          STATE_NAME, "terms.json")
 TERMS_DIR = os.path.join(os.path.dirname(TERMS_FILE), "terms")
 _terms_lock = threading.Lock()
 _live = None                        # session ids pty_server holds now; None: not asked yet
@@ -394,8 +396,8 @@ def start_terminals(port):
     """Start the terminal server, unless one is already listening.
 
     It runs as a process of its own, in a session of its own, so it outlives
-    this one: restarting winlist to pick up a change should not take your shells
-    with it. One already there — left by an earlier winlist, or started by
+    this one: restarting bench to pick up a change should not take your shells
+    with it. One already there — left by an earlier bench, or started by
     hand — is simply used. Says which of the two it was.
     """
     global _pty_error
@@ -440,7 +442,7 @@ def sample():
 # a page has placed it, where it sits and how big it is. On disk, so a restart
 # keeps the board.
 LINKS_FILE = os.path.join(os.environ.get("XDG_STATE_HOME") or os.path.expanduser("~/.local/state"),
-                          "winlist", "links.json")
+                          STATE_NAME, "links.json")
 _links_lock = threading.Lock()
 
 
@@ -497,7 +499,7 @@ WEB_URL = re.compile(r"https?://[^/\x00-\x20\x7f]+[^\x00-\x20\x7f]*")
 def fetch_title(url):
     """What the page calls itself, if it will say without a login: else None."""
     try:
-        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 winlist"})
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 bench"})
         with urllib.request.urlopen(req, timeout=3) as r:
             if "html" not in r.headers.get("Content-Type", ""):
                 return None
@@ -683,7 +685,7 @@ _tools_seen = {}                        # folder -> (the file's mtime, its tools
 def tools_now(folder):
     """project_tools, read again only when the file changed: the board asks every poll."""
     try:
-        mtime = os.stat(os.path.join(os.path.expanduser(folder), TOOLS_FILE)).st_mtime
+        mtime = os.stat(tools_file(os.path.expanduser(folder))).st_mtime
     except OSError:
         return []
     seen = _tools_seen.get(folder)
@@ -788,11 +790,11 @@ def send_link(url=None, title=None, path=None, image=None, keep=None, tool=None,
     on the card), a PR's changes (diff: the PR's address) or a button for one of a project's tools (tool, by name, in
     folder). None, and why, if it won't do.
     A tool card holds the name only: what it runs is looked up when pressed,
-    so an edit to tmp/.winlist-tools.yml, or to what it runs, is what runs next.
+    so an edit to tmp/.bench-tools.yml, or to what it runs, is what runs next.
     keep is a card a browser held from before the board lived here: taken as
     it was, file or no file, with its place. origin is "page" when a page
     added it by hand; anything else is "api": sent from outside, to the Inbox.
-    term (a WINLIST_TERM id) and cwd (a folder) say where it came from, so a
+    term (a BENCH_TERM id) and cwd (a folder) say where it came from, so a
     page can put it beside that terminal, or in the group of that folder."""
     title = (title or "").strip()
     if keep:
@@ -945,7 +947,7 @@ def what(ref, base="http://localhost:8766"):
         # and every page shows the new text at its next look
         out["change"] = ("curl -s -X PATCH %s/api/links/%s -H 'Content-Type: application/json' "
                          "-d \"$(jq -Rs '{text: .}' < NEW_TEXT_FILE)\"" % (base, key))
-        out["or"] = "%s %s --set < NEW_TEXT_FILE" % (os.path.join(HERE, "winlist_what.sh"), out["ref"])
+        out["or"] = "%s %s --set < NEW_TEXT_FILE" % (os.path.join(HERE, "bench_what.sh"), out["ref"])
     elif link.get("path"):
         out["note"] = "a file on disk: read or edit it there; the card follows saves"
     return out
@@ -1094,7 +1096,7 @@ DEFAULT_PORT = 8766
 
 
 def page_title(port):
-    """Off the default port the title carries it, so one winlist's page is
+    """Off the default port the title carries it, so one bench's page is
     never mistaken for another's."""
     return PAGE_TITLE if port == DEFAULT_PORT else "%s :%d" % (PAGE_TITLE, port)
 
@@ -1110,7 +1112,7 @@ def show_page(url):
 
 # ---- page -----------------------------------------------------------------
 
-# The page itself is winlist/page/: index.html, style.css and app.js, served
+# The page itself is bench/page/: index.html, style.css and app.js, served
 # from disk as they stand, so an edit there shows on the next reload without
 # restarting anything. index.html carries the two blanks filled in per port.
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -1433,7 +1435,7 @@ def cooked():
 
 
 def watch_keys(srv):
-    """`r` in the terminal winlist runs in restarts it, so Ctrl-C and run again
+    """`r` in the terminal bench runs in restarts it, so Ctrl-C and run again
     is one key. Only when stdin is a terminal; Ctrl-C still works as ever."""
     global _cooked
     if not sys.stdin.isatty():
@@ -1454,7 +1456,7 @@ def watch_keys(srv):
 
 # ---- as a service ---------------------------------------------------------
 
-UNIT = "winlist.service"
+UNIT = "bench.service"
 UNIT_PATH = os.path.expanduser("~/.config/systemd/user/" + UNIT)
 
 # KillMode=process: stopping the service ends this process only, so the
@@ -1463,7 +1465,7 @@ UNIT_PATH = os.path.expanduser("~/.config/systemd/user/" + UNIT)
 # --open and the terminals' look (xrdb) find its DISPLAY, which the user
 # manager has once GNOME has started.
 UNIT_TEXT = """[Unit]
-Description=winlist: terminals and cards on a browser board, on %(url)s
+Description=bench: terminals and cards on a browser board, on %(url)s
 After=graphical-session.target
 PartOf=graphical-session.target
 
@@ -1481,13 +1483,21 @@ WantedBy=graphical-session.target
 
 # ---- project tools: what a group's folder knows how to run -----------------
 
-TOOLS_FILE = os.path.join("tmp", ".winlist-tools.yml")   # in the project's ignored tmp/
+TOOLS_FILE = os.path.join("tmp", ".bench-tools.yml")   # in the project's ignored tmp/
+OLD_TOOLS_FILE = os.path.join("tmp", ".winlist-tools.yml")   # the name before the rename to bench
+
+
+def tools_file(folder):
+    """The folder's tools file: the bench name, or the old winlist one if only that exists."""
+    new = os.path.join(folder, TOOLS_FILE)
+    old = os.path.join(folder, OLD_TOOLS_FILE)
+    return old if not os.path.exists(new) and os.path.exists(old) else new
 
 
 def project_tools(folder):
     """[{name, about, argv}] for a project folder, or an error.
 
-    One source: the folder's tmp/.winlist-tools.yml, a YAML list of tools,
+    One source: the folder's tmp/.bench-tools.yml, a YAML list of tools,
     each `name` and `run` (a command, or a script over several lines with
     `run: |`), an optional one-line `about`, and `confirm: true` for one that
     takes a second press to run. Nothing else is guessed, so the
@@ -1500,7 +1510,7 @@ def project_tools(folder):
     if not os.path.isdir(folder):
         return None, "no such folder"
     try:
-        with open(os.path.join(folder, TOOLS_FILE)) as f:
+        with open(tools_file(folder)) as f:
             text = f.read()
     except OSError:
         return [], None
@@ -1550,7 +1560,7 @@ def install(argv, url):
         sys.exit("could not start %s: %s" % (UNIT, msg))
     say("installed %s, serving %s" % (UNIT_PATH, url))
     say("one already running by hand holds the port: stop it, and the service takes over within seconds")
-    say("systemctl --user restart|stop|status winlist · journalctl --user -u winlist -f")
+    say("systemctl --user restart|stop|status bench · journalctl --user -u bench -f")
 
 
 def uninstall():
@@ -1592,21 +1602,21 @@ def main():
     except OSError as e:
         # the common case: launched a second time while one is already serving
         if args.open:
-            say(f"winlist is already serving {url}")
+            say(f"bench is already serving {url}")
             show_page(url)
             return
         if service_active():
-            say(f"the winlist service is serving {url} — "
-                f"systemctl --user restart winlist, or stop it to run one here")
+            say(f"the bench service is serving {url} — "
+                f"systemctl --user restart bench, or stop it to run one here")
         else:
             say(f"cannot listen on {args.host}:{args.port} ({e}) — "
-                f"another winlist is probably already running")
+                f"another bench is probably already running")
         sys.exit(1)
     if args.open:
         threading.Thread(target=show_page, args=(url,), daemon=True).start()
 
     how = start_terminals(PTY_PORT) if PTY_ON else None
-    say(f"winlist → {url}  (r to restart, Ctrl-C to stop)")
+    say(f"bench → {url}  (r to restart, Ctrl-C to stop)")
     if PTY_ON:
         say("terminals → :%d, %s" % (PTY_PORT, how or "not running: " + _pty_error))
 

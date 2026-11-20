@@ -1,10 +1,10 @@
 name: page-check
 on:
   pull_request:
-    paths: ['winlist/page/**', 'winlist/check_page.sh']
+    paths: ['bench/page/**', 'bench/check_page.sh']
   push:
     branches: [main]
-    paths: ['winlist/page/**', 'winlist/check_page.sh']
+    paths: ['bench/page/**', 'bench/check_page.sh']
 jobs:
   parse:
     runs-on: ubuntu-latest
@@ -13,4 +13,4 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-      - run: winlist/check_page.sh
+      - run: bench/check_page.sh

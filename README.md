@@ -26,7 +26,7 @@ Open windows
 
 Every window there is on one surface, laid out however you like, stdlib only:
 
-    python3 winlist/winlist_server.py --open
+    python3 bench/bench_server.py --open
 
 Serves http://127.0.0.1:8766/ and brings the page up in the browser — raising
 the window that already shows it rather than opening another tab, so launching
@@ -36,14 +36,14 @@ In the terminal it runs in, `r` restarts it and Ctrl-C stops it.
 Or keep it running as a service, a systemd user unit started with the desktop
 session and logging to the journal:
 
-    python3 winlist/winlist_server.py --install     # any other flags go into the unit
-    systemctl --user restart winlist                # after a server change
-    journalctl --user -u winlist -f
-    python3 winlist/winlist_server.py --uninstall   # back to running it by hand
+    python3 bench/bench_server.py --install     # any other flags go into the unit
+    systemctl --user restart bench                # after a server change
+    journalctl --user -u bench -f
+    python3 bench/bench_server.py --uninstall   # back to running it by hand
 
 `--open` still works alongside it: the port is taken, so it just brings the page up.
 
-The page is its own three files in `winlist/page/` — `index.html`, `style.css`
+The page is its own three files in `bench/page/` — `index.html`, `style.css`
 and `app.js` — read from disk on every load, so an edit to any of them shows on
 a reload of the tab, with no restart of the server.
 
@@ -72,7 +72,7 @@ and you can read it.
 A group (`g`) can carry a folder: click `+ folder` in its caption and type a
 path. A terminal (`t`) or Claude Code (`c`) opened inside that group starts
 there, and `▸ tools` in the caption lists what the project can run: the
-tools in its `tmp/.winlist-tools.yml`, and nothing else:
+tools in its `tmp/.bench-tools.yml`, and nothing else:
 
 ```yaml
 - name: Deploy + nginx
@@ -155,8 +155,8 @@ text and the command that changes it, a file card's path, a link's URL, a
 terminal's folder, shell process, last commands and saved output, a desktop
 window's process, folder and command line. A closed tile answers `gone`.
 `/api/what` with no ref lists every tile. From a shell,
-`winlist/winlist_what.sh [<ref>]` does the same, and
-`winlist/winlist_what.sh <note ref> --set < file` replaces a note's text; every
+`bench/bench_what.sh [<ref>]` does the same, and
+`bench/bench_what.sh <note ref> --set < file` replaces a note's text; every
 page shows it at its next look.
 
 A photo is of a whole workspace, so cutting one window's rectangle out of it
@@ -221,7 +221,7 @@ X11 only (uses `xprop`/`xdotool`, plus `xwd` and `convert` for the photos).
 What the page is used for is logged, so a change can be judged by whether it
 changed how it is used: action names, the kind of tile and the mode, one line
 each, in `~/.local/state/winlist/usage.jsonl` — never a title, a URL or
-anything typed. `python3 winlist/usage_report.py` reads it back per day;
+anything typed. `python3 bench/usage_report.py` reads it back per day;
 `--split YYYY-MM-DD` compares the rates before and from a date, `--days N`
 keeps to the last N days.
 
@@ -236,15 +236,15 @@ tile is tiny:
 - **waiting** (amber): it needs you — a permission prompt or a question.
 - **done** (green): it finished its turn and is idle. This one also pings, as before.
 
-Claude Code's hooks report it, through `winlist/ping_hook.sh`, which reads the
-event from the hook's JSON and finds its window from `$WINLIST_TERM` (a page
+Claude Code's hooks report it, through `bench/ping_hook.sh`, which reads the
+event from the hook's JSON and finds its window from `$BENCH_TERM` (a page
 terminal) or `$WINDOWID` (xterm). Stop was the only hook before; add the rest
 to the `hooks` of `~/.claude/settings.json`, with the same command as Stop
 (the path is where this checkout is):
 
-    "UserPromptSubmit": [{"hooks": [{"type": "command", "command": "/path/to/winlist/ping_hook.sh"}]}],
-    "PostToolUse":      [{"hooks": [{"type": "command", "command": "/path/to/winlist/ping_hook.sh"}]}],
-    "Notification":     [{"hooks": [{"type": "command", "command": "/path/to/winlist/ping_hook.sh"}]}]
+    "UserPromptSubmit": [{"hooks": [{"type": "command", "command": "/path/to/bench/ping_hook.sh"}]}],
+    "PostToolUse":      [{"hooks": [{"type": "command", "command": "/path/to/bench/ping_hook.sh"}]}],
+    "Notification":     [{"hooks": [{"type": "command", "command": "/path/to/bench/ping_hook.sh"}]}]
 
 `PostToolUse` is what turns waiting back into working once you have answered;
 `PreToolUse` would do the same, but is not needed. The idle reminder
@@ -258,7 +258,7 @@ Terminals
 The page's terminals are remembered in `~/.local/state/winlist/terms.json`
 (folder, size, place on the surface, font, last title, whether it ran Claude).
 `pty_server.py` also keeps the last 64 KB of each one's output, and bash shells
-it opens (through `winlist/winlist_bashrc`, which sources your `~/.bashrc` and
+it opens (through `bench/bench_bashrc`, which sources your `~/.bashrc` and
 notes each command) their last 3 commands, in `~/.local/state/winlist/terms/`.
 After a reboot or a new `pty_server.py` each lost terminal stays on the surface
 as a **husk**: a dimmed, read-only tile in its old spot and size with its last
@@ -269,16 +269,16 @@ forgets it. The bar offers **Restore all** / **Dismiss all**. A terminal you
 close, or that ends, is forgotten along with its saved files.
 
 Shells the browser can hold on to, one pseudo-terminal each, stdlib only.
-`winlist_server.py` starts this when nothing is listening on its port, so there
+`bench_server.py` starts this when nothing is listening on its port, so there
 is normally nothing to start. It runs as a process of its own and is left
-running when winlist stops, so restarting winlist to pick up a change keeps your
-shells; the next winlist finds it there and uses it. To end the terminals:
+running when bench stops, so restarting bench to pick up a change keeps your
+shells; the next bench finds it there and uses it. To end the terminals:
 
     pkill -f pty_server.py
 
 Or run it on its own when you want it on its own:
 
-    python3 winlist/pty_server.py
+    python3 bench/pty_server.py
 
 Serves http://127.0.0.1:8767/sessions. A page cannot start a shell — it has no
 way in — so this holds the terminals instead: it starts one on a PTY, streams
@@ -317,12 +317,12 @@ same-origin policy, so a site you happen to be reading could otherwise dial
 this port. `--shell` picks what a session runs (default `$SHELL`),
 `--max-sessions` caps how many at once.
 
-    python3 winlist/pty_server_test.py
+    python3 bench/pty_server_test.py
 
 runs the whole thing against a server of its own on a free port: typing,
 resizing, Ctrl-C, reattaching, two watchers on one terminal, and the refusals.
 
-`winlist_server.py` draws them. It asks this server what exists, folds the
+`bench_server.py` draws them. It asks this server what exists, folds the
 answer into the same window list as the real windows, and the page dials
 `/attach` straight from the tab — so the bytes of a terminal never make the
 detour through the window list. It degrades quietly: no terminal server, no

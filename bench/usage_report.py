@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""What winlist has been used for, from the log the page keeps.
+"""What bench has been used for, from the log the page keeps.
 
-Run:  python3 winlist/usage_report.py                 # every day there is
-      python3 winlist/usage_report.py --days 7        # the last week
-      python3 winlist/usage_report.py --split 2026-10-23  # before vs after a date
-      python3 winlist/usage_report.py --all           # without dropping bursts
+Run:  python3 bench/usage_report.py                 # every day there is
+      python3 bench/usage_report.py --days 7        # the last week
+      python3 bench/usage_report.py --split 2026-10-23  # before vs after a date
+      python3 bench/usage_report.py --all           # without dropping bursts
 
-The page sends one line per thing done to /api/usage, and winlist_server.py
+The page sends one line per thing done to /api/usage, and bench_server.py
 appends them to ~/.local/state/winlist/usage.jsonl: action names, the kind of
 tile, the mode — never a title, a URL or anything typed. This turns them back
 into numbers a person can compare: per day, and per day on each side of a date
@@ -19,8 +19,10 @@ import json
 import os
 import statistics
 
+# The state folder keeps its pre-rename name on purpose, so existing boards, cards and terminals carry over.
+STATE_NAME = "winlist"   # deliberate: ~/.local/state/winlist (the project is now called bench)
 LOG = os.path.join(os.environ.get("XDG_STATE_HOME") or os.path.expanduser("~/.local/state"),
-                   "winlist", "usage.jsonl")
+                   STATE_NAME, "usage.jsonl")
 
 
 def load(path):
@@ -174,7 +176,7 @@ def main():
         print("nothing logged yet in %s" % args.log)
         return
     first, last = min(e["day"] for e in events), max(e["day"] for e in events)
-    print("winlist usage, %s to %s  (%s)" % (first, last, args.log))
+    print("bench usage, %s to %s  (%s)" % (first, last, args.log))
 
     print("\n   %-12s %7s %9s %8s %6s" % ("day", "events", "sessions", "minutes", "tiles"))
     for day in sorted({e["day"] for e in events}):

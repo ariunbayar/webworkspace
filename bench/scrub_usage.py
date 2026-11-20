@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """One-off: mask what the usage log spelled out before #41.
 
-Run:  python3 winlist/scrub_usage.py            # backs up, then rewrites the log
-      python3 winlist/scrub_usage.py --dry-run  # only says how many it would mask
+Run:  python3 bench/scrub_usage.py            # backs up, then rewrites the log
+      python3 bench/scrub_usage.py --dry-run  # only says how many it would mask
 
 Until #41 the page logged keys typed into a group's name or folder one by one,
 so a run of them spelled the text out. usage_report.mask_typing() decides what

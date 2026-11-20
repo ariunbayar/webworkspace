@@ -2,7 +2,7 @@
 # Parse the page's scripts the way the browser will, so a slip that would leave
 # it blank fails here instead: a syntax error, or a name declared twice in one
 # module (PR #85 shipped a duplicate function, and the whole page went).
-# Run:  winlist/check_page.sh      (also run by .github/workflows/page-check.yml)
+# Run:  bench/check_page.sh      (also run by .github/workflows/page-check.yml)
 set -euo pipefail
 cd "$(dirname "$0")/page"
 tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
