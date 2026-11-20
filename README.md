@@ -203,6 +203,8 @@ Enter or Esc (or Super+Enter again) finishes. A terminal sizes by its
 characters, a card by the grid, and a photo is scaled, keeping its shape.
 A card sent from outside (`POST /api/links` without `"from": "page"`) lands in an
 **Inbox** group, newest first, instead of on top of your work; drag it out to keep it.
+Sending a link, image or file that already has a card makes no second one: the
+existing card stays where it is and flashes (cards added from the page itself are not matched), and a toast, "Already open: ...", jumps to it when clicked.
 The grid shows only while moving or sizing, and dragging with the mouse snaps
 to it too. Moving a tile, from the keyboard or by dragging it, also
 snaps its size to the nearest grid step, so its far edges line up as well as its corner.
