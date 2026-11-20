@@ -433,3 +433,9 @@ Each entry:
 - **A:** Yes. Same link means the same URL ignoring a trailing `/` and a `#fragment`, the same image, or the same file path. Notes, tool and diff cards, restores and cards added from the page itself are never matched, and only cards still on the board count (a closed one gets a new card). The existing card is not moved or re-attached, even if another terminal sent it, and the view does not move. It pulses like a new arrival, and a toast "Already open: <title>" jumps to it when clicked. The API answers 200 with the card and `"repeat": true` (201 for a new one).
 - **Why:** Sending the same page twice piled up duplicate cards.
 - **Status:** done
+
+### A terminal and its attached cards share a backdrop
+- **Q:** Can an attached card look physically joined to its terminal, beyond the 🔗 in its caption?
+- **A:** Yes: each terminal that has attached cards gets a soft backdrop behind it and its cards: one box per tile (the terminal and each card), padded by the attach gap, rounded corners. All boxes are one opaque colour (the accent at 18% over the page background; no state colours, no border), so they merge into a single outline hugging the tiles with no empty tinted gaps. It sits over group backgrounds and under tiles, ignores the mouse, follows drags, zoom and pan, and goes when the last card is detached or closed. Hidden (filtered) tiles are left out. The 🔗 stays. A small "bridge" tab across the gap was tried first and dropped: it was too small to notice and needed overflow tricks on the tile.
+- **Why:** The 🔗 is easy to miss; the gap between a card and its terminal reads as "nearly touching" rather than "attached".
+- **Status:** trying

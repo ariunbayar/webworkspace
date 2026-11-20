@@ -418,6 +418,12 @@
 /* a card attached to a terminal: a link mark before its title, and while one
    is dragged, the terminal's edge it would attach to is lit */
 .tile.stuck .cap .t2::before { content:'🔗 '; font-size:11px }
+/* a terminal and the cards attached to it share a backdrop: one padded box per
+   tile, drawn under the tiles and over the groups. One opaque colour and no
+   border, so overlapping boxes merge into a single outline */
+#sticks { position:absolute; left:0; top:0 }
+.stickbox { position:absolute; pointer-events:none; border-radius:10px;
+            background:color-mix(in srgb, var(--accent) 18%, var(--bg)) }
 .tile.stickto[data-side=r] { box-shadow:4px 0 0 0 var(--accent) }
 .tile.stickto[data-side=l] { box-shadow:-4px 0 0 0 var(--accent) }
 .tile.stickto[data-side=b] { box-shadow:0 4px 0 0 var(--accent) }

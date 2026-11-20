@@ -1112,6 +1112,7 @@ function render() {
   renderGroups();
   if (followSticks()) saveLayout();     // a terminal moved here or on another page
   renderCanvas(match);
+  drawSticks();
   renderHusks();
   drawMark();
   drawMarks();
@@ -1949,6 +1950,7 @@ function closeLink(id) {
 }
 
 function place(el, w) {
+  queueSticks();                     // a tile moved: the backdrops follow it
   let [x, y] = seatOf(w);
   const s = w.link && w.link.stick, st = s && s.side === 'b' && terms.get(s.t);
   // a terminal's caption stays at screen size, so its bottom edge moves with
@@ -2520,7 +2522,10 @@ function followSticks() {
   for (const w of data.windows) {
     if (!w.link) continue;
     const el = tileEls.get(w.id);
-    if (el) el.classList.toggle('stuck', !!w.link.stick);
+    if (el) {
+      el.classList.toggle('stuck', !!w.link.stick);
+      if (w.link.stick) el.dataset.stuck = w.link.stick.side; else delete el.dataset.stuck;
+    }
     if (!w.link.stick || w.id === stickDrag) continue;
     const at = stuckSpot(w), had = layout[w.id];
     if (!at || (had && had[0] === at[0] && had[1] === at[1])) continue;
@@ -2529,6 +2534,56 @@ function followSticks() {
     moved = true;
   }
   return moved;
+}
+// The backdrop of a terminal that has attached cards: one padded rounded box
+// per tile (the terminal and each card), all the same opaque colour, so they
+// merge into one outline hugging the tiles with nothing tinted in between.
+// Read from the styles place() gave the tiles (caption offset, zoom and drags
+// are already in them). place() queues a redraw, so every path that moves a tile
+// without a render is covered, one per frame.
+const stickEls = new Map();             // tile id -> its box
+let sticksQueued = false;
+function queueSticks() {
+  if (sticksQueued) return;
+  sticksQueued = true;
+  requestAnimationFrame(() => { sticksQueued = false; if (data) drawSticks(); });
+}
+function drawSticks() {
+  sticksQueued = false;
+  const boxes = new Map();
+  const add = (id, el) => {
+    if (!el || el.classList.contains('off')) return;
+    const x = parseFloat(el.style.left), y = parseFloat(el.style.top);
+    const w = parseFloat(el.style.width), h = parseFloat(el.style.height);
+    if ([x, y, w, h].some(isNaN)) return;
+    boxes.set(id, [x, y, w, h]);
+  };
+  const host = new Map();                 // terminal session -> its window
+  for (const w of data.windows) if (w.term) host.set(w.term.session, w);
+  for (const w of data.windows) {
+    const s = w.link && w.link.stick, t = s && host.get(s.t);
+    const tel = t && tileEls.get(t.id);
+    if (!tel || tel.classList.contains('off')) continue;
+    const cel = tileEls.get(w.id);
+    if (!cel || cel.classList.contains('off')) continue;
+    add(t.id, tel);
+    add(w.id, cel);
+  }
+  const pad = STICK_GAP * zoom;
+  boxes.forEach((r, k) => {
+    let el = stickEls.get(k);
+    if (!el) {
+      el = document.createElement('div');
+      el.className = 'stickbox';
+      stickEls.set(k, el);
+      $('#sticks').append(el);
+    }
+    el.style.left = r[0] - pad + 'px';
+    el.style.top = r[1] - pad + 'px';
+    el.style.width = r[2] + 2 * pad + 'px';
+    el.style.height = r[3] + 2 * pad + 'px';
+  });
+  stickEls.forEach((el, k) => { if (!boxes.has(k)) { el.remove(); stickEls.delete(k); } });
 }
 function setStick(l, s) {
   if (JSON.stringify(l.stick || null) === JSON.stringify(s || null)) return;
@@ -2865,7 +2920,8 @@ function renderCanvas(match) {
     el.win = w;                       // the drag handler always wants the fresh one
     el.className = 'tile' + (w.term ? ' term' : '') + (w.link ? ' link' : '')
       + (match(w) ? '' : ' off') + (w.id === sel ? ' sel' : '') + (pings.has(w.id) ? ' ping' : '') + (arrivals.has(w.id) ? ' arrive' : '')
-      + (cstate[w.id] ? ' cs-' + cstate[w.id].state : '');
+      + (cstate[w.id] ? ' cs-' + cstate[w.id].state : '') + (w.link && w.link.stick ? ' stuck' : '');
+    if (w.link && w.link.stick) el.dataset.stuck = w.link.stick.side; else delete el.dataset.stuck;
     if (w.term) {
       el.title = [w.term.running, w.term.cwd, w.title].filter(Boolean).join(' — ') + ` · pid ${w.pid}`;
       dressTerm(el, w);
