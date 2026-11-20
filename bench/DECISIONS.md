@@ -455,7 +455,7 @@ Each entry:
 
 ### A placeholder can be resized like a terminal
 - **Q:** Can a placeholder (a terminal a restart took, or one Claude quit in) be moved and resized like a live terminal?
-- **A:** Yes. It is dragged by its caption, as before, and has the same corner grip. Pulling it resizes the read-only screen to whole characters (the saved output reflows), snapping to the grid when let go, and shows the same `cols×rows` tag. The size is sent to the server with its spot (`cols` and `rows` in `PATCH /api/terminals/<id>`), so a reload keeps it. Restore and Resume start the new terminal at the placeholder's current spot and size. A placeholder can also be picked (a click on it, or the arrow keys, which count it among the tiles) and shows the same ring; Super+Enter then moves it a grid cell per arrow and Shift+arrows size it, saved as the mouse does. Enter and Space on it do nothing: it never takes typing, and Restore and Close stay on its buttons. It is still no window of the server's list, so bookmarks, the palette and search do not see it as a terminal. (Keyboard move and size added 2026-11-20.)
+- **A:** Yes. It is dragged by its caption, as before, and has the same corner grip. Pulling it resizes the read-only screen to whole characters (the saved output reflows), snapping to the grid when let go, and shows the same `cols×rows` tag. The size is sent to the server with its spot (`cols` and `rows` in `PATCH /api/terminals/<id>`), so a reload keeps it. Restore and Resume start the new terminal at the placeholder's current spot and size. A placeholder can also be picked (a click on it; the arrow keys no longer pick, superseded 2026-11-20, see "Arrow keys pan the board") and shows the same ring; Super+Enter then moves it a grid cell per arrow and Shift+arrows size it, saved as the mouse does. Enter and Space on it do nothing: it never takes typing, and Restore and Close stay on its buttons. It is still no window of the server's list, so bookmarks, the palette and search do not see it as a terminal. (Keyboard move and size added 2026-11-20.)
 - **Why:** A placeholder kept its old size and could cover the tile it was restored next to, or sit too small to read.
 - **Status:** trying
 
@@ -481,4 +481,16 @@ Each entry:
 - **Q:** Pressing a tool button always starts a new terminal. Can the button show that its last run is still going, and not start another?
 - **A:** Yes. The button remembers the terminal it started (`run` on its card, kept by the server, so a reload or another page knows it). While that run's COMMAND is going the button shows a dot and "running", and pressing it brings that terminal into view, picked, instead of starting another. Shift+press, or the ↻ beside it, restarts: Ctrl-C to the old terminal, close it, start afresh; a `confirm: true` tool still wants the second press for that. "Running" means the command, not the terminal: the wrapper prints an OSC 777 `bench-tool-done` marker when the command ends, just before the leftover shell starts, and the page notes it from the terminal's output (a reload replays the scrollback, so it is found again). After that, or when the terminal is closed, ended, or only a husk after a reboot, the button is idle and pressing it runs the tool afresh (Restart bench, Deploy).
 - **Why:** The leftover shell keeps a finished one-shot tool's terminal open, so "terminal open" would have kept those buttons stuck on running. A marker in the output needs no change to pty_server. Until a terminal is first drawn after a reload, a finished run may show as running for a moment.
+- **Status:** trying
+
+### Shift+click selects several; `.` opens the menu, `x` twice closes
+- **Q:** Can several tiles be closed at once, without a bare key that closes by accident?
+- **A:** Shift+click adds a tile to, or takes it from, a selection (same ring as a pick; "N selected" shows from two). Plain click or background click or Esc clears it. `.` in NORMAL opens the ⋯ menu of the picked tile (with several: of the last added); every item shows its key and Close is `x`. With several selected the item reads "Close N"; the first `x` (or click) only arms it ("Close 3 (1 terminal)? x again"), the second closes them all by each kind's usual close path, leaves nothing picked and does not move the view, and toasts "Closed N". A drag still moves only the tile grabbed. Added 2026-11-20.
+- **Why:** A bare `x` would close tiles by accident; the second press is the confirmation, so there is no dialog. Moving the selection together was explicitly not wanted.
+- **Status:** trying
+
+### Arrow keys pan the board
+- **Q:** What do the arrow keys do in NORMAL now that they no longer pick a tile?
+- **A:** Pan the board a quarter of the view (Shift: three quarters). hjkl do nothing in NORMAL. Super+Enter keeps arrows and hjkl for moving and sizing. Supersedes picking the nearest tile with arrows/hjkl (2026-11-20). Picking is by click, the `/` list, bookmarks or the palette.
+- **Why:** The user dropped arrow picking.
 - **Status:** trying

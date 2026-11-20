@@ -181,10 +181,11 @@ Architecture (`a`, or `:` and pick it) draws the pieces and who talks to whom: t
 server, X, and the terminal server that will hold shells the page starts
 itself. None of that plumbing shows on the surface, so it gets a picture.
 
-Click a window — or pick one with the arrow keys / `hjkl` and press Enter — to
-focus it, which also switches to its workspace; the arrow keys still walk the
-workspaces the windows came from, in order — left and right go to the nearest
-tile that way on the surface. `/` (or `:` Filter) opens the filter box, hidden until then; it filters on every word you type, anywhere in a
+Click a window — and press Enter — to
+focus it, which also switches to its workspace. The arrow keys pan the board (a
+quarter of the view, three quarters with Shift). Shift+click gathers several
+tiles; `.` opens the picked tile's ⋯ menu, where `x` closes it (pressed twice
+for several). `/` (or `:` Filter) opens the filter box, hidden until then; it filters on every word you type, anywhere in a
 tile's title, app, running program, folder, card address or `ws2`; Enter jumps
 to the first match, `Esc` clears and hides it (then leaves the full window); it folds away when it loses focus empty.
 `:` opens a palette: type any words to find an action (with its key shown, so
