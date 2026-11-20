@@ -858,9 +858,31 @@ function disarm() {
   const pic = w && tileEls.get(id) && tileEls.get(id).querySelector('.pic.tool');
   if (pic) toolCard(pic, w);
 }
+// A button knows the terminal it last started (`run` on its card, kept by the
+// server so a reload or another page knows it too). "Running" means the tool's
+// COMMAND is still going, not that its terminal is open: the wrapper in
+// bench_server.py prints an OSC 777 marker when the command ends, just before
+// the leftover shell starts, and mount() notes it in toolDone. A session that
+// is gone from the list (closed, ended, a reboot's husk) is not running either.
+const toolDone = new Set();           // session ids whose command has finished
+function toolRunning(l) {
+  return !!(l.run && !toolDone.has(l.run) && data && data.windows.some(v => v.term && v.term.session === l.run && v.term.alive));
+}
+// a card is only redrawn when its key changes, so running goes into the key
+const redrawTools = () => { if (data) render(); };
 const toolBusy = new Set();           // ids of buttons with a press still resolving
-async function runTool(l, w) {
+async function runTool(l, w, restart) {
   if (toolBusy.has(w.id)) return;
+  const live = toolRunning(l);
+  // the confirming second press of a restart is a restart, however it is made
+  if (armed && armed.id === w.id && armed.restart) restart = true;
+  // pressing a running tool shows its terminal; only Shift or ↻ starts it over
+  if (live && !restart) {
+    const id = 'web:' + l.run;
+    if (!markTile(id)) return;
+    disarm();
+    return jumpCard(id);
+  }
   const wasArmed = !!(armed && armed.id === w.id);
   if (wasArmed) disarm();
   toolBusy.add(w.id);
@@ -870,14 +892,26 @@ async function runTool(l, w) {
   if (!t) return void toast(`No tool ${esc(l.tool)} in ${esc(shortPath(l.dir))} any more`, 4000);
   if (t.confirm && !wasArmed) {
     disarm();
-    armed = { id: w.id, w, timer: setTimeout(disarm, ARM_MS) };
+    armed = { id: w.id, w, restart: live, timer: setTimeout(disarm, ARM_MS) };
     const pic = tileEls.get(w.id) && tileEls.get(w.id).querySelector('.pic.tool');
     if (pic) toolCard(pic, w);
     return;
   }
   disarm();
-  const [x, y] = seatOf(w);
-  newTerm({ argv: t.argv, cwd: l.dir, corner: [x + w.w + GRID, y] });
+  toolBusy.add(w.id);                 // closing the old terminal takes a moment: a double press must not start two
+  try {
+    if (live) {
+      // Ctrl-C first, as the user would, then close the tile the way its own
+      // close button does; the DELETE kills whatever is left
+      const old = terms.get(l.run);
+      if (old && old.ws && old.ws.readyState === 1) old.ws.send(utf8.encode('\x03'));
+      await new Promise(r => setTimeout(r, 150));
+      await closeTerm(l.run);
+    }
+    const [x, y] = seatOf(w);
+    const id = await newTerm({ argv: t.argv, cwd: l.dir, corner: [x + w.w + GRID, y] });
+    if (id) { l.run = id; sendCard(l, { run: id }); render(); }
+  } finally { toolBusy.delete(w.id); }
 }
 function closeTools() {
   removeEventListener('pointerdown', outside);
@@ -1809,7 +1843,7 @@ async function askGitHub() {
 // what a card shows; it is drawn again only when this changes
 function cardKey(w) {
   const gh = ghOf(w);
-  return w.link.tool ? ['tool', w.link.tool, w.link.dir, w.link.cmd, w.link.about].join('\n')
+  return w.link.tool ? ['tool', w.link.tool, w.link.dir, w.link.cmd, w.link.about, toolRunning(w.link)].join('\n')
     : w.link.image ? w.link.image
     : w.link.note ? 'note ' + (noteEdit === w.id ? 'edit' : w.link.text || '')
     : w.link.diff ? diffKey(w)
@@ -1843,13 +1877,16 @@ function imgCard(pic, w) {
 function toolCard(pic, w) {
   pic.className = 'pic card tool';
   pic.style.cssText = '';
-  pic.innerHTML = `<button class="runbtn" title="Run ${esc(w.link.tool)} in a new terminal (or Enter)">▶ <span></span></button>`
+  const live = toolRunning(w.link);
+  pic.innerHTML = `<button class="runbtn${live ? ' live' : ''}" title="${live ? 'Running: show its terminal (Shift to restart)'
+      : 'Run ' + esc(w.link.tool) + ' in a new terminal (or Enter)'}">${live ? '<i class="rundot"></i>' : '▶ '}<span></span></button>`
+    + (live ? '<button class="rerun" title="Restart: stop it and run it again">↻</button>' : '')
     + `<code class="cli"></code><div class="url"></div>`;
-  pic.querySelector('.runbtn span').textContent = w.link.tool;
+  pic.querySelector('.runbtn span').textContent = live ? w.link.tool + ' · running' : w.link.tool;
   pic.querySelector('.cli').textContent = w.link.cmd || '';   // what it runs, as the file says now
   if (armed && armed.id === w.id) {   // waiting for the second press: say so on the button
     pic.querySelector('.runbtn').classList.add('armed');
-    pic.querySelector('.runbtn span').textContent = 'Press again to run ' + w.link.tool;
+    pic.querySelector('.runbtn span').textContent = 'Press again to ' + (live ? 'restart ' : 'run ') + w.link.tool;
   }
   pic.querySelector('.url').textContent = [shortPath(w.link.dir), w.link.about].filter(Boolean).join(' · ');
 }
@@ -2188,6 +2225,13 @@ function mount(w) {
   // the title the shell sets (OSC 0/2) is what a desktop terminal shows, and
   // xterm.js hears it as it streams by, well before the next poll would
   term.onRender(() => termDrew(id));
+  // a project tool's command has finished (see toolRunning); a reload replays
+  // the scrollback through here too, so the marker is found again
+  term.parser.registerOscHandler(777, d => {
+    if (d !== 'bench-tool-done') return false;
+    if (!toolDone.has(id)) { toolDone.add(id); redrawTools(); }
+    return true;
+  });
   term.onTitleChange(s => {
     t.title = s;
     if (t.cap && s) t.cap.querySelector('.t2').textContent = s;
@@ -2689,7 +2733,8 @@ async function newTerm({ claude, argv, group, cwd, corner } = {}) {
     await poll();
     const v = data.windows.find(v => v.id === 'web:' + made.id);
     if (v) { layout[v.id] = clearSpot(seatOf(v), v.id); saveLayout(); }
-    return pickIt();
+    pickIt();
+    return made.id;
   }
   await poll();                  // its size is only known once it is listed
   const w = data.windows.find(v => v.id === 'web:' + made.id);
@@ -2697,6 +2742,7 @@ async function newTerm({ claude, argv, group, cwd, corner } = {}) {
   layout[w.id] = clearSpot(corner || [at[0] - w.w / 2, at[1] - w.h / 2], w.id);
   saveLayout();
   pickIt();
+  return made.id;                // a tool's button keeps it, to know its run
 }
 
 // The ⋯ answers a click, not a press: a press that moves is a pan or a drag
@@ -2933,7 +2979,10 @@ function renderCanvas(match) {
         const win = tileEls.get(w.id).win;
         if (e.target.closest('.md a')) return;    // a link in a document is for following
         // answered here for the same reason as a terminal's close button below
-        if (e.target.closest('.runbtn')) { e.preventDefault(); e.stopPropagation(); return runTool(win.link, win); }
+        if (e.target.closest('.runbtn, .rerun')) {
+          e.preventDefault(); e.stopPropagation();
+          return runTool(win.link, win, e.shiftKey || !!e.target.closest('.rerun'));
+        }
         if (e.target.closest('.diffbtn')) { e.preventDefault(); e.stopPropagation(); return openDiff(win); }
         if (win.term) {
           // the drag takes the pointer captive, and a captured pointer's click

@@ -476,3 +476,9 @@ Each entry:
 - **A:** No. A background drag that actually moves keeps the keyboard in the terminal you were typing in (still INSERT). A still click on the background still leaves typing, and a press on another tile works as before. Leaving typing is logged as `leave` with `why` of `bg`, `tile`, `card` or `key` (Ctrl+Space, or Super+Enter from INSERT); names only, no text. Known trade-off: keys typed while a pan is in progress go to the terminal.
 - **Why:** The usage log showed 121 drops to NORMAL in a week from panning, each costing an Enter to get back.
 - **Status:** trying
+
+### A tool button knows its run is still going
+- **Q:** Pressing a tool button always starts a new terminal. Can the button show that its last run is still going, and not start another?
+- **A:** Yes. The button remembers the terminal it started (`run` on its card, kept by the server, so a reload or another page knows it). While that run's COMMAND is going the button shows a dot and "running", and pressing it brings that terminal into view, picked, instead of starting another. Shift+press, or the ↻ beside it, restarts: Ctrl-C to the old terminal, close it, start afresh; a `confirm: true` tool still wants the second press for that. "Running" means the command, not the terminal: the wrapper prints an OSC 777 `bench-tool-done` marker when the command ends, just before the leftover shell starts, and the page notes it from the terminal's output (a reload replays the scrollback, so it is found again). After that, or when the terminal is closed, ended, or only a husk after a reboot, the button is idle and pressing it runs the tool afresh (Restart bench, Deploy).
+- **Why:** The leftover shell keeps a finished one-shot tool's terminal open, so "terminal open" would have kept those buttons stuck on running. A marker in the output needs no change to pty_server. Until a terminal is first drawn after a reload, a finished run may show as running for a moment.
+- **Status:** trying
