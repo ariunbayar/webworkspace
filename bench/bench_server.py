@@ -470,6 +470,31 @@ USAGE_MAX = 20 * 1024 * 1024        # past this it stops growing rather than fil
 _usage_lock = threading.Lock()
 
 
+# "Debug an area" on the page: what it recorded while a part of the board was
+# watched, one JSON line each, for someone (Claude) to read afterwards. The
+# folder is fixed and the name made here, so a page can only add files of its own.
+DEBUG_DIR = os.path.join(os.path.dirname(LINKS_FILE), "debug")
+DEBUG_MAX = 4 * 1024 * 1024
+_debug_lock = threading.Lock()
+
+
+def write_debug(body):
+    if not isinstance(body, dict) or not isinstance(body.get("header"), dict) or not isinstance(body.get("events"), list):
+        return None
+    head = dict(body["header"], bench_started=STARTED, written=time.strftime("%Y-%m-%dT%H:%M:%S"))
+    lines = [json.dumps(head)] + [json.dumps(e) for e in body["events"] if isinstance(e, dict)]
+    with _debug_lock:
+        os.makedirs(DEBUG_DIR, exist_ok=True)
+        stamp = time.strftime("%Y%m%d-%H%M%S")
+        path, n = os.path.join(DEBUG_DIR, stamp + ".jsonl"), 1
+        while os.path.exists(path):      # two stops in one second
+            n += 1
+            path = os.path.join(DEBUG_DIR, "%s-%d.jsonl" % (stamp, n))
+        with open(path, "w") as f:
+            f.write("\n".join(lines) + "\n")
+    return path
+
+
 def log_usage(events):
     if not isinstance(events, list):
         return 0
@@ -1323,6 +1348,18 @@ class Handler(BaseHTTPRequestHandler):
             except (ValueError, json.JSONDecodeError):
                 return self._send(json.dumps({"error": "bad request"}), code=400)
             return self._send(json.dumps({"kept": log_usage(body)}))
+        if self.path.startswith("/api/debug"):
+            try:
+                n = int(self.headers.get("Content-Length", 0))
+                if n > DEBUG_MAX:
+                    return self._send(json.dumps({"error": "log too big"}), code=413)
+                body = json.loads(self.rfile.read(n) or b"{}")
+            except (ValueError, json.JSONDecodeError):
+                return self._send(json.dumps({"error": "bad request"}), code=400)
+            path = write_debug(body)
+            if not path:
+                return self._send(json.dumps({"error": "give a header and events"}), code=400)
+            return self._send(json.dumps({"path": path}), code=201)
         if self.path.startswith("/api/ping"):
             try:
                 n = int(self.headers.get("Content-Length", 0))

@@ -463,3 +463,9 @@ Each entry:
 - **A:** Yes, by the same rules and code. Each step lights the terminal edge the card would attach to; leaving the mode (Enter or Esc) attaches it there, snapped just off the edge, or detaches it if it was moved off its terminal's edge. An attached card is not pulled back to its terminal while it is in hand. A terminal moved in the mode carries its attached cards along, as a drag does. Sizing a card (Shift+arrows) relights the edge too.
 - **Why:** Only the mouse could attach or detach a card, so a keyboard-only move left it loose or stuck.
 - **Status:** trying
+
+### Debug an area records a part of the board for Claude
+- **Q:** When tiles misbehave (a card flickering between two spots), how does Claude get what happened?
+- **A:** `d` (palette: "Debug an area") lets you drag a rectangle in board coordinates; a red dashed frame with an event count, the time and a Stop button marks it, and never blocks the tiles under it. Until you stop, it logs every `place()` that changes a tile touching the area (old and new rect, zoom, the call chain as function names, whether a drag, resize or Super+Enter is on), terminals' server size beside the page's measured one on each poll, attached cards' stick and spot when they change, each poll's start and end, and input as names only (pointer down/up with the tile id, wheel, board keys; never keys typed in a terminal, document or box). Stop sends it to `POST /api/debug`, which writes `~/.local/state/winlist/debug/<time>.jsonl` (header line first) and answers the path; a path card for it appears beside the area. Capped at 50,000 events and about 1.8 MB (the text viewer's limit is 2 MB), with a `truncated` line when it hits either.
+- **Why:** The flicker needed the order of moves, polls and size disagreements, which no screenshot shows. The log is the usage log's privacy rule applied to a timeline.
+- **Status:** trying

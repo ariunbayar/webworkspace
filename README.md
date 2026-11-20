@@ -225,6 +225,13 @@ anything typed. `python3 bench/usage_report.py` reads it back per day;
 `--split YYYY-MM-DD` compares the rates before and from a date, `--days N`
 keeps to the last N days.
 
+Debug an area (`d`, or the palette): drag a rectangle on the board, keep
+working in it, press `d` again or Stop. The page records where tiles are put
+and by what call chain, terminal sizes (server vs page), attached cards, polls
+and input as key names only, and sends it to `POST /api/debug` (max 4 MB). The
+server writes `~/.local/state/winlist/debug/<YYYYmmdd-HHMMSS>.jsonl` (first
+line a header) and answers `{"path": ...}`; the page adds a card for the file.
+
 Claude status
 ---
 
