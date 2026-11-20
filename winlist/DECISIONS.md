@@ -438,4 +438,10 @@ Each entry:
 - **Q:** Can an attached card look physically joined to its terminal, beyond the 🔗 in its caption?
 - **A:** Yes: each terminal that has attached cards gets a soft backdrop behind it and its cards: one box per tile (the terminal and each card), padded by the attach gap, rounded corners. All boxes are one opaque colour (the accent at 18% over the page background; no state colours, no border), so they merge into a single outline hugging the tiles with no empty tinted gaps. It sits over group backgrounds and under tiles, ignores the mouse, follows drags, zoom and pan, and goes when the last card is detached or closed. Hidden (filtered) tiles are left out. The 🔗 stays. A small "bridge" tab across the gap was tried first and dropped: it was too small to notice and needed overflow tricks on the tile.
 - **Why:** The 🔗 is easy to miss; the gap between a card and its terminal reads as "nearly touching" rather than "attached".
+
+### An attached card's spot is worked out by each page, not stored
+- **Q:** Why did an attached card flicker between its terminal and far away, and its backdrop come and go?
+- **A:** Each page measures a terminal's size itself (font metrics differ, e.g. 648 vs 456 wide), and every page was saving the card's x/y it computed from that. The poll then brought the other page's value back, so the card jumped back and forth. Now an attached card's spot comes from `stuckSpot` on each page (also when the poll brings its server x/y in), and `saveLayout` does not send x/y for an attached card whose terminal is on the board. Only a card with no server spot yet (arrival) sends one; a detached card keeps and saves its own x/y.
+- **Why:** The position is derived from the terminal's size, which is local; sharing a derived value between pages that disagree on its input makes them fight.
+- **Status:** Done.
 - **Status:** trying
