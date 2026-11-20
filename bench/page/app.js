@@ -3681,7 +3681,8 @@ function debugArea() {
     Object.assign(box.style, { left: Math.min(sx, e.clientX) - bd.left + 'px', top: Math.min(sy, e.clientY) - bd.top + 'px',
       width: Math.abs(e.clientX - sx) + 'px', height: Math.abs(e.clientY - sy) + 'px' });
   };
-  shade.onpointerdown = e => { down = true; sx = e.clientX; sy = e.clientY; shade.setPointerCapture(e.pointerId); draw(e); };
+  shade.onpointerdown = e => { e.stopPropagation(); e.preventDefault(); down = true;   // the board must not pan as well
+    sx = e.clientX; sy = e.clientY; shade.setPointerCapture(e.pointerId); draw(e); };
   shade.onpointermove = e => { if (down) draw(e); };
   shade.onpointerup = e => {
     done();
