@@ -433,3 +433,9 @@ Each entry:
 - **A:** Yes. Same link means the same URL ignoring a trailing `/` and a `#fragment`, the same image, or the same file path. Notes, tool and diff cards, restores and cards added from the page itself are never matched, and only cards still on the board count (a closed one gets a new card). The existing card is not moved or re-attached, even if another terminal sent it, and the view does not move. It pulses like a new arrival, and a toast "Already open: <title>" jumps to it when clicked. The API answers 200 with the card and `"repeat": true` (201 for a new one).
 - **Why:** Sending the same page twice piled up duplicate cards.
 - **Status:** done
+
+### Attached cards show a bridge to their terminal
+- **Q:** Can an attached card look physically joined to its terminal, beyond the 🔗 in its caption?
+- **A:** Yes: a small tab in the terminal's accent colour (40% of the card's edge, at most 48px, rounded, slightly see-through) spans the gap on the card's edge that faces the terminal, centred on that edge. It is hidden while the card is being dragged. The 🔗 stays.
+- **Why:** The 🔗 is easy to miss; the gap between a card and its terminal reads as "nearly touching" rather than "attached".
+- **Status:** trying

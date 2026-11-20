@@ -1954,6 +1954,7 @@ function place(el, w) {
   // a terminal's caption stays at screen size, so its bottom edge moves with
   // the zoom: a card under it moves with that edge
   if (st && st.capH) y += st.capH / zoom - st.capH;
+  el.style.setProperty('--gap', STICK_GAP * zoom + 'px');   // the bridge of a stuck card spans this
   el.style.left = Math.round(x * zoom) + 'px';      // on whole pixels, as the surface is
   el.style.top = Math.round(y * zoom) + 'px';
   const scaled = zoom === 1 ? '' : `scale(${zoom})`;  // at 1:1 nothing is resampled at all
@@ -2520,7 +2521,10 @@ function followSticks() {
   for (const w of data.windows) {
     if (!w.link) continue;
     const el = tileEls.get(w.id);
-    if (el) el.classList.toggle('stuck', !!w.link.stick);
+    if (el) {
+      el.classList.toggle('stuck', !!w.link.stick);
+      if (w.link.stick) el.dataset.stuck = w.link.stick.side; else delete el.dataset.stuck;
+    }
     if (!w.link.stick || w.id === stickDrag) continue;
     const at = stuckSpot(w), had = layout[w.id];
     if (!at || (had && had[0] === at[0] && had[1] === at[1])) continue;
