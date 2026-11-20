@@ -19,9 +19,9 @@ const newId = () => Date.now().toString(36) + (idCount++ % 36).toString(36);
 // The arrangement lives here: where each tile sits, kept per tile id, so a
 // terminal we have not placed yet falls back to where the server laid it.
 const store = {
-  get(k, fb) { try { return JSON.parse(localStorage.getItem('winlist.' + k)) ?? fb; }
+  get(k, fb) { try { return JSON.parse(localStorage.getItem('bench.' + k)) ?? fb; }
                catch { return fb; } },
-  set(k, v) { try { localStorage.setItem('winlist.' + k, JSON.stringify(v)); } catch {} },
+  set(k, v) { try { localStorage.setItem('bench.' + k, JSON.stringify(v)); } catch {} },
 };
 
 let data = null, failures = 0, sel = null;
@@ -60,7 +60,7 @@ function backupLocal() {
   const had = Object.fromEntries(['groups', 'layout', 'scales'].map(k => [k, store.get(k, null)]).filter(([, v]) => v));
   if (!Object.keys(had).length) return;
   if (!store.get('arrangement.backup', null)) store.set('arrangement.backup', { ...had, at: new Date().toISOString() });
-  Object.keys(had).forEach(k => { try { localStorage.removeItem('winlist.' + k); } catch {} });
+  Object.keys(had).forEach(k => { try { localStorage.removeItem('bench.' + k); } catch {} });
 }
 function saveArrange() {
   if (!arrangeKnown) return;           // not yet known whether the server's wins
@@ -773,14 +773,14 @@ function rename(g, name) {
   };
 }
 
-// the tools chip: what the group's folder can run, from its tmp/.winlist-tools.yml
+// the tools chip: what the group's folder can run, from its tmp/.bench-tools.yml
 // file, read afresh each time it is opened
 async function showTools(g, chip) {
   closeTools();
   const res = await fetch('/api/tools?dir=' + encodeURIComponent(g.dir))
     .then(r => r.json()).catch(() => null);
   if (!res || !res.tools) return void toast('Could not read the tools: ' + esc((res && res.error) || 'no answer from the server'), 4000);
-  if (!res.tools.length) return void toast(`No tools in ${esc(shortPath(g.dir))}: list them in <code>tmp/.winlist-tools.yml</code> (<code>- name: … run: …</code>)`, 6000);
+  if (!res.tools.length) return void toast(`No tools in ${esc(shortPath(g.dir))}: list them in <code>tmp/.bench-tools.yml</code> (<code>- name: … run: …</code>)`, 6000);
   const menu = document.createElement('div');
   menu.id = 'tools';
   menu.setAttribute('role', 'menu');
@@ -825,7 +825,7 @@ async function toolButton(g, t) {
 }
 
 // a tool is run afresh each press, in a new terminal beside its button, with
-// whatever the script or tmp/.winlist-tools.yml says now. One marked
+// whatever the script or tmp/.bench-tools.yml says now. One marked
 // `confirm: true` (a deploy) runs on a second press within ARM_MS; the first
 // only arms the button, so a slip starts nothing
 const ARM_MS = 3000;
@@ -942,7 +942,7 @@ function renderGroups() {
 // away — and before the first answer too, when there is nothing else to show
 function showTrouble() {
   const lost = restoring ? [] : ((data && data.lost) || []).filter(r => !r.ended);   // not the ones Claude quit in
-  const trouble = failures >= 2 ? `Lost the server — retrying. Is it running? <code>python3 winlist/winlist_server.py</code>`
+  const trouble = failures >= 2 ? `Lost the server — retrying. Is it running? <code>python3 bench/bench_server.py</code>`
     : data && data.error ? esc(data.error)
     : lost.length ? `${lost.length} terminal${lost.length > 1 ? 's' : ''} did not survive the restart. `
       + `<button data-act="restore">Restore ${lost.length > 1 ? 'all' : ''}</button> <button data-act="dismiss">Dismiss ${lost.length > 1 ? 'all' : ''}</button>`
@@ -1131,7 +1131,7 @@ function status(match, q) {
       + `<kbd>Enter</kbd>) to go into it.`
     + (!data.pty || !data.pty.on ? ''
        : data.pty.error
-       ? ` No terminals: ${esc(data.pty.error)}. Start it with <code>python3 winlist/pty_server.py</code>.`
+       ? ` No terminals: ${esc(data.pty.error)}. Start it with <code>python3 bench/pty_server.py</code>.`
        : ` A terminal lives in <code>pty_server.py</code>, not in this tab, so a reload picks it back up.`);
 }
 
@@ -1502,7 +1502,7 @@ async function moveCardsOut() {
     try { await fetch('/api/links/' + encodeURIComponent(id), { method: 'DELETE' }); } catch {}
   }
   store.set('layout', layout);
-  if (ok) ['links', 'taken'].forEach(k => localStorage.removeItem('winlist.' + k));
+  if (ok) ['links', 'taken'].forEach(k => localStorage.removeItem('bench.' + k));
 }
 
 // a card with no name of its own is called what it points at: the file's name,
@@ -1668,7 +1668,7 @@ function editNote(id) {
   const ta = tileEls.get(id) && tileEls.get(id).querySelector('.notetxt');
   if (ta) { ta.focus({ preventScroll: true }); ta.setSelectionRange(ta.value.length, ta.value.length); }
 }
-// y hands the picked tile to Claude: a link it can ask winlist about, which
+// y hands the picked tile to Claude: a link it can ask bench about, which
 // says what the tile is and how to get at it (a note's text and how to change
 // it, a file's path, a terminal's folder and output, a window's process)
 function refOf(id) {
@@ -1880,7 +1880,7 @@ function announce(id) {
 }
 
 // A card sent from outside names where it came from, or is left in the Inbox:
-// beside the terminal it says (WINLIST_TERM), else in the group whose folder
+// beside the terminal it says (BENCH_TERM), else in the group whose folder
 // holds its cwd, the deepest folder first. Either way the view is not moved.
 function arrivedCard(l) {
   const w = linkWin(l);

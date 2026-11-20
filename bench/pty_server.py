@@ -41,9 +41,11 @@ SCROLLBACK = 256 * 1024   # bytes kept per session, enough to redraw a full scre
 MAX_SESSIONS = 32
 SAVED = 64 * 1024         # bytes of each session's output kept on disk, for after a reboot
 SAVE_EVERY = 2.0          # seconds between saves, and only of what changed
-STATE = os.path.join(os.environ.get("XDG_STATE_HOME") or os.path.expanduser("~/.local/state"), "winlist")
+# The state folder keeps its pre-rename name on purpose, so existing boards, cards and terminals carry over.
+STATE_NAME = "winlist"   # deliberate: ~/.local/state/winlist (the project is now called bench)
+STATE = os.path.join(os.environ.get("XDG_STATE_HOME") or os.path.expanduser("~/.local/state"), STATE_NAME)
 TERMS_DIR = os.path.join(STATE, "terms")      # <id>.out: the output, <id>.cmds: the last commands
-RCFILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "winlist_bashrc")
+RCFILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "bench_bashrc")
 KEEP_DEAD = 600           # seconds a finished session stays readable
 READ_CHUNK = 65536
 
@@ -110,8 +112,10 @@ class Session:
         # here, on the near side of the fork, and handed to exec as a whole.
         env = dict(os.environ)
         env["TERM"] = "xterm-256color"
-        env["WINLIST_TERM"] = sid       # so a hook in it can ping its own tile
-        env["WINLIST_CMDS"] = os.path.join(TERMS_DIR, sid + ".cmds")   # see winlist_bashrc
+        env["BENCH_TERM"] = sid       # so a hook in it can ping its own tile
+        env["BENCH_CMDS"] = os.path.join(TERMS_DIR, sid + ".cmds")   # see bench_bashrc
+        env["WINLIST_TERM"] = env["BENCH_TERM"]      # the old names too: pieces started before the rename read these
+        env["WINLIST_CMDS"] = env["BENCH_CMDS"]
         # the terminal knows its own size; a stale copy in the environment
         # would only contradict it
         env.pop("COLUMNS", None)
@@ -314,7 +318,7 @@ class Session:
 
 
 def remembered():
-    """The highest session number winlist has on record. A new pty_server counts
+    """The highest session number bench has on record. A new pty_server counts
     from past it, so an old terminal's husk is never mistaken for a new session."""
     top = 0
     try:
@@ -659,7 +663,7 @@ class Handler(BaseHTTPRequestHandler):
 def serve(host="127.0.0.1", port=DEFAULT_PORT, shell=None, max_sessions=MAX_SESSIONS):
     """Start the terminal server on threads of its own and hand it back.
 
-    Whoever calls this owns it — `winlist_server.py` runs it inside itself so
+    Whoever calls this owns it — `bench_server.py` runs it inside itself so
     there is one program to start and one to stop, and `main()` below runs it
     the same way and then simply waits. Raises OSError if the port is taken,
     which usually means one of these is already running there.

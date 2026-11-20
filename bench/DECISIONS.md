@@ -1,6 +1,6 @@
-# Winlist decisions
+# Bench decisions
 
-What was decided about winlist, and why. Read this before proposing or
+What was decided about bench, and why. Read this before proposing or
 building anything. A later session should reason from it, not argue with it.
 A decision changes only when the user changes it; when they do, edit its
 entry and date it.
@@ -27,7 +27,7 @@ Each entry:
 - Status: standing rule
 
 ### Servers
-- Q: Who starts or restarts the winlist servers (8766, 8767)?
+- Q: Who starts or restarts the bench servers (8766, 8767)?
 - A: The user, always, even after a merge. Say when a restart is needed.
 - Why: they run the board the user is working in.
 - Status: standing rule
@@ -92,7 +92,7 @@ Each entry:
 - Q: What is a group's folder for?
 - A: A group acts as a virtual folder. New terminals and Claude started in
   the group open in its folder. Existing tiles are not moved or changed.
-- Why: this brings the `ak` "Claude in a project" menu into winlist.
+- Why: this brings the `ak` "Claude in a project" menu into bench.
 - Status: done
 
 ### Claude in a group
@@ -109,7 +109,7 @@ Each entry:
 
 ### #30 Caption prefix
 - Q: How do you tell which project a tile belongs to?
-- A: winlist puts the group name, or else the folder's last part, in front
+- A: bench puts the group name, or else the folder's last part, in front
   of each caption automatically.
 - Why: consistent, with nothing to remember. No instruction to Claude is
   involved.
@@ -149,7 +149,7 @@ Each entry:
 
 ### Sending a card
 - Q: How does Claude send a card?
-- A: `curl -s localhost:8766/api/links -d "{\"url\":\"...\",\"title\":\"...\",\"term\":\"$WINLIST_TERM\",\"cwd\":\"$PWD\"}"`.
+- A: `curl -s localhost:8766/api/links -d "{\"url\":\"...\",\"title\":\"...\",\"term\":\"$BENCH_TERM\",\"cwd\":\"$PWD\"}"`.
   Cards the page adds itself send `from: 'page'`.
 - Why: so the card lands by its terminal (#6), and the page's own cards don't go to the Inbox.
 - Status: standing rule
@@ -183,7 +183,7 @@ Each entry:
 - A: `y` copies a link to `/api/what?ref=wl:<kind>:<id>` for the picked tile.
   Claude asks it and gets what the tile is and how to get at it. A note can
   be read and changed this way, through the server, since it is not a file.
-- Why: it works with any Claude, inside winlist or not, with nothing to
+- Why: it works with any Claude, inside bench or not, with nothing to
   remember. The link explains itself where a bare id would not.
 - Status: built 2026-10-26
 
@@ -270,7 +270,7 @@ Each entry:
 
 ### #41 The usage log records what you type in a group's folder or name
 - Q: The log spelled out text typed into a group's name and folder chips. Fix it how, and what about the lines already logged?
-- A: Fix + scrub. The page now counts anything that takes text as typing (contenteditable, open dialogs and menus too), and logs only the keys it acts on by name; any other key is 'other', with no character. `winlist/scrub_usage.py` masks the old lines once, keeping a backup beside the log. The report applies the same mask whenever it reads, so anything that slips through is hidden: a run of keys less than 3 s apart that holds a non-page character was typing, and every character in it becomes 'char'.
+- A: Fix + scrub. The page now counts anything that takes text as typing (contenteditable, open dialogs and menus too), and logs only the keys it acts on by name; any other key is 'other', with no character. `bench/scrub_usage.py` masks the old lines once, keeping a backup beside the log. The report applies the same mask whenever it reads, so anything that slips through is hidden: a run of keys less than 3 s apart that holds a non-page character was typing, and every character in it becomes 'char'.
 - Why: the log's promise is "never what is typed"; folder paths were in it (found in the 2026-10-29 log review).
 ### Text stays sharp at 100%
 - Q: Text was still soft at "100%". Why?
@@ -286,7 +286,7 @@ Each entry:
 
 ### #23 Split app.js into modules
 - Q: Split the 3.2k-line app.js into ES modules, or not?
-- A: Not split; a parse check instead. `winlist/check_page.sh` parses every page script as the browser will (app.js as a module, index.html's inline scripts), and a GitHub workflow runs it on each PR that touches the page.
+- A: Not split; a parse check instead. `bench/check_page.sh` parses every page script as the browser will (app.js as a module, index.html's inline scripts), and a GitHub workflow runs it on each PR that touches the page.
 - Why: the page shares 39 top-level variables that many sections reassign, and a module cannot assign another's, so a split is a rewrite, not a move: risk with no visible gain. What broke the page in PR #85, a name declared twice, is a parse error in a module, which the check catches.
 - Status: done (PR)
 
@@ -376,7 +376,7 @@ Each entry:
 
 ### The desktop's own windows are gone from the board
 - Q: Keep showing the real GNOME/X11 windows as tiles?
-- A: No. The server no longer asks X anything for the board: no window list (xprop, xdotool), no workspace photographs (xwd, convert), no workspace grid (dconf), no focusing a real window (/api/focus), no /api/screen, and no --no-focus, --no-screens or --shot-width. /api/windows now lists our terminals only; cards, groups, pings and Claude state are unchanged. --open just runs xdg-open. ping_hook.sh only knows page terminals ($WINLIST_TERM). On the page: no window tiles, thumbnails or workspace cells; ↑↓←→ pick the nearest tile that way; Reset layout is gone (it only put windows back); ws2 is gone from the filter; help, footer and the architecture dialog say so. xterm_look() still reads xrdb for the terminal colours.
+- A: No. The server no longer asks X anything for the board: no window list (xprop, xdotool), no workspace photographs (xwd, convert), no workspace grid (dconf), no focusing a real window (/api/focus), no /api/screen, and no --no-focus, --no-screens or --shot-width. /api/windows now lists our terminals only; cards, groups, pings and Claude state are unchanged. --open just runs xdg-open. ping_hook.sh only knows page terminals ($BENCH_TERM). On the page: no window tiles, thumbnails or workspace cells; ↑↓←→ pick the nearest tile that way; Reset layout is gone (it only put windows back); ws2 is gone from the filter; help, footer and the architecture dialog say so. xterm_look() still reads xrdb for the terminal colours.
 - Why: the user no longer uses the windows on the board (2026-11-02). About 700 lines go.
 - Status: done (PR)
 
@@ -388,7 +388,7 @@ Each entry:
 
 ### Tools file lives in tmp/, in YAML
 - **Q:** A script with several kinds of runs (flags) showed as one tool. How should a project list each kind?
-- **A:** In `tmp/.winlist-tools.yml`, a YAML list: each tool has `name`, `run` and an optional one-line `about` (else the first line of `run`). `run: |` holds a script over several lines. It is the only source: `tmp/*.sh` scripts are no longer listed by themselves and the old top-level `.winlist-tools` is not read, so the file is the whole list, in its order. A bad file shows its error when ▸ tools is opened.
+- **A:** In `tmp/.bench-tools.yml`, a YAML list: each tool has `name`, `run` and an optional one-line `about` (else the first line of `run`). `run: |` holds a script over several lines. It is the only source: `tmp/*.sh` scripts are no longer listed by themselves and the old top-level `.bench-tools` is not read, so the file is the whole list, in its order. A bad file shows its error when ▸ tools is opened.
 - **Why:** One line of `Name: command` mixed the title and the command, and could not hold more fields or a script over several lines; YAML can grow (a description now, more later). `tmp/` is in every project and kept out of git. One source means no duplicates and no surprise entries.
 - **Status:** done
 
@@ -439,3 +439,9 @@ Each entry:
 - **A:** Yes: each terminal that has attached cards gets a soft backdrop behind it and its cards: one box per tile (the terminal and each card), padded by the attach gap, rounded corners. All boxes are one opaque colour (the accent at 18% over the page background; no state colours, no border), so they merge into a single outline hugging the tiles with no empty tinted gaps. It sits over group backgrounds and under tiles, ignores the mouse, follows drags, zoom and pan, and goes when the last card is detached or closed. Hidden (filtered) tiles are left out. The 🔗 stays. A small "bridge" tab across the gap was tried first and dropped: it was too small to notice and needed overflow tricks on the tile.
 - **Why:** The 🔗 is easy to miss; the gap between a card and its terminal reads as "nearly touching" rather than "attached".
 - **Status:** trying
+
+### The project is called bench
+- **Q:** Should the project keep the name winlist?
+- **A:** No: renamed from winlist to bench on 2026-11-20, by a vote. The state folder `~/.local/state/winlist` keeps its old name so saved boards, cards and terminals survive. The `WINLIST_*` variables are still read as fallbacks (and set beside the `BENCH_*` ones in new terminals). A `winlist -> bench` symlink stays at the repo root for running processes and hooks. Ports, API paths and JSON field names are unchanged.
+- **Why:** The board is more than a list of windows now; a name that says what it is.
+- **Status:** done

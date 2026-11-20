@@ -1,5 +1,5 @@
 #!/bin/sh
-# Tell the winlist board what Claude is doing in this window. Meant for Claude
+# Tell the bench board what Claude is doing in this window. Meant for Claude
 # Code hooks: it must never fail, block or print, wherever it runs.
 # The event comes in the hook's JSON: Stop also pings (as it always has), the
 # rest only set the state shown in the tile's caption.
@@ -7,8 +7,9 @@ in=$(cat 2>/dev/null)
 ev=$(printf %s "$in" | sed -n 's/.*"hook_event_name" *: *"\([A-Za-z]*\)".*/\1/p' | head -n 1)
 sess=$(printf %s "$in" | sed -n 's/.*"session_id" *: *"\([A-Za-z0-9-]*\)".*/\1/p' | head -n 1)
 id=
-if [ -n "$WINLIST_TERM" ]; then
-  id="web:$WINLIST_TERM"
+BENCH_TERM=${BENCH_TERM:-${WINLIST_TERM:-}}   # WINLIST_TERM: set by a terminal started before the rename
+if [ -n "$BENCH_TERM" ]; then
+  id="web:$BENCH_TERM"
 fi
 [ -n "$id" ] || exit 0
 case "$ev" in
