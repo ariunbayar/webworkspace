@@ -2869,7 +2869,8 @@ function renderCanvas(match) {
     el.win = w;                       // the drag handler always wants the fresh one
     el.className = 'tile' + (w.term ? ' term' : '') + (w.link ? ' link' : '')
       + (match(w) ? '' : ' off') + (w.id === sel ? ' sel' : '') + (pings.has(w.id) ? ' ping' : '') + (arrivals.has(w.id) ? ' arrive' : '')
-      + (cstate[w.id] ? ' cs-' + cstate[w.id].state : '');
+      + (cstate[w.id] ? ' cs-' + cstate[w.id].state : '') + (w.link && w.link.stick ? ' stuck' : '');
+    if (w.link && w.link.stick) el.dataset.stuck = w.link.stick.side; else delete el.dataset.stuck;
     if (w.term) {
       el.title = [w.term.running, w.term.cwd, w.title].filter(Boolean).join(' — ') + ` · pid ${w.pid}`;
       dressTerm(el, w);
