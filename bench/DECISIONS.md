@@ -457,3 +457,9 @@ Each entry:
 - **A:** Yes. It is dragged by its caption, as before, and has the same corner grip. Pulling it resizes the read-only screen to whole characters (the saved output reflows), snapping to the grid when let go, and shows the same `cols×rows` tag. The size is sent to the server with its spot (`cols` and `rows` in `PATCH /api/terminals/<id>`), so a reload keeps it. Restore and Resume start the new terminal at the placeholder's current spot and size. Moving it with the keyboard is not done: a placeholder still can't be picked, so NORMAL-mode keys don't reach it.
 - **Why:** A placeholder kept its old size and could cover the tile it was restored next to, or sit too small to read.
 - **Status:** trying
+
+### Super+Enter attaches cards like a drag
+- **Q:** Can a card moved with Super+Enter attach to a terminal, or come off it, as it does with the mouse?
+- **A:** Yes, by the same rules and code. Each step lights the terminal edge the card would attach to; leaving the mode (Enter or Esc) attaches it there, snapped just off the edge, or detaches it if it was moved off its terminal's edge. An attached card is not pulled back to its terminal while it is in hand. A terminal moved in the mode carries its attached cards along, as a drag does. Sizing a card (Shift+arrows) relights the edge too.
+- **Why:** Only the mouse could attach or detach a card, so a keyboard-only move left it loose or stuck.
+- **Status:** trying
