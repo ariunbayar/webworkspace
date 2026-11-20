@@ -2206,7 +2206,7 @@ function mount(w) {
     // Ctrl+Space hands the keyboard back to the page, like Esc out of vi's
     // insert mode — Esc itself belongs to whatever runs in the terminal
     if (e.code === 'Space' && e.ctrlKey && !e.altKey && !e.metaKey) {
-      if (e.type === 'keydown') { term.blur(); sel = 'web:' + id; render(); }
+      if (e.type === 'keydown') { track('leave', { why: 'key' }); term.blur(); sel = 'web:' + id; render(); }
       e.preventDefault();
       return false;
     }
@@ -3137,12 +3137,19 @@ function carries(e) {
 // back to NORMAL, and then counts as a NORMAL press: the background pans, a
 // window is picked or dragged. Its mousedown is held back, so a terminal you
 // pressed on cannot take the keyboard straight back.
+// The background is the exception: a press there may turn into a pan, which
+// keeps you typing, so it is held back too but the leaving waits for the pan
+// handler below, which lets go only if the press stayed a still click.
+let bgFrom = null;   // the element that had the keyboard when the background was pressed
 $('#pan').addEventListener('pointerdown', e => {
+  bgFrom = null;
   if (!inInsert() || e.target.closest('#map')) return;   // the map keeps your place
   const tile = e.target.closest('.tile');
   const here = document.activeElement || document.body;
   if (tile && tile === here.closest('.tile')) return;
   e.preventDefault();
+  if (!tile) { bgFrom = here; return; }
+  track('leave', { why: kindOf(tile.win && tile.win.id) === 'card' ? 'card' : 'tile' });
   here.blur();
   showMode();                        // now, not after focusout's tick: the tile's
 }, true);                            // own handler below has to see NORMAL
@@ -3150,6 +3157,8 @@ $('#pan').addEventListener('pointerdown', e => {
 $('#pan').addEventListener('pointerdown', e => {
   if (!carries(e) || pointers.size > 1) return;   // one finger drags, two pinch
   const pan = $('#pan'), sx = e.clientX, sy = e.clientY;
+  const typingIn = bgFrom;   // still typing there if this turns out to be a pan
+  bgFrom = null;
   let px = sx, py = sy, far = false;
   pan.classList.add('grabbing');
   const move = ev => {
@@ -3160,6 +3169,11 @@ $('#pan').addEventListener('pointerdown', e => {
   const done = ev => {
     if (ev && ev.type === 'pointerup' && !far && pointers.size < 2) setAnchor(ev.clientX, ev.clientY);
     if (far) track('pan', { d: Math.round(Math.hypot(px - sx, py - sy) / 100) * 100 });
+    else if (typingIn && ev && ev.type === 'pointerup' && inInsert()) {   // a still click: leave typing, as before
+      track('leave', { why: 'bg' });
+      typingIn.blur();
+      showMode();
+    }
     pan.classList.remove('grabbing');
     off();
     letGo = null;
@@ -3444,6 +3458,7 @@ let editBack = null;                       // the tile to type into again once d
 const tileKey = e => e.key === 'Enter' && e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey;
 function startTile(w) {
   const typing = document.activeElement && document.activeElement.closest('.termhost, .docwrap');
+  if (typing) track('leave', { why: 'key' });
   if (typing) typing.closest('.docwrap') ? document.activeElement.blur() : terms.get(w.id.slice(4))?.term.blur();
   sel = w.id;
   render();
