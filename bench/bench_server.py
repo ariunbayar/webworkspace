@@ -320,7 +320,8 @@ def term_session(window, session):
 
 
 def change_term(sid, body):
-    """Where the page has a terminal's tile and which face; body None forgets it."""
+    """Where the page has a terminal's tile, which face and how many characters
+    wide and high (a placeholder resized by hand); body None forgets it."""
     with _terms_lock:
         if body is None:
             if _terms.pop(sid, None) is not None:
@@ -335,6 +336,10 @@ def change_term(sid, body):
             _terms[sid]["at"] = [round(v) for v in at]
         if isinstance(face, str):
             _terms[sid]["face"] = face[:100]
+        for k in ("cols", "rows"):          # what Restore starts the new terminal at
+            v = body.get(k)
+            if isinstance(v, int) and not isinstance(v, bool) and 1 <= v <= 1000:
+                _terms[sid][k] = v
         _save_terms()
         return True
 

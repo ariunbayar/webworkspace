@@ -976,12 +976,15 @@ const savedOut = id => savedOuts.get(id) || savedOuts.set(id, fetch('/api/termin
 // whatever the old screen left switched on (full screen, hidden cursor), off again
 const OUT_END = '\x1b[?1049l\x1b[?25h\x1b[0m\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1006l';   // and mouse reporting
 async function restoreTerm(r, keep) {
+  // the husk's size now, which may have been pulled since the server was told;
+  // going.add takes the husk off the board, so it is read first
+  const hk = husks.get(r.id), size = hk && !hk.dead ? { cols: hk.term.cols, rows: hk.term.rows } : r;
   going.add(r.id);
   renderHusks();
   let moved = 0;
   const out = keep ? await savedOut(r.id) : null;
   if (keep) {
-    const body = { cols: r.cols, rows: r.rows };
+    const body = { cols: size.cols, rows: size.rows };
     if (r.cwd_ok) body.cwd = r.cwd;
     if (r.claude) body.argv = r.session ? ['claude', '--resume', r.session] : ['claude'];
     const made = await fetch('/api/terminals', { method: 'POST', body: JSON.stringify(body) })
@@ -1025,7 +1028,7 @@ $('#banner').addEventListener('click', e => {
 });
 
 // A terminal the restart took stays on the surface as a husk: its old spot and
-// size, its last title, its last commands and its last output, dimmed and
+// size (both can be changed, as a terminal's are), its last title, its last commands and its last output, dimmed and
 // read-only. Restore starts a shell in its folder; Close forgets it. A Claude
 // Code terminal Claude quit in (/exit) is one too, ended: Resume runs
 // claude --resume with its session, there and in its folder.
@@ -1047,6 +1050,7 @@ function renderHusks() {
       el.addEventListener('pointerdown', e => {
         const act = e.target.dataset.act, cur = (data.lost || []).find(x => x.id === r.id) || r;
         if (act) { e.preventDefault(); return restoreTerm(cur, act === 'restore'); }
+        if (e.target.closest('.grip')) return grab(e, husks.get(r.id).w, el);
         if (e.target.closest('.cap')) drag(e, husks.get(r.id).w, el);
       });
       const ps = profiles(), face = ps.find(p => p.name === (faces[r.id] || r.face)) || ps[0] || { font: look().font, size: look().size };
@@ -1055,6 +1059,10 @@ function renderHusks() {
         fontSize: face.size || 13, lineHeight: 1.125, disableStdin: true, cursorBlink: false,
         scrollback: 65536, convertEol: false,       // the whole of the 64 KB saved
       });
+      const grip = document.createElement('div');
+      grip.className = 'grip';
+      grip.title = 'Drag to resize this placeholder';
+      el.append(grip);                  // outside the scaled wrap, as a terminal's is
       $('#tiles').append(el);
       term.open(el.querySelector('.termhost'));
       h = { el, term, w: { id: 'husk:' + r.id, husk: r.id, w: 0, h: 0 }, t: { term, wrap: el.querySelector('.termwrap'), cap: el.querySelector('.cap') } };
@@ -1080,7 +1088,7 @@ function renderHusks() {
         return d;
       }));
     }
-    measure(t);
+    if (!el.querySelector('.termsize')) measure(t);   // not mid-resize, as for a terminal
     Object.assign(h.w, { at: r.at || layout['web:' + r.id] || [0, 0],   // an ended one: where its tile was
                        w: t.natural[0], h: t.natural[1] });
     place(el, h.w);
@@ -1101,7 +1109,7 @@ function tellTerms() {
   husks.forEach((h, id) => {      // a husk dragged somewhere new
     const at = layout[h.w.id];
     if (!at) return;
-    const was = JSON.stringify({ at: at.map(Math.round) }), k = 'husk:' + id;
+    const was = JSON.stringify({ at: at.map(Math.round), cols: h.term.cols, rows: h.term.rows }), k = 'husk:' + id;
     if (toldTerm.get(k) === was) return;
     toldTerm.set(k, was);
     fetch('/api/terminals/' + id, { method: 'PATCH', body: was }).then(r => { if (!r.ok) toldTerm.delete(k); }).catch(() => toldTerm.delete(k));
@@ -2409,7 +2417,7 @@ function grab(e, w, el) {
   if (e.button || pointers.size > 1) return;   // a second finger means pinch
   e.preventDefault();
   e.stopPropagation();
-  const t = terms.get(w.term.session);
+  const t = w.husk ? husks.get(w.husk).t : terms.get(w.term.session);
   if (!t || !t.cell) return;
   const sx = e.clientX, sy = e.clientY;
   // the size it had when grabbed: resizeTo changes w.w and w.h as you pull
@@ -2433,6 +2441,7 @@ function grab(e, w, el) {
     tag.remove();
     showGrid(false);
     measure(t);                      // what it settled at, measured not assumed
+    if (w.husk) tellTerms();         // the server keeps its size for Restore
     poll();
   });
 }
@@ -3310,7 +3319,6 @@ function endEdit() {
 // edges line up with the next tile's as well as its corner: a card exactly, a
 // terminal to the character, a photograph by its width, keeping its shape.
 function fitGrid(w, el) {
-  if (w.husk) return;                // its size is its old screen's
   const g = gridStep(), [x, y] = seatOf(w);
   const ww = Math.max(g, snap(w.w)), hh = Math.max(g, snap(w.h));
   if (w.link) {
@@ -3318,9 +3326,9 @@ function fitGrid(w, el) {
     w.h = Math.max(60, hh);
     const l = links.find(v => 'link:' + v.id === w.id);
     if (l) { l.w = w.w; l.h = w.h; sendCard(l, { w: l.w, h: l.h }); }
-  } else if (w.term) {
-    const t = terms.get(w.term.session);
-    if (t && t.cell && w.term.alive) resizeTo(w, el, t, [x + ww, y + hh]);
+  } else if (w.term || w.husk) {
+    const t = w.husk ? husks.get(w.husk).t : terms.get(w.term.session);
+    if (t && t.cell && (w.husk || w.term.alive)) resizeTo(w, el, t, [x + ww, y + hh]);
   } else {
     const s0 = scales[w.id] || 1, s = ww / (w.w / s0);
     w.w = w.w / s0 * s;

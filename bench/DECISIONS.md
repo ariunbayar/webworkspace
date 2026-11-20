@@ -451,3 +451,9 @@ Each entry:
 - **A:** No: renamed from winlist to bench on 2026-11-20, by a vote. The state folder `~/.local/state/winlist` keeps its old name so saved boards, cards and terminals survive. The `WINLIST_*` variables are still read as fallbacks (and set beside the `BENCH_*` ones in new terminals). A `winlist -> bench` symlink stays at the repo root for running processes and hooks. Ports, API paths and JSON field names are unchanged.
 - **Why:** The board is more than a list of windows now. The sessions' vote favoured Corkboard (7 of 9), but the user picked bench: short, works as a command, and fits live terminals sitting beside cards. Old browser keys (`winlist.*`) and old `tmp/.winlist-tools.yml` files are still read.
 - **Status:** done
+
+### A placeholder can be resized like a terminal
+- **Q:** Can a placeholder (a terminal a restart took, or one Claude quit in) be moved and resized like a live terminal?
+- **A:** Yes. It is dragged by its caption, as before, and has the same corner grip. Pulling it resizes the read-only screen to whole characters (the saved output reflows), snapping to the grid when let go, and shows the same `cols×rows` tag. The size is sent to the server with its spot (`cols` and `rows` in `PATCH /api/terminals/<id>`), so a reload keeps it. Restore and Resume start the new terminal at the placeholder's current spot and size. Moving it with the keyboard is not done: a placeholder still can't be picked, so NORMAL-mode keys don't reach it.
+- **Why:** A placeholder kept its old size and could cover the tile it was restored next to, or sit too small to read.
+- **Status:** trying
