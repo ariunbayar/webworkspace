@@ -418,23 +418,15 @@
 /* a card attached to a terminal: a link mark before its title, and while one
    is dragged, the terminal's edge it would attach to is lit */
 .tile.stuck .cap .t2::before { content:'🔗 '; font-size:11px }
-/* a small bridge across the gap to the terminal, on the edge facing it (a card
-   on the terminal's right has it on its left). .tile clips its overflow, so a
-   stuck one clips with a margin as wide as the gap: the bridge is the only
-   thing that reaches that far. --gap is STICK_GAP in screen px, set by place() */
-.tile.stuck { overflow:clip; overflow-clip-margin:calc(var(--gap, 10px) + 2px) }
-.tile.stuck::after { content:''; position:absolute; pointer-events:none; z-index:1; background:var(--accent);
-                     opacity:.7; border-radius:3px; display:none }
-.tile.stuck[data-stuck=r]:not(.dragging)::after, .tile.stuck[data-stuck=l]:not(.dragging)::after,
-.tile.stuck[data-stuck=t]:not(.dragging)::after, .tile.stuck[data-stuck=b]:not(.dragging)::after { display:block }
-.tile.stuck[data-stuck=r]::after { right:100%; top:50%; transform:translateY(-50%); width:calc(var(--gap, 10px) + 2px);
-                                   height:min(40%, 48px); }
-.tile.stuck[data-stuck=l]::after { left:100%; top:50%; transform:translateY(-50%); width:calc(var(--gap, 10px) + 2px);
-                                   height:min(40%, 48px); }
-.tile.stuck[data-stuck=b]::after { bottom:100%; left:50%; transform:translateX(-50%); height:calc(var(--gap, 10px) + 2px);
-                                   width:min(40%, 48px); }
-.tile.stuck[data-stuck=t]::after { top:100%; left:50%; transform:translateX(-50%); height:calc(var(--gap, 10px) + 2px);
-                                   width:min(40%, 48px); }
+/* a terminal and the cards attached to it share a soft backdrop, drawn under
+   the tiles and over the groups. It takes the terminal's state colour, if any */
+#sticks { position:absolute; left:0; top:0 }
+.stickbox { position:absolute; pointer-events:none; border-radius:10px; --bk:var(--accent);
+            background:color-mix(in srgb, var(--bk) 10%, transparent);
+            border:1px solid color-mix(in srgb, var(--bk) 30%, transparent) }
+.stickbox[data-cs=working] { --bk:var(--cs-work) }
+.stickbox[data-cs=waiting] { --bk:var(--cs-wait) }
+.stickbox[data-cs=done] { --bk:var(--cs-done) }
 .tile.stickto[data-side=r] { box-shadow:4px 0 0 0 var(--accent) }
 .tile.stickto[data-side=l] { box-shadow:-4px 0 0 0 var(--accent) }
 .tile.stickto[data-side=b] { box-shadow:0 4px 0 0 var(--accent) }

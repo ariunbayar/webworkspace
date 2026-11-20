@@ -434,8 +434,8 @@ Each entry:
 - **Why:** Sending the same page twice piled up duplicate cards.
 - **Status:** done
 
-### Attached cards show a bridge to their terminal
+### A terminal and its attached cards share a backdrop
 - **Q:** Can an attached card look physically joined to its terminal, beyond the 🔗 in its caption?
-- **A:** Yes: a small tab in the terminal's accent colour (40% of the card's edge, at most 48px, rounded, slightly see-through) spans the gap on the card's edge that faces the terminal, centred on that edge. It is hidden while the card is being dragged. The 🔗 stays.
+- **A:** Yes: each terminal that has attached cards gets one soft tinted box behind it and all its cards (the box around their tiles, padded by the attach gap, rounded corners, the terminal's colour at 10% fill and a 30% 1px border). It sits over group backgrounds and under tiles, ignores the mouse, follows drags, zoom and pan, and goes when the last card is detached or closed. Hidden (filtered) tiles are left out. The colour is the accent, or the terminal's working/waiting/done colour while it has one. The 🔗 stays. A small "bridge" tab across the gap was tried first and dropped: it was too small to notice and needed overflow tricks on the tile.
 - **Why:** The 🔗 is easy to miss; the gap between a card and its terminal reads as "nearly touching" rather than "attached".
 - **Status:** trying

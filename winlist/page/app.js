@@ -1112,6 +1112,7 @@ function render() {
   renderGroups();
   if (followSticks()) saveLayout();     // a terminal moved here or on another page
   renderCanvas(match);
+  drawSticks();
   renderHusks();
   drawMark();
   drawMarks();
@@ -1949,12 +1950,12 @@ function closeLink(id) {
 }
 
 function place(el, w) {
+  queueSticks();                     // a tile moved: the backdrops follow it
   let [x, y] = seatOf(w);
   const s = w.link && w.link.stick, st = s && s.side === 'b' && terms.get(s.t);
   // a terminal's caption stays at screen size, so its bottom edge moves with
   // the zoom: a card under it moves with that edge
   if (st && st.capH) y += st.capH / zoom - st.capH;
-  el.style.setProperty('--gap', STICK_GAP * zoom + 'px');   // the bridge of a stuck card spans this
   el.style.left = Math.round(x * zoom) + 'px';      // on whole pixels, as the surface is
   el.style.top = Math.round(y * zoom) + 'px';
   const scaled = zoom === 1 ? '' : `scale(${zoom})`;  // at 1:1 nothing is resampled at all
@@ -2533,6 +2534,58 @@ function followSticks() {
     moved = true;
   }
   return moved;
+}
+// One backdrop per terminal that has attached cards: the box around its tile
+// and theirs, read from the styles place() gave them (so the bottom caption
+// offset, zoom and drags are all already in them). place() queues a redraw, so
+// every path that moves a tile without a render is covered, one per frame.
+const stickEls = new Map();
+let sticksQueued = false;
+function queueSticks() {
+  if (sticksQueued) return;
+  sticksQueued = true;
+  requestAnimationFrame(() => { sticksQueued = false; if (data) drawSticks(); });
+}
+function drawSticks() {
+  sticksQueued = false;
+  const boxes = new Map();
+  const grow = (key, el) => {
+    if (!el || el.classList.contains('off')) return;
+    const x = parseFloat(el.style.left), y = parseFloat(el.style.top);
+    const r = [x, y, x + parseFloat(el.style.width), y + parseFloat(el.style.height)];
+    if (r.some(isNaN)) return;
+    const b = boxes.get(key);
+    if (b) { b[0] = Math.min(b[0], r[0]); b[1] = Math.min(b[1], r[1]); b[2] = Math.max(b[2], r[2]); b[3] = Math.max(b[3], r[3]); }
+    else boxes.set(key, r);
+  };
+  const host = new Map();                 // terminal session -> its window
+  for (const w of data.windows) if (w.term) host.set(w.term.session, w);
+  for (const w of data.windows) {
+    const s = w.link && w.link.stick, t = s && host.get(s.t);
+    const tel = t && tileEls.get(t.id);
+    if (!tel || tel.classList.contains('off')) continue;
+    const cel = tileEls.get(w.id);
+    if (!cel || cel.classList.contains('off')) continue;
+    grow(s.t, tel);
+    grow(s.t, cel);
+  }
+  const pad = STICK_GAP * zoom;
+  boxes.forEach((r, k) => {
+    let el = stickEls.get(k);
+    if (!el) {
+      el = document.createElement('div');
+      el.className = 'stickbox';
+      stickEls.set(k, el);
+      $('#sticks').append(el);
+    }
+    el.style.left = r[0] - pad + 'px';
+    el.style.top = r[1] - pad + 'px';
+    el.style.width = r[2] - r[0] + 2 * pad - 2 + 'px';    // border-box minus the 1px border
+    el.style.height = r[3] - r[1] + 2 * pad - 2 + 'px';
+    const cs = cstate[host.get(k).id];
+    if (cs && cs.state) el.dataset.cs = cs.state; else delete el.dataset.cs;
+  });
+  stickEls.forEach((el, k) => { if (!boxes.has(k)) { el.remove(); stickEls.delete(k); } });
 }
 function setStick(l, s) {
   if (JSON.stringify(l.stick || null) === JSON.stringify(s || null)) return;
