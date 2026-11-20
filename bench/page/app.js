@@ -2068,11 +2068,7 @@ function drag(e, w, el) {
       track('drag', { kind: kindOf(w.id) });
       fitGrid(w, el);
       place(el, w);
-      if (w.link) {                  // against a terminal's edge: attached there; anywhere else: free
-        const s = stickFor(w, seatOf(w));
-        setStick(w.link, s);
-        if (s) { layout[w.id] = stuckSpot(w, s); place(el, w); }
-      }
+      dropStick(w, el);
       followSticks();
     }
     if (moved) { saveLayout(); if (w.husk) tellTerms(); }
@@ -2606,6 +2602,14 @@ function drawSticks() {
     el.style.height = r[3] + 2 * pad + 'px';
   });
   stickEls.forEach((el, k) => { if (!boxes.has(k)) { el.remove(); stickEls.delete(k); } });
+}
+// A card let go (by the mouse, or by leaving Super+Enter): against a
+// terminal's edge it is attached there, snapped just off it; anywhere else it is free
+function dropStick(w, el) {
+  if (!w.link) return;
+  const s = stickFor(w, seatOf(w));
+  setStick(w.link, s);
+  if (s) { layout[w.id] = stuckSpot(w, s); place(el, w); }
 }
 function setStick(l, s) {
   if (JSON.stringify(l.stick || null) === JSON.stringify(s || null)) return;
@@ -3303,11 +3307,24 @@ let editing = null;       // 'tile' | null
 function edit(how) {
   if (!selected()) return;
   editing = how;
+  tileMoved();
   showGrid(true);
   showMode();
 }
+// As in a mouse drag: the card in hand lights the edge it would attach to and
+// is not pulled back to its terminal meanwhile; a terminal carries its cards.
+function tileMoved() {
+  const w = selected();
+  if (!w) return;
+  if (w.link) { stickDrag = w.id; lightStick(stickFor(w, seatOf(w))); }
+  else if (w.term) followSticks();
+}
 function endEdit() {
+  const w = selected(), el = w && tileEls.get(w.id);
   editing = null;
+  stickDrag = null;
+  lightStick(null);
+  if (el) { dropStick(w, el); followSticks(); }
   showGrid(false);
   saveLayout();
   showMode();
@@ -3452,7 +3469,7 @@ document.addEventListener('keydown', e => {
     if (k === 'Escape' || k === 'Enter') return endEdit();
     const step = { ArrowUp: [0, -1], k: [0, -1], ArrowDown: [0, 1], j: [0, 1],
                    ArrowLeft: [-1, 0], h: [-1, 0], ArrowRight: [1, 0], l: [1, 0] }[k.length === 1 ? k.toLowerCase() : k];
-    if (step) { nudge(...step, e.shiftKey); keepInView(); }
+    if (step) { nudge(...step, e.shiftKey); tileMoved(); keepInView(); }
     return;
   }
   // the page's own keys are bare letters: anything held with them is the browser's
