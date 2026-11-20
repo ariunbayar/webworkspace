@@ -105,6 +105,10 @@ const saveLayout = () => {
   for (const l of links) {
     const at = layout['link:' + l.id];
     if (!at || (at[0] === l.x && at[1] === l.y)) continue;
+    // an attached card's spot is worked out by each page from its terminal's
+    // own size, never shared (the pages measure terminals differently); only
+    // a card the server has no spot for yet sends one (its arrival)
+    if (l.stick && l.x != null && data && data.windows.some(v => v.term && v.term.session === l.stick.t)) continue;
     [l.x, l.y] = at;
     knownAt.set(l.id, at + '');
     sendCard(l, { x: l.x, y: l.y });
@@ -1465,7 +1469,8 @@ function takeLinks(list, asked) {
   // moved on another page: follow it, but never undo a drag under way here
   for (const l of links) {
     if (l.x == null || knownAt.get(l.id) === l.x + ',' + l.y) continue;
-    layout['link:' + l.id] = [l.x, l.y];
+    const w = l.stick && data && data.windows.find(v => v.id === 'link:' + l.id);
+    layout['link:' + l.id] = (w && stuckSpot(w, l.stick)) || [l.x, l.y];   // attached: from our own terminal
     knownAt.set(l.id, l.x + ',' + l.y);
   }
   // sent again from outside: the card stays put and flashes. The first sight
