@@ -2325,6 +2325,8 @@ function mount(w) {
   // instead, which is what Claude Code and readline take as "newline, don't
   // submit". keypress has to be swallowed too, or the CR goes out as well.
   term.attachCustomKeyEventHandler(e => {
+    // a ⋯ menu open over this terminal has every key; none reaches the pty
+    if (!tmenu.hidden) { e.preventDefault(); return false; }
     // Ctrl+Space hands the keyboard back to the page, like Esc out of vi's
     // insert mode — Esc itself belongs to whatever runs in the terminal
     if (e.code === 'Space' && e.ctrlKey && !e.altKey && !e.metaKey) {
@@ -2919,7 +2921,8 @@ function tileMenu(anchor, items, back, up) {
   tmenu.onpointerleave = () => light(-1);
   const key = e => {
     if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); return put(); }
-    if (e.ctrlKey || e.altKey || e.metaKey) return;
+    // Ctrl is often still down from Ctrl+. : it only spoils letters (Ctrl+C is not a menu key)
+    if ((e.ctrlKey || e.altKey || e.metaKey) && e.key.length === 1) return;
     if (up && (e.key === 'Backspace' || e.key === 'ArrowLeft')) { e.preventDefault(); e.stopPropagation(); return up(); }
     const k = e.key.toLowerCase();
     const dir = e.key === 'ArrowDown' || (k === 'j' && !hot.has('j')) ? 1
