@@ -544,6 +544,12 @@ Each entry:
 - **Why:** Two steps could leave an empty card if the second failed.
 - **Status:** built
 
+### Markdown cards show where they live
+- **Q:** How to see which file a markdown card shows?
+- **A:** A small line at the top of the card: the file path (~ for home), or "on the board (no file)". Added 2026-11-23.
+- **Why:** Two cards can look alike; the user needs the location.
+- **Status:** built
+
 ### Ctrl+, opens a terminal's menu while typing; dmb shortcuts
 - **Q:** How to add dmb20/100/200 to a Claude prompt without the mouse or leaving INSERT?
 - **A:** Ctrl+, is the only menu key, in NORMAL (the picked tile, or the bulk menu titled "N selected") and INSERT; plain `.` is retired. From INSERT it opens the ⋯ menu; on Claude terminals s opens the Shortcuts submenu (the fixed dmb submenu of this entry was replaced 2026-11-23, see "Shortcuts you define, on Claude terminals"); Backspace goes back; focus stays in the terminal. Ctrl+, is not a documented Claude Code shortcut, and the page catches it first. Ctrl+, was chosen because IBus uses Ctrl+. and Ctrl+; for emoji typing (it then eats the menu's keys); Ctrl+/ was avoided because terminals turn it into Ctrl+_ (Claude Code undo). Rejected: buttons on the terminal, Alt+digit hotkeys, shorter words in CLAUDE.md, sending via Claude's cross-session socket (arrives labelled as another session, not the user). Added 2026-11-23.
