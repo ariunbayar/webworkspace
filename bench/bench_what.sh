@@ -3,12 +3,12 @@
 # copies on the board: wl:note:…, wl:term:…, wl:win:…, or the whole /api/what URL.
 #   bench_what.sh                     every tile there is, as ref and title
 #   bench_what.sh <ref>               what it is and how to get at it, as JSON
-#   bench_what.sh <ref> --set < file  a note's new text, from stdin
+#   bench_what.sh <ref> --set < file  a markdown card's new text (on the board), from stdin
 base=${BENCH_URL:-${WINLIST_URL:-http://localhost:8766}}
 [ -z "$1" ] && exec curl -s "$base/api/what"
 ref=${1##*ref=}
 if [ "$2" = "--set" ]; then
-  case "$ref" in wl:note:*) ;; *) echo "only a note (wl:note:…) can be changed here" >&2; exit 2 ;; esac
+  case "$ref" in wl:note:*) ;; *) echo "only a markdown card held on the board (wl:note:…) can be changed here" >&2; exit 2 ;; esac
   jq -Rs '{text: .}' | curl -s -X PATCH "$base/api/links/${ref##*:}" \
     -H 'Content-Type: application/json' --data-binary @-
 else

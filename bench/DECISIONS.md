@@ -384,7 +384,7 @@ Each entry:
 - **Q:** A note showed its new lines only while typing (INSERT); read back, lines ran together.
 - **A:** Notes render with markdown `breaks: true`, so each typed new line shows as one. Documents stay plain markdown.
 - **Why:** Markdown joins single new lines into one paragraph; a note is typed text, not a document.
-- **Status:** done
+- **Status:** replaced 2026-11-23 by "One markdown card, with or without a file"
 
 ### Tools file lives in tmp/, in YAML
 - **Q:** A script with several kinds of runs (flags) showed as one tool. How should a project list each kind?
@@ -529,4 +529,10 @@ Each entry:
 - **Q:** Can a markdown card be edited?
 - **A:** Yes, as plain text: double-click or Enter opens the raw file in place; leaving saves it; a file changed outside meanwhile is not overwritten. Added 2026-11-23.
 - **Why:** Fix a doc without leaving the board.
+- **Status:** built
+
+### One markdown card, with or without a file
+- **Q:** Keep notes separate from markdown files?
+- **A:** No: one markdown card; its text lives in a file or on the board. Both render as normal markdown (no forced line breaks) and edit as plain text. Old notes carry over. Added 2026-11-23.
+- **Why:** One kind of card, never told apart as plain text.
 - **Status:** built
