@@ -557,11 +557,12 @@ def gh_state(url):
     try:
         out = subprocess.run(
             ["gh", "api", "repos/%s/%s/issues/%s" % (owner, repo, n),
-             "--jq", "[.state, .state_reason, .pull_request != null, .pull_request.merged_at, .title]"],
+             "--jq", "[.state, .state_reason, .pull_request != null, .pull_request.merged_at, .title, [.assignees[].login]]"],
             capture_output=True, text=True, timeout=8)
-        st, reason, pr, merged, title = json.loads(out.stdout)
+        st, reason, pr, merged, title, assignees = json.loads(out.stdout)
         state = ("merged" if merged else "not planned" if reason == "not_planned" else st)
-        answer = {"state": state, "pr": pr, "title": title}
+        answer = {"state": state, "pr": pr, "title": title,
+                  "assignees": assignees}
     except (OSError, subprocess.TimeoutExpired, ValueError, TypeError):
         answer = None
     _gh[url] = (time.time(), answer)

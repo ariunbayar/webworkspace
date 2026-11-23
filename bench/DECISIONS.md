@@ -506,3 +506,9 @@ Each entry:
 - **A:** Yes: ⋯ → Rename (r) or double-click the title. Empty brings back the automatic title. Added 2026-11-23.
 - **Why:** Logged-in pages like claude.ai artifacts give no title.
 - **Status:** built
+
+### Cards show who a ticket is assigned to
+- **Q:** Show who a ticket is assigned to on its card?
+- **A:** Yes: `@login` beside the state badge (comma-separated when several), nothing when unassigned. Applies to issue and PR cards. Added 2026-11-23.
+- **Why:** See at a glance whose ticket it is.
+- **Status:** built

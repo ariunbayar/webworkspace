@@ -250,6 +250,7 @@
   /* GitHub's own colours for where an issue or PR stands */
   .card .gh { display:inline-block; padding:0 6px; margin-right:6px; border-radius:8px;
               color:#fff; font-size:10px; line-height:15px; vertical-align:1px }
+  .card .who { margin-right:6px; color:var(--dim) }
   .card .url { font-size:11px; color:var(--dim); white-space:nowrap; overflow:hidden;
                text-overflow:ellipsis }
   .termsize { position:absolute; right:6px; bottom:6px; padding:1px 5px; border-radius:3px;
