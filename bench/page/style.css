@@ -206,8 +206,10 @@
              transform-origin:0 0; box-sizing:border-box; padding:14px 18px; outline:none;
              touch-action:pan-x pan-y }
   /* like a terminal, a document is only a tile in NORMAL — you move it, nothing
-     inside answers. Enter or a double click goes in; Esc comes back out */
-  body:not(.insert) .docwrap, .docwrap:not(:focus-within) { pointer-events:none; overflow:hidden }
+     inside answers. Enter or a double click goes in; Esc comes back out. The
+     scrollbar still shows, so you can see where PageUp/PageDown has taken you;
+     pointer-events:none keeps the wheel and the bar itself from doing anything */
+  body:not(.insert) .docwrap, .docwrap:not(:focus-within) { pointer-events:none }
   .md { font:14px/1.55 system-ui, sans-serif; color:var(--fg) }
   .md h1, .md h2, .md h3 { line-height:1.25; margin:1.1em 0 .45em }
   .md h1 { font-size:1.6em } .md h2 { font-size:1.3em } .md h3 { font-size:1.1em }
