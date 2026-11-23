@@ -1203,7 +1203,8 @@ class Handler(BaseHTTPRequestHandler):
     # are asked for afresh on each load, so an edit to one is a reload away.
     FILES = {
         "vendor": ({"xterm.js": "application/javascript", "xterm.css": "text/css",
-                    "marked.min.js": "application/javascript"}, "public, max-age=86400"),
+                    "marked.min.js": "application/javascript",
+                    "addon-unicode11.js": "application/javascript"}, "public, max-age=86400"),
         "page": ({"app.js": "application/javascript", "style.css": "text/css"}, "no-cache"),
     }
 
