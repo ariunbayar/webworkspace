@@ -872,10 +872,10 @@ def same_key(card):
 
 
 def send_link(url=None, title=None, path=None, image=None, keep=None, tool=None, folder=None, origin="api",
-              term=None, cwd=None, note=False, diff=None):
+              term=None, cwd=None, note=False, diff=None, text=None):
     """A card for the board: a web page (url), a markdown file (path), a
     picture (image: a path or an http(s) URL), a markdown card held on the board, no file (note: its text typed
-    on the card), a PR's changes (diff: the PR's address) or a button for one of a project's tools (tool, by name, in
+    on the card; text, a string up to DOC_MAX characters, fills it in the same request, ignored for other kinds), a PR's changes (diff: the PR's address) or a button for one of a project's tools (tool, by name, in
     folder). None, and why, if it won't do.
     A tool card holds the name only: what it runs is looked up when pressed,
     so an edit to tmp/.bench-tools.yml, or to what it runs, is what runs next.
@@ -897,7 +897,8 @@ def send_link(url=None, title=None, path=None, image=None, keep=None, tool=None,
             return None, "diff takes a GitHub PR address"
         card = {"diff": diff, "title": title or "Diff · PR #" + m.group(3)}
     elif note:
-        card = {"note": True, "text": "", "title": title or "Markdown card"}
+        card = {"note": True, "text": text[:DOC_MAX] if isinstance(text, str) else "",
+                "title": title or "Markdown card"}
     elif tool:
         tools, err = project_tools(folder or "")
         if err:
@@ -1467,7 +1468,7 @@ class Handler(BaseHTTPRequestHandler):
             link, err = send_link(body.get("url"), body.get("title"), body.get("path"),
                                   body.get("image"), body.get("keep"), body.get("tool"), body.get("dir"),
                                   "page" if body.get("from") == "page" or body.get("keep") else "api",
-                                  body.get("term"), body.get("cwd"), body.get("note") is True, body.get("diff"))
+                                  body.get("term"), body.get("cwd"), body.get("note") is True, body.get("diff"), body.get("text"))
             if not link:
                 return self._send(json.dumps({"error": err}), code=400)
             return self._send(json.dumps(link), code=200 if link.get("repeat") else 201)
