@@ -1697,6 +1697,7 @@ async function leaveDoc() {
   const e = docEdit;
   if (!e || e.saving) return;       // a redraw drops the textarea and blurs it too
   const done = () => { if (docEdit === e) docEdit = null; render(); };
+  clearTimeout(e.timer);
   if (e.text === e.orig) return done();
   if (e.board) {                    // the board keeps it, as it keeps the card
     const l = links.find(v => 'link:' + v.id === e.id);
@@ -1731,7 +1732,15 @@ function docCard(pic, w) {
     ta.value = e.text;
     const fit = () => { ta.style.height = 'auto'; ta.style.height = ta.scrollHeight + 'px'; };
     requestAnimationFrame(fit);
-    ta.addEventListener('input', () => { fit(); e.text = ta.value; });
+    ta.addEventListener('input', () => {
+      fit(); e.text = ta.value;
+      if (!e.board) return;
+      clearTimeout(e.timer);          // the board keeps it as you type, so a closed tab loses nothing
+      e.timer = setTimeout(() => {
+        const l = links.find(v => 'link:' + v.id === e.id);
+        if (l) { l.text = e.text; sendCard(l, { text: e.text }); e.orig = e.text; }
+      }, 600);
+    });
     ta.addEventListener('keydown', ev => {
       if (ev.key === 'Escape' || (ev.code === 'Space' && ev.ctrlKey)) { ev.preventDefault(); ta.blur(); }
       else if (ev.key === 'Tab' && !ev.ctrlKey && !ev.altKey && !ev.metaKey && !ev.shiftKey) {

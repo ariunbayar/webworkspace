@@ -230,7 +230,7 @@ Each entry:
 - Q: Should typing a note look different from reading it?
 - A: No: the editor uses the note's own font (14px system-ui), and it grows with the text so the card is the only thing that scrolls.
 - Why: the user saw two scrollbars and the font switch to monospace when editing (2026-10-26).
-- Status: done (PR)
+- Status: replaced 2026-11-23 by "One markdown card, with or without a file"
 
 ### Pulses survive a reload and a restart
 - Q: Should a pulse (a new card, or Claude finished in a window) stop when the page reloads or the server restarts?
