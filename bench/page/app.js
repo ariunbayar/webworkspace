@@ -3134,14 +3134,16 @@ function renderCanvas(match) {
         drag(e, win, el);
       });
       if (w.link) el.addEventListener('dblclick', e => {
-        if (w.link.url && !w.link.diff && e.target.closest('.cap .t2')) return void renameCard(w);
-        if (!shifted(e) && !e.target.closest('.more, .grip')) { via = 'dbl'; activate(w.id); }
+        // the drag captured the pointer, so e.target is the tile: ask what is really under it
+        const hit = document.elementFromPoint(e.clientX, e.clientY) || e.target;
+        if (w.link.url && !w.link.diff && hit.closest('.cap .t2')) return void renameCard(w);
+        if (!shifted(e) && !hit.closest('.more, .grip')) { via = 'dbl'; activate(w.id); }
       });
       // a terminal is typed into on a double click, as Enter does: the one
       // click only picks it. Once it has the keyboard, a double click in it
       // is xterm's again, to select a word
       if (w.term) el.addEventListener('dblclick', e => {
-        if (!shifted(e) && !inInsert() && !e.target.closest('.more, .grip')) { via = 'dbl'; activate(w.id); }
+        if (!shifted(e) && !inInsert() && !(document.elementFromPoint(e.clientX, e.clientY) || e.target).closest('.more, .grip')) { via = 'dbl'; activate(w.id); }
       });
       tileEls.set(w.id, el);
       $('#tiles').append(el);

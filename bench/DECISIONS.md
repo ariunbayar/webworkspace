@@ -515,7 +515,7 @@ Each entry:
 
 ### Link cards show their title once
 - **Q:** Why does a link card show its title twice?
-- **A:** The caption keeps it; the body shows only icon and address. Rename edits the caption title. Added 2026-11-23.
+- **A:** The caption keeps it; the body shows only icon and address. Rename edits the caption title; double-click finds the title by the point under the pointer, since the drag's capture made the event target the tile and rename never fired. Added 2026-11-23.
 - **Why:** The body title predates the caption and repeated it.
 - **Status:** built
 
