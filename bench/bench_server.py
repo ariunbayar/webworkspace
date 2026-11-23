@@ -645,7 +645,7 @@ def rev_of(st):
 
 
 EDIT_EXT = MD_EXT + (".txt",)
-DOC_MAX = 200000                        # characters, as for a note
+DOC_MAX = 200000                        # characters, as for a board-held markdown card
 
 
 def save_doc(lid, text, since):
@@ -874,7 +874,7 @@ def same_key(card):
 def send_link(url=None, title=None, path=None, image=None, keep=None, tool=None, folder=None, origin="api",
               term=None, cwd=None, note=False, diff=None):
     """A card for the board: a web page (url), a markdown file (path), a
-    picture (image: a path or an http(s) URL), a note (note: markdown typed
+    picture (image: a path or an http(s) URL), a markdown card held on the board, no file (note: its text typed
     on the card), a PR's changes (diff: the PR's address) or a button for one of a project's tools (tool, by name, in
     folder). None, and why, if it won't do.
     A tool card holds the name only: what it runs is looked up when pressed,
@@ -897,7 +897,7 @@ def send_link(url=None, title=None, path=None, image=None, keep=None, tool=None,
             return None, "diff takes a GitHub PR address"
         card = {"diff": diff, "title": title or "Diff · PR #" + m.group(3)}
     elif note:
-        card = {"note": True, "text": "", "title": title or "Note"}
+        card = {"note": True, "text": "", "title": title or "Markdown card"}
     elif tool:
         tools, err = project_tools(folder or "")
         if err:
@@ -991,9 +991,9 @@ def change_link(lid, body):
         return link
 
 
-# A tile can be handed to Claude as a ref: wl:<kind>:<id>, where kind is note,
-# doc, img, url, tool or diff for a card, term for a page terminal. Claude asks GET /api/what?ref=… and is told what is behind
-# it and how to get at it: a file's path, a note's text and how to change it,
+# A tile can be handed to Claude as a ref: wl:<kind>:<id>, where kind is note (a markdown card on the board, no file),
+# doc (a markdown card in a file), img, url, tool or diff for a card, term for a page terminal. Claude asks GET /api/what?ref=… and is told what is behind
+# it and how to get at it: a file's path, a markdown card's text and how to change it,
 # a terminal's folder and saved output.
 REF = re.compile(r"(?:.*[?&]ref=)?wl:([a-z]+):([0-9A-Za-z]{1,64})")
 
@@ -1049,14 +1049,15 @@ def what(ref, base="http://localhost:8766"):
         if link.get(k):
             out[k] = link[k]
     if link.get("note"):
+        out["note"] = "markdown card (on the board, no file)"
         out["text"] = link.get("text", "")
-        # a note lives in links.json, not a file: it is changed through the server,
+        # a markdown card on the board lives in links.json, not a file: it is changed through the server,
         # and every page shows the new text at its next look
         out["change"] = ("curl -s -X PATCH %s/api/links/%s -H 'Content-Type: application/json' "
                          "-d \"$(jq -Rs '{text: .}' < NEW_TEXT_FILE)\"" % (base, key))
         out["or"] = "%s %s --set < NEW_TEXT_FILE" % (os.path.join(HERE, "bench_what.sh"), out["ref"])
     elif link.get("path"):
-        out["note"] = "a file on disk: read or edit it there; the card follows saves"
+        out["note"] = "markdown card (a file on disk): read or edit it there; the card follows saves"
     return out
 
 

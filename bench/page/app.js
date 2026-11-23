@@ -1549,7 +1549,6 @@ function takeLinks(list, asked) {
   const byId = new Map(list.map(l => [l.id, l]));
   for (const [id, p] of pend) if (p.card) byId.set(id, p.card); else byId.delete(id);
   links = [...byId.values()];
-  for (const l of links) if (noteText.has(l.id)) l.text = noteText.get(l.id);
   // moved on another page: follow it, but never undo a drag under way here
   for (const l of links) {
     if (l.x == null || knownAt.get(l.id) === l.x + ',' + l.y) continue;
@@ -1597,6 +1596,11 @@ async function moveCardsOut() {
 // a card with no name of its own is called what it points at: the file's name,
 // or the site and the last part of the address
 function cardTitle(l) {
+  if (l.note && (!l.title || l.title === 'Note' || l.title === 'Markdown card')) {
+    // a markdown card on the board is called by its first heading, or first line
+    const first = (l.text || '').split('\n').map(t => t.replace(/^\s*(#{1,6}\s+|[-*+>]\s+)?/, '').trim()).find(Boolean);
+    return first ? first.slice(0, 80) : 'Markdown card';
+  }
   if (l.title) return l.title;
   if (l.path || l.image) return baseName(l.path || l.image);
   try {
@@ -1610,7 +1614,7 @@ function cardHost(url) {
 const isCard = w => w.link && !w.link.image && !w.link.path && !w.link.note && !w.link.diff;   // link or tool card
 function linkWin(l) {
   return { id: 'link:' + l.id, link: l, title: cardTitle(l),
-           app: l.tool ? 'Tool' : l.diff ? 'Diff' : l.image ? 'Image' : l.path ? (isMdPath(l.path) ? 'Markdown' : 'Text') : l.note ? 'Note' : cardHost(l.url),
+           app: l.tool ? 'Tool' : l.diff ? 'Diff' : l.image ? 'Image' : l.path ? (isMdPath(l.path) ? 'Markdown' : 'Text') : l.note ? 'Markdown' : cardHost(l.url),
            w: l.w || (l.image ? 640 : l.path || l.diff ? 720 : l.tool ? 240 : l.note ? 360 : 320),
            h: l.h || (l.image ? 480 : l.path || l.diff ? 900 : l.tool ? 96 : l.note ? 300 : 76),
            x: 0, y: 0, z: 1e9, desktop: null };
@@ -1620,8 +1624,6 @@ function linkWin(l) {
 const isMdPath = p => /\.(md|markdown)$/i.test(p);
 const docs = new Map();             // path -> {mtime, html, md, at} or {error}
 const md = new marked.Marked({ gfm: true });
-// a note keeps every line break as typed; documents stay plain markdown
-const noteMd = new marked.Marked({ gfm: true, breaks: true });
 md.use({ renderer: {
   // a file can carry HTML, and this page can type into terminals: none of it runs
   html: () => '',
@@ -1664,13 +1666,18 @@ function docKey(w) {
 }
 
 // ---- editing a document card: its file's raw text, saved on leaving --------
-let docEdit = null;                 // {id, path, rev, orig, text, saving} while a document is typed into
+let docEdit = null;                 // {id, path, board, rev, orig, text, saving} while a markdown card is typed into: path for a file's, board for one held on the board
 async function editDoc(id) {
   if (docEdit && docEdit.id === id) return focusDoc();
   const l = links.find(v => 'link:' + v.id === id);
-  if (!l || !l.path) return;
+  if (!l || !(l.path || l.note)) return;
   if (docEdit) await leaveDoc();
   if (docEdit) return;                // that one could not be saved: it stays
+  if (l.note) {                       // text held on the board: nothing to read first
+    docEdit = { id, board: true, orig: l.text || '', text: l.text || '', saving: false };
+    render();
+    return focusDoc();
+  }
   let d;
   try {
     const r = await fetch('/api/file?path=' + encodeURIComponent(l.path));
@@ -1690,7 +1697,13 @@ async function leaveDoc() {
   const e = docEdit;
   if (!e || e.saving) return;       // a redraw drops the textarea and blurs it too
   const done = () => { if (docEdit === e) docEdit = null; render(); };
+  clearTimeout(e.timer);
   if (e.text === e.orig) return done();
+  if (e.board) {                    // the board keeps it, as it keeps the card
+    const l = links.find(v => 'link:' + v.id === e.id);
+    if (l) { l.text = e.text; sendCard(l, { text: e.text }); }
+    return done();
+  }
   e.saving = true;
   try {
     const r = await fetch('/api/doc/' + encodeURIComponent(e.id.replace(/^link:/, '')), {
@@ -1714,17 +1727,25 @@ function docCard(pic, w) {
   if (docEdit && docEdit.id === w.id) {
     pic.className = 'pic card doc';
     pic.style.cssText = '';
-    pic.innerHTML = `<div class="docwrap" tabindex="-1"><textarea class="notetxt doctxt" spellcheck="false"></textarea></div>`;
+    pic.innerHTML = `<div class="docwrap" tabindex="-1"><textarea class="doctxt" spellcheck="false"></textarea></div>`;
     const ta = pic.querySelector('.doctxt'), e = docEdit;
     ta.value = e.text;
     const fit = () => { ta.style.height = 'auto'; ta.style.height = ta.scrollHeight + 'px'; };
     requestAnimationFrame(fit);
-    ta.addEventListener('input', () => { fit(); e.text = ta.value; });
+    ta.addEventListener('input', () => {
+      fit(); e.text = ta.value;
+      if (!e.board) return;
+      clearTimeout(e.timer);          // the board keeps it as you type, so a closed tab loses nothing
+      e.timer = setTimeout(() => {
+        const l = links.find(v => 'link:' + v.id === e.id);
+        if (l) { l.text = e.text; sendCard(l, { text: e.text }); e.orig = e.text; }
+      }, 600);
+    });
     ta.addEventListener('keydown', ev => {
       if (ev.key === 'Escape' || (ev.code === 'Space' && ev.ctrlKey)) { ev.preventDefault(); ta.blur(); }
       else if (ev.key === 'Tab' && !ev.ctrlKey && !ev.altKey && !ev.metaKey && !ev.shiftKey) {
         ev.preventDefault();                 // stays in the field: two spaces in markdown, a tab elsewhere
-        ta.setRangeText(isMdPath(e.path) ? '  ' : '\t', ta.selectionStart, ta.selectionEnd, 'end');
+        ta.setRangeText(e.board || isMdPath(e.path) ? '  ' : '\t', ta.selectionStart, ta.selectionEnd, 'end');
         ta.dispatchEvent(new Event('input'));
       }
     });
@@ -1733,7 +1754,8 @@ function docCard(pic, w) {
   }
   const old = pic.querySelector('.docwrap'), top = old ? old.scrollTop : 0, left = old ? old.scrollLeft : 0;
   const inside = old && old.contains(document.activeElement);
-  const d = docs.get(w.link.path);
+  const d = w.link.note ? { md: true, html: w.link.text ? md.parse(w.link.text) : '<p class="gone">Empty markdown card — Enter to write</p>' }
+    : docs.get(w.link.path);
   pic.className = 'pic card doc';
   pic.style.cssText = '';
   pic.innerHTML = `<div class="docwrap" tabindex="-1"><div class="md"></div></div>`;
@@ -1807,30 +1829,8 @@ function openDiff(w) {
     .catch(() => toast('Could not add the diff: no answer from the server', 4000));
 }
 
-// ---- notes: markdown typed on the card itself, kept with the cards ----------
-let noteEdit = null;                // id of the note being typed into
-const noteSave = new Map();         // card id -> timer of the text not yet sent
-const noteText = new Map();         // card id -> that text: a poll swaps the card objects, never this
-function sendNote(id) {
-  clearTimeout(noteSave.get(id)); noteSave.delete(id);
-  const l = links.find(v => v.id === id), text = noteText.get(id);
-  noteText.delete(id);
-  if (l && text != null) { l.text = text; sendCard(l, { text }); }
-}
-function leaveNote(id) {
-  if (noteEdit !== id) return;      // a redraw drops the textarea and blurs it too
-  noteEdit = null;
-  if (noteSave.has(id)) sendNote(id);
-  if (tileEls.has(id)) render();     // closed: render is what is taking it off, and blurred it
-}
-function editNote(id) {
-  noteEdit = id;
-  render();
-  const ta = tileEls.get(id) && tileEls.get(id).querySelector('.notetxt');
-  if (ta) { ta.focus({ preventScroll: true }); ta.setSelectionRange(ta.value.length, ta.value.length); }
-}
 // y hands the picked tile to Claude: a link it can ask bench about, which
-// says what the tile is and how to get at it (a note's text and how to change
+// says what the tile is and how to get at it (a markdown card's text and how to change
 // it, a file's path, a terminal's folder and output, a window's process)
 function refOf(id) {
   if (id.startsWith('link:')) {
@@ -1854,45 +1854,14 @@ async function copyRef() {
   }
   track('ref.copy', { kind: ref.split(':')[1] });
 }
-async function newNote() {
+async function newMdCard() {
   try {
     const r = await fetch('/api/links', { method: 'POST', body: JSON.stringify({ note: true, from: 'page' }) });
     const l = await r.json();
     if (!r.ok) return;
     addCard(l);
-    editNote('link:' + l.id);
+    editDoc('link:' + l.id);
   } catch {}
-}
-function noteCard(pic, w) {
-  const id = w.link.id;
-  pic.className = 'pic card doc';
-  pic.style.cssText = '';
-  if (noteEdit !== 'link:' + id) {
-    pic.innerHTML = `<div class="docwrap" tabindex="-1"><div class="md"></div></div>`;
-    pic.querySelector('.md').innerHTML = w.link.text ? noteMd.parse(w.link.text)
-      : '<p class="gone">Empty note — Enter to write</p>';
-    return;
-  }
-  pic.innerHTML = `<div class="docwrap" tabindex="-1"><textarea class="notetxt" spellcheck="false"></textarea></div>`;
-  const ta = pic.querySelector('.notetxt');
-  ta.value = w.link.text || '';
-  const fit = () => { ta.style.height = 'auto'; ta.style.height = ta.scrollHeight + 'px'; };
-  requestAnimationFrame(() => {      // grown once it is on the page; keep the caret in sight
-    fit();
-    if (document.activeElement === ta) ta.parentNode.scrollTop = ta.parentNode.scrollHeight;
-  });
-  ta.addEventListener('input', () => {
-    fit();
-    // the poll may have swapped the card for the server's copy: write to the live one
-    noteText.set(id, ta.value);
-    (links.find(v => v.id === id) || w.link).text = ta.value;
-    clearTimeout(noteSave.get(id));
-    noteSave.set(id, setTimeout(() => sendNote(id), 600));
-  });
-  ta.addEventListener('keydown', e => {
-    if (e.key === 'Escape' || (e.code === 'Space' && e.ctrlKey)) { e.preventDefault(); ta.blur(); }
-  });
-  ta.addEventListener('blur', () => leaveNote('link:' + id));
 }
 
 
@@ -1935,7 +1904,7 @@ function cardKey(w) {
   const gh = ghOf(w);
   return w.link.tool ? ['tool', w.link.tool, w.link.dir, w.link.cmd, w.link.about, toolRunning(w.link)].join('\n')
     : w.link.image ? w.link.image
-    : w.link.note ? 'note ' + (noteEdit === w.id ? 'edit' : w.link.text || '')
+    : w.link.note ? 'md ' + (docEdit && docEdit.id === w.id ? 'edit' : cardTitle(w.link) + '\n' + (w.link.text || ''))
     : w.link.diff ? diffKey(w)
     : w.link.path ? (docEdit && docEdit.id === w.id ? 'doc edit' : docKey(w)) : w.link.url + (gh ? ' ' + gh.state + ' ' + (gh.assignees || []).join(',') : '') + ' ' + shownTitle(w);
 }
@@ -1984,9 +1953,8 @@ function toolCard(pic, w) {
 function card(pic, w) {
   if (w.link.tool) return toolCard(pic, w);
   if (w.link.image) return imgCard(pic, w);
-  if (w.link.path) return docCard(pic, w);
+  if (w.link.path || w.link.note) return docCard(pic, w);
   if (w.link.diff) return diffCard(pic, w);
-  if (w.link.note) return noteCard(pic, w);
   pic.className = 'pic card';
   pic.style.cssText = '';
   // a kind this page does not know (from a newer branch) is just its title:
@@ -3255,7 +3223,7 @@ function renderCanvas(match) {
   });
   tileEls.forEach((el, id) => {
     if (live.has(id)) return;
-    tileEls.delete(id);               // first: removing it can blur a note, which renders again
+    tileEls.delete(id);               // first: removing it can blur a markdown card, which renders again
     el.remove();
     const t = terms.get(id.slice(4));         // a session that has gone for good
     if (id.startsWith('web:') && t) {
@@ -3496,8 +3464,7 @@ async function activate(id) {
   render();
   if (id.startsWith('link:')) {
     const w = data.windows.find(x => x.id === id);
-    if (w && w.link.note) return editNote(id);
-    if (w && w.link.path) return editDoc(id);
+    if (w && (w.link.note || w.link.path)) return editDoc(id);
     const dw = w && (w.link.path || w.link.diff) && tileEls.get(id) && tileEls.get(id).querySelector('.docwrap');
     if (dw) dw.focus({ preventScroll: true });        // into the document: INSERT
     else if (w && w.link.tool) runTool(w.link, w);
@@ -3514,7 +3481,7 @@ async function activate(id) {
 
 // ---- keyboard picking -----------------------------------------------------
 // PgUp/PgDn read the picked tile without going into it: a terminal's
-// scrollback, or a document, note or diff a page at a time
+// scrollback, or a document, markdown card or diff a page at a time
 function scrollPicked(dir) {
   const w = selected();
   if (!w) return;
@@ -3782,7 +3749,7 @@ document.addEventListener('keydown', e => {
   if (k === 'u') { e.preventDefault(); return askLink(); }
   if (k === 'o') { e.preventDefault(); return askDoc(); }
   if (k === 'p') { e.preventDefault(); return askImage(); }
-  if (k === 'n') { e.preventDefault(); return void newNote(); }
+  if (k === 'n') { e.preventDefault(); return void newMdCard(); }
   if (k === 'y') { e.preventDefault(); return void copyRef(); }
   if (k === 'g') { e.preventDefault(); return newGroup(); }
   if (k === 'd') { e.preventDefault(); return debugArea(); }
