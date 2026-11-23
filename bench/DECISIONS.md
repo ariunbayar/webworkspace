@@ -564,3 +564,9 @@ Each entry:
 - **A (also):** Enter is sent separately, after a short pause (80 ms), because Claude Code reads a chunk with Enter in it as a paste and the Enter becomes a newline.
 - **Why:** The bench types the whole instruction, so Claude needs no rule for it; the user can add their own.
 - **Status:** built
+
+### Markdown cards show their scrollbar in NORMAL
+- **Q:** Why does a markdown card show no scrollbar in NORMAL, when PageUp/PageDown scroll it?
+- **A:** The scrollbar now shows in NORMAL so you can see where PageUp/PageDown has taken you. The mouse wheel and dragging the bar still do nothing (the card is a tile; pointer-events stay off). Added 2026-11-23.
+- **Why:** Keyboard scrolling without a visible position left you lost in a long note.
+- **Status:** built
