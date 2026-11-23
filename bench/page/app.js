@@ -33,7 +33,7 @@ try {
 } catch {}
 
 let data = null, failures = 0, sel = null;
-// Shift+click gathers tiles: with two or more here the ⋯ menu (`.`) closes them
+// Shift+click gathers tiles: with two or more here the ⋯ menu (Ctrl+,) closes them
 // together. `sel` stays the last one touched; fewer than two is just a pick.
 const multi = new Set();
 let started = null;                        // which run of the server we are talking to
@@ -662,6 +662,7 @@ async function poll() {
     data.windows.forEach(w => { if (scales[w.id]) { w.w *= scales[w.id]; w.h *= scales[w.id]; } });
     takePings(data.pings || [], asked);
     cstate = data.claude || {};
+    claudeOn = new Set(data.claude_on || []);
     takeLinks(data.links || [], asked);
     if (links.some(l => l.diff && !diffs.has(l.diff))) readDiffs();   // a diff card from before a reload
     data.windows.push(...links.map(linkWin));
@@ -1379,6 +1380,7 @@ $('#map').addEventListener('pointerdown', e => {
 // A window that wants you — Claude finished in it — pings: its triangle bobs
 // toward it, or the tile itself pulses if it is in view, until it has been in
 // view for two seconds, half of it at least, big enough to read.
+let claudeOn = new Set();    // window ids with a Claude process under them (the hooks may not have spoken yet)
 let cstate = {};             // window id -> {state, at}: what Claude is doing there
 const pings = new Set(), inViewSince = new Map();
 const unpinged = new Map();   // window id -> when the server was told it is seen; 0 while in flight
@@ -2323,18 +2325,30 @@ function mount(w) {
   // what you type goes straight down the socket; nothing is echoed locally,
   // because the far end is what decides what a keystroke looks like
   // keys typed before the socket is open wait for it (see connect)
-  term.onData(d => {
+  t.send = d => {
     if (t.ws && t.ws.readyState === 1) t.ws.send(utf8.encode(d));
     else (t.early || (t.early = [])).push(d);
-  });
+  };
+  term.onData(t.send);
   // xterm.js sends a bare CR for Shift+Enter, same as Enter. Send ESC CR
   // instead, which is what Claude Code and readline take as "newline, don't
   // submit". keypress has to be swallowed too, or the CR goes out as well.
   term.attachCustomKeyEventHandler(e => {
+    // a ⋯ menu open over this terminal has every key; none reaches the pty
+    if (!tmenu.hidden) { e.preventDefault(); return false; }
     // Ctrl+Space hands the keyboard back to the page, like Esc out of vi's
     // insert mode — Esc itself belongs to whatever runs in the terminal
     if (e.code === 'Space' && e.ctrlKey && !e.altKey && !e.metaKey) {
       if (e.type === 'keydown') { track('leave', { why: 'key' }); term.blur(); sel = 'web:' + id; render(); }
+      e.preventDefault();
+      return false;
+    }
+    // Ctrl+, opens this terminal's ⋯ menu without leaving INSERT; focus comes back after
+    if (e.code === 'Comma' && e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey) {
+      if (e.type === 'keydown') {
+        const w = pickable().find(v => v.term && v.term.session === id), el = w && elOf(w);
+        if (w && el) termMenu(w, el.querySelector('.more') || el.querySelector('.cap') || el, true);
+      }
       e.preventDefault();
       return false;
     }
@@ -2856,11 +2870,17 @@ tmenu.id = 'tilemenu';
 tmenu.hidden = true;
 document.body.append(tmenu);
 let tmenuOff = null;
-function tileMenu(anchor, items) {
+function tileMenu(anchor, items, back, up) {
   if (tmenuOff) tmenuOff();
   tmenu.textContent = '';
   const hot = new Map();       // a shortcut key -> its item
   items.forEach(it => {
+    if (it.title) {
+      const h = document.createElement('div');
+      h.className = 'tmtitle';
+      h.textContent = it.title;
+      return void tmenu.append(h);
+    }
     if (it.nums) {
       const row = document.createElement('div'), mine = markOf(it.nums);
       row.className = 'tmnums';
@@ -2910,7 +2930,9 @@ function tileMenu(anchor, items) {
   tmenu.onpointerleave = () => light(-1);
   const key = e => {
     if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); return put(); }
-    if (e.ctrlKey || e.altKey || e.metaKey) return;
+    // Ctrl may still be down from the opening key: it only spoils letters (Ctrl+C is not a menu key)
+    if ((e.ctrlKey || e.altKey || e.metaKey) && e.key.length === 1) return;
+    if (up && (e.key === 'Backspace' || e.key === 'ArrowLeft')) { e.preventDefault(); e.stopPropagation(); return up(); }
     const k = e.key.toLowerCase();
     const dir = e.key === 'ArrowDown' || (k === 'j' && !hot.has('j')) ? 1
       : e.key === 'ArrowUp' || (k === 'k' && !hot.has('k')) ? -1 : 0;
@@ -2925,6 +2947,7 @@ function tileMenu(anchor, items) {
   const away = e => { if (!tmenu.contains(e.target)) put(); };
   const put = () => {
     tmenu.hidden = true;
+    if (back) setTimeout(() => back.focus());     // opened while typing: keep typing there
     removeEventListener('keydown', key, true);
     removeEventListener('pointerdown', away, true);
     tmenuOff = null;
@@ -2963,18 +2986,18 @@ const cardMenu = (w, anchor) => tileMenu(anchor, [markItem(w.id),
   ...(w.link.url ? [{ label: 'Rename', key: 'r', run: () => setTimeout(() => renameCard(w)) }] : []),
   { label: 'Remove card', key: 'x', close: () => closeLink(w.id) }]);
 const closeHusk = id => { const r = ((data && data.lost) || []).find(x => x.id === id); return r && restoreTerm(r, false); };
-// `.` opens the ⋯ menu of the picked tile; with several gathered, one menu
+// Ctrl+, opens the ⋯ menu of the picked tile; with several gathered, one menu
 // holds the one thing they share: Close them all, armed by its first press.
 function openTileMenu() {
   const ids = multi.size >= 2 ? [...multi] : sel ? [sel] : [];
   const w = pickable().find(v => v.id === (multi.has(sel) ? sel : ids[ids.length - 1])), el = w && elOf(w);
-  if (!w || !el) return void toast('Click a tile first, then <kbd>.</kbd> for its options');
+  if (!w || !el) return void toast('Click a tile first, then <kbd>Ctrl+,</kbd> for its options');
   const anchor = el.querySelector('.more') || el.querySelector('.cap') || el;
   if (ids.length > 1) {
     const ws = ids.map(id => pickable().find(v => v.id === id)).filter(Boolean);
     const nT = ws.filter(v => v.term).length, nH = ws.filter(v => v.husk).length, n = ws.length;
     const note = [nT && nT + (nT > 1 ? ' terminals' : ' terminal'), nH && nH + (nH > 1 ? ' placeholders' : ' placeholder')].filter(Boolean).join(', ');
-    return tileMenu(anchor, [{ label: 'Close ' + n, key: 'x', close: () => closeMany(ws),
+    return tileMenu(anchor, [{ title: n + ' selected' }, { label: 'Close ' + n, key: 'x', close: () => closeMany(ws),
       armed: 'Close ' + n + (note ? ' (' + note + ')' : '') + '? x again' }]);
   }
   if (w.term) return termMenu(w, anchor);
@@ -2995,11 +3018,28 @@ async function closeMany(ws) {
   render();
   toast('Closed ' + n);
 }
-function termMenu(w, anchor) {
+function termMenu(w, anchor, typing) {
   const id = w.term.session, items = [];
+  // a terminal running Claude (a hook has reported its state): "Shortcuts" lists the
+  // user's text shortcuts (a markdown table the server reads fresh); picking one types
+  // its text, and presses Enter when its Send is yes. The digit keys are the menu's;
+  // the bookmark row is click-only
+  const back = typing && terms.get(id) && terms.get(id).term;
+  const main = () => termMenu(w, anchor, typing);
+  if (cstate[w.id] || claudeOn.has(w.id)) items.push({ label: 'Shortcuts  ▸', key: 's', keep: true, run: async () => {
+    let got;
+    try { got = await (await fetch('/api/shortcuts')).json(); } catch { got = { error: 'the server did not answer', items: [] }; }
+    const rows = (got.items || []).map(v => ({ label: v.name, key: v.key || undefined,
+      run: () => { const t = terms.get(id); if (t) t.send(' ' + v.text + (v.send ? '\r' : '')); } }));
+    const edit = { label: 'Edit shortcuts', key: 'e', run: () => {
+      fetch('/api/links', { method: 'POST', body: JSON.stringify({ path: got.path || '~/.config/bench/shortcuts.md', term: id }) })
+        .then(r => r.ok || toast('Could not open the shortcuts file', 3000)).catch(() => {});
+    } };
+    tileMenu(anchor, [{ title: 'Shortcuts' }, ...(got.error ? [{ title: 'Cannot read them: ' + got.error }] : []), ...rows, edit], back, main);
+  } });
   if (profiles().length > 1) items.push({ label: () => 'Font: ' + faceName(id) + '  ↻', run: () => swapFace(id), keep: true, key: 'f' });
   items.push(markItem(w.id), { label: 'Close terminal', key: 'x', close: () => closeTerm(id) });
-  tileMenu(anchor, items);
+  tileMenu(anchor, items, back);
 }
 
 // ---- bookmarks: tiles you go back to, on 1-9 ------------------------------
@@ -3704,6 +3744,11 @@ document.addEventListener('keydown', e => {
     return toast('Click a tile first, then <kbd>Super+Enter</kbd>');
   }
   if (e.target.tagName === 'TEXTAREA') return;   // a terminal has the keyboard
+  // Ctrl+, is the one key for the ⋯ menu (in a terminal it is caught by the terminal's own handler)
+  if (e.code === 'Comma' && e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey && e.target.tagName !== 'INPUT' && !e.target.isContentEditable) {
+    e.preventDefault();
+    return openTileMenu();
+  }
   const doc = e.target.closest && e.target.closest('.docwrap');
   if (doc) {                         // a document has it: it scrolls, Esc leaves
     if (e.key === 'Escape' || (e.code === 'Space' && e.ctrlKey)) { e.preventDefault(); doc.blur(); return; }
@@ -3766,7 +3811,6 @@ document.addEventListener('keydown', e => {
   // a placeholder takes no typing: Enter and Space leave it be
   if (k === 'Enter' || k === ' ') { const w = selected(); if (w && !w.husk) { e.preventDefault(); via = k === ' ' ? 'space' : 'enter'; activate(w.id); } return; }
   if (k === 'PageUp' || k === 'PageDown') { e.preventDefault(); return scrollPicked(k === 'PageUp' ? -1 : 1); }
-  if (k === '.') { e.preventDefault(); return openTileMenu(); }
   // the arrows pan the board: a quarter of the view, Shift three quarters
   const pans = { ArrowUp: [0, 1], ArrowDown: [0, -1], ArrowLeft: [1, 0], ArrowRight: [-1, 0] };
   if (pans[k]) {
@@ -3822,7 +3866,7 @@ track('open', { vw: innerWidth, vh: innerHeight, bare, zoom: Math.round(zoom * 1
 // A key the page does nothing with is counted as 'other', with no character:
 // a row of them would spell out whatever was being typed
 const PAGE_KEYS = new Set(['a', '?', ':', '/', 'Escape', 'b', 't', 'c', 'u', 'o', 'p', 'n', 'y', 'g', 'd', 'z', 'm', '1', '2', '3', '4', '5', '6', '7', '8', '9',
-  'Enter', ' ', '.', 'x', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'PageUp', 'PageDown']);
+  'Enter', ' ', 'x', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'PageUp', 'PageDown']);
 document.addEventListener('keydown', e => {
   // a box is anything that takes text: a group's name and folder are edited in
   // place (contenteditable), and a dialog's keys are its own
