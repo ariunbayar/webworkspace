@@ -500,3 +500,9 @@ Each entry:
 - **A:** Load the Unicode 11 addon into every terminal and switch to its widths, so emoji are two cells wide. If the addon fails to load, the terminal still works with the default widths. Added 2026-11-23.
 - **Why:** Claude Code measures emoji as 2 cells; xterm drew them as 1, so its line redraws landed in the wrong columns.
 - **Status:** trying
+
+### Cards show who a ticket is assigned to
+- **Q:** Show who a ticket is assigned to on its card?
+- **A:** Yes: `@login` beside the state badge (comma-separated when several), nothing when unassigned. Applies to issue and PR cards. Added 2026-11-23.
+- **Why:** See at a glance whose ticket it is.
+- **Status:** built

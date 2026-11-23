@@ -1864,7 +1864,7 @@ function cardKey(w) {
     : w.link.image ? w.link.image
     : w.link.note ? 'note ' + (noteEdit === w.id ? 'edit' : w.link.text || '')
     : w.link.diff ? diffKey(w)
-    : w.link.path ? docKey(w) : w.link.url + (gh ? ' ' + gh.state : '') + ' ' + shownTitle(w);
+    : w.link.path ? docKey(w) : w.link.url + (gh ? ' ' + gh.state + ' ' + (gh.assignees || []).join(',') : '') + ' ' + shownTitle(w);
 }
 
 const imgSrc = l => /^https?:/i.test(l.image) ? l.image : '/api/image?path=' + encodeURIComponent(l.image);
@@ -1937,6 +1937,12 @@ function card(pic, w) {
     b.textContent = gh.state;
     b.style.background = ghColor(gh);
     pic.querySelector('.url').prepend(b);
+    if (gh.assignees && gh.assignees.length) {
+      const who = document.createElement('span');
+      who.className = 'who';
+      who.textContent = gh.assignees.map(a => '@' + a).join(', ');
+      b.after(who);
+    }
   }
   if (/^https:\/\/github\.com\/[^/]+\/[^/]+\/pull\/\d+/.test(w.link.url)) {
     const b = document.createElement('button');
