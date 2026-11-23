@@ -104,7 +104,7 @@
   .tmitem { padding:5px 9px; border-radius:4px; cursor:pointer; white-space:nowrap }
   .tmitem { display:flex; justify-content:space-between; gap:18px }
   .tmk { opacity:.55; font:600 11px ui-monospace,monospace }
-  .tmitem:hover, .tmitem.hl { background:var(--line) }
+  .tmitem.hl { background:var(--line) }
   .tmitem.danger { color:#cf222e }
   .tmnums { display:flex; align-items:center; gap:2px; padding:4px 6px 4px 9px; white-space:nowrap }
   .tmnums span { margin-right:6px }

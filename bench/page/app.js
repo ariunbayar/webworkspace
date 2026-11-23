@@ -2859,7 +2859,7 @@ function tileMenu(anchor, items) {
     at = i;
     if (stops[i]) stops[i].classList.add('hl');
   };
-  stops.forEach((s, i) => s.addEventListener('pointerenter', () => light(i)));
+  stops.forEach((s, i) => s.addEventListener('pointermove', () => { if (at !== i) light(i); }));
   tmenu.onpointerleave = () => light(-1);
   const key = e => {
     if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); return put(); }
