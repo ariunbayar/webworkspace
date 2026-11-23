@@ -662,6 +662,7 @@ async function poll() {
     data.windows.forEach(w => { if (scales[w.id]) { w.w *= scales[w.id]; w.h *= scales[w.id]; } });
     takePings(data.pings || [], asked);
     cstate = data.claude || {};
+    claudeOn = new Set(data.claude_on || []);
     takeLinks(data.links || [], asked);
     if (links.some(l => l.diff && !diffs.has(l.diff))) readDiffs();   // a diff card from before a reload
     data.windows.push(...links.map(linkWin));
@@ -1379,6 +1380,7 @@ $('#map').addEventListener('pointerdown', e => {
 // A window that wants you — Claude finished in it — pings: its triangle bobs
 // toward it, or the tile itself pulses if it is in view, until it has been in
 // view for two seconds, half of it at least, big enough to read.
+let claudeOn = new Set();    // window ids with a Claude process under them (the hooks may not have spoken yet)
 let cstate = {};             // window id -> {state, at}: what Claude is doing there
 const pings = new Set(), inViewSince = new Map();
 const unpinged = new Map();   // window id -> when the server was told it is seen; 0 while in flight
@@ -3017,7 +3019,7 @@ function termMenu(w, anchor, typing) {
   // the bookmark row is click-only
   const back = typing && terms.get(id) && terms.get(id).term;
   const main = () => termMenu(w, anchor, typing);
-  if (cstate[w.id]) items.push({ label: 'Shortcuts  ▸', key: 's', keep: true, run: async () => {
+  if (cstate[w.id] || claudeOn.has(w.id)) items.push({ label: 'Shortcuts  ▸', key: 's', keep: true, run: async () => {
     let got;
     try { got = await (await fetch('/api/shortcuts')).json(); } catch { got = { error: 'the server did not answer', items: [] }; }
     const rows = (got.items || []).map(v => ({ label: v.name, key: v.key || undefined,

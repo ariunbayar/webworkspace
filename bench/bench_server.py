@@ -428,6 +428,7 @@ def start_terminals(port):
 def sample():
     """Everything the page draws: our terminals, the cards, the groups, the pings."""
     windows = terminals(0, 1920)
+    claude = claude_states(windows)
     return {
         "captured": time.strftime("%H:%M:%S"),
         "windows": windows,
@@ -439,7 +440,8 @@ def sample():
         "arrange": arrangement(),  # its groups and tile places; None until a page sends one
         "lost": lost_terms(),   # terminals a reboot took, for the page to offer back
         "pings": pinged(),      # terminals that want you, the same in every browser
-        "claude": claude_states(windows),  # what Claude is up to in each
+        "claude": claude[0],    # what Claude is up to in each
+        "claude_on": claude[1],  # page terminals with a Claude process under them, hooks or not
     }
 
 
@@ -1231,7 +1233,10 @@ def claude_states(windows):
     shells = {w["id"]: w.get("pid") for w in windows if w["id"].startswith("web:") and w.get("pid")}
     with _claude_lock:
         watch = {wid: shells[wid] for wid in _claude if wid in shells}
-    with_claude = claude_under(set(watch.values())) if watch else set()
+    # one pass over /proc for every page terminal: the hook states may be gone (a
+    # restart), but a Claude still running there is known from the process tree
+    with_claude = claude_under(set(shells.values())) if shells else set()
+    running = sorted(wid for wid, pid in shells.items() if pid in with_claude)
     with _claude_lock:
         for wid, pid in watch.items():
             if pid in with_claude:
@@ -1245,7 +1250,7 @@ def claude_states(windows):
         for wid, (state, at) in list(_claude.items()):
             if wid not in live or (state == "working" and now - at > CLAUDE_STALE):
                 del _claude[wid]
-        return {wid: {"state": st, "at": at} for wid, (st, at) in _claude.items()}
+        return {wid: {"state": st, "at": at} for wid, (st, at) in _claude.items()}, running
 
 
 PAGE_TITLE = "Open windows"
