@@ -500,3 +500,9 @@ Each entry:
 - **A:** Load the Unicode 11 addon into every terminal and switch to its widths, so emoji are two cells wide. If the addon fails to load, the terminal still works with the default widths. Added 2026-11-23.
 - **Why:** Claude Code measures emoji as 2 cells; xterm drew them as 1, so its line redraws landed in the wrong columns.
 - **Status:** trying
+
+### Rename a link card
+- **Q:** A link card whose title can't be fetched only shows its host. Can it be renamed?
+- **A:** Yes: ⋯ → Rename (r) or double-click the title. Empty brings back the automatic title. Added 2026-11-23.
+- **Why:** Logged-in pages like claude.ai artifacts give no title.
+- **Status:** built

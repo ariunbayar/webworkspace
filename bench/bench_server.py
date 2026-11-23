@@ -894,6 +894,12 @@ def stuck(s):
 
 def change_link(lid, body):
     """A card moved or resized on some page, or a note typed in; body None takes it off the board."""
+    new_title = body.get("title") if body else None
+    auto = None
+    if isinstance(new_title, str) and not new_title.strip():
+        cur = next((l for l in _links if l["id"] == lid), None)   # cleared: the automatic title again
+        if cur and card_kind(cur) == "url":
+            auto = fetch_title(cur["url"]) or cur["url"].split("/")[2]
     with _links_lock:
         link = next((l for l in _links if l["id"] == lid), None)
         if not link:
@@ -902,6 +908,13 @@ def change_link(lid, body):
             _links.remove(link)
         else:
             link.update(placed(body))
+            if card_kind(link) == "url" and isinstance(new_title, str):
+                if auto:                                  # cleared by hand
+                    link["title"] = auto
+                    link.pop("named", None)
+                elif new_title.strip():
+                    link["title"] = new_title.strip()[:200]
+                    link["named"] = True
             if "stick" in body:             # attached to a terminal's edge, or let go (null)
                 s = stuck(body["stick"])
                 if s:
