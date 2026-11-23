@@ -220,6 +220,7 @@
   .notetxt { display:block; width:100%; min-height:100%; box-sizing:border-box; resize:none;
              border:0; outline:0; padding:0; overflow:hidden; background:transparent;
              color:var(--fg); font:14px/1.55 system-ui, sans-serif }
+  .notetxt.doctxt { font:13px/1.45 ui-monospace, Menlo, Consolas, monospace; white-space:pre-wrap; tab-size:4 }
   .md a { color:var(--accent) } .md img { max-width:100% }
   .md .gone { color:var(--accent) }
   /* a PR's diff: monospace, one line per row, coloured by what the line does */

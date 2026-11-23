@@ -33,6 +33,7 @@ import shlex
 import signal
 import subprocess
 import sys
+import tempfile
 import termios
 import threading
 import time
@@ -638,6 +639,61 @@ def is_text(path):
     return True
 
 
+def rev_of(st):
+    """The file's version as a string (a nanosecond time overflows a page's numbers)."""
+    return "%d:%d" % (st.st_mtime_ns, st.st_size)
+
+
+EDIT_EXT = MD_EXT + (".txt",)
+DOC_MAX = 200000                        # characters, as for a note
+
+
+def save_doc(lid, text, since):
+    """Write typed text back to the file of document card lid. The path comes from the
+    stored card, never from the request. Returns (answer, http code)."""
+    with _links_lock:
+        link = next((dict(l) for l in _links if l["id"] == lid), None)
+    if not link or not link.get("path"):
+        return {"error": "no such document card"}, 404
+    if not isinstance(text, str) or not isinstance(since, str):
+        return {"error": "bad request"}, 400
+    if len(text) > DOC_MAX:
+        return {"error": "over %d characters" % DOC_MAX}, 413
+    path = os.path.realpath(os.path.abspath(os.path.expanduser(link["path"])))
+    if not path.lower().endswith(EDIT_EXT):
+        return {"error": "only .md, .markdown and .txt files can be edited"}, 400
+    try:
+        st = os.stat(path)
+        if not os.path.isfile(path):
+            return {"error": "not a file"}, 400
+        if rev_of(st) != since:
+            return {"error": "the file changed outside"}, 409
+        with open(path, "rb") as f:
+            old = f.read()
+        data = text.encode("utf-8")
+        if b"\r\n" in old and b"\r" not in data:      # the page's text has plain newlines
+            data = data.replace(b"\n", b"\r\n")
+        if data == old:
+            return {"ok": True, "rev": rev_of(st), "mtime": st.st_mtime_ns}, 200
+        fd, tmp = tempfile.mkstemp(prefix=".bench-", dir=os.path.dirname(path))
+        try:
+            with os.fdopen(fd, "wb") as f:
+                f.write(data)
+            os.chmod(tmp, st.st_mode & 0o7777)
+            if rev_of(os.stat(path)) != since:           # changed while we wrote
+                os.unlink(tmp)
+                return {"error": "the file changed outside"}, 409
+            os.replace(tmp, path)
+        except BaseException:
+            if os.path.exists(tmp):
+                os.unlink(tmp)
+            raise
+        st = os.stat(path)
+        return {"ok": True, "rev": rev_of(st), "mtime": st.st_mtime_ns}, 200
+    except OSError as e:
+        return {"error": e.strerror or "cannot write it"}, 500
+
+
 def read_doc(path, since=None):
     path = os.path.abspath(os.path.expanduser(path or ""))
     try:
@@ -647,6 +703,7 @@ def read_doc(path, since=None):
         if not is_text(path):
             return None, "not a text file"
         out = {"path": path, "name": os.path.basename(path), "mtime": st.st_mtime_ns,
+               "rev": rev_of(st),
                "kind": "md" if path.lower().endswith(MD_EXT) else "text"}
         if str(st.st_mtime_ns) != since:
             with open(path, encoding="utf-8", errors="replace") as f:
@@ -1425,13 +1482,19 @@ class Handler(BaseHTTPRequestHandler):
     def do_PUT(self):
         if not self._guard():
             return
-        if self.path.split("?")[0] != "/api/arrangement":
+        m = re.fullmatch(r"/api/doc/([0-9A-Za-z]{1,64})(?:\?.*)?", self.path)
+        if not m and self.path.split("?")[0] != "/api/arrangement":
             return self._send(json.dumps({"error": "not found"}), code=404)
         try:
             n = int(self.headers.get("Content-Length", 0))
             body = json.loads(self.rfile.read(n) or b"{}")
         except (ValueError, json.JSONDecodeError):
             return self._send(json.dumps({"error": "bad request"}), code=400)
+        if m:
+            if not isinstance(body, dict):
+                return self._send(json.dumps({"error": "bad request"}), code=400)
+            out, code = save_doc(m.group(1), body.get("text"), body.get("since"))
+            return self._send(json.dumps(out), code=code)
         new = set_arrangement(body)
         if not new:
             return self._send(json.dumps({"error": "bad request"}), code=400)

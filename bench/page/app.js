@@ -1631,11 +1631,17 @@ md.use({ renderer: {
     ? `<img src="${esc(href)}" alt="${esc(text || '')}">` : esc(text || ''),
 } });
 
+function docSet(path, d, isMd) {
+  docs.set(path, { mtime: d.mtime, md: isMd, at: Date.now(),
+                   html: isMd ? md.parse(d.text) : `<pre class="txt">${esc(d.text)}</pre>` });
+}
+
 async function readDocs() {
   let changed = false;
   for (const l of links) {
     if (!l.path) continue;
     const had = docs.get(l.path);
+    if (docEdit && docEdit.path === l.path) continue;             // the editor has this file
     if (had && had.at && Date.now() - had.at < 1000) continue;   // a busy file is redrawn once a second at most
     const q = 'path=' + encodeURIComponent(l.path) + (had && had.mtime ? '&since=' + had.mtime : '');
     try {
@@ -1644,8 +1650,7 @@ async function readDocs() {
         if (!had || !had.error) { docs.set(l.path, { error: d.error }); changed = true; }
       } else if ('text' in d) {
         const isMd = d.kind ? d.kind === 'md' : isMdPath(l.path);
-        docs.set(l.path, { mtime: d.mtime, md: isMd, at: Date.now(),
-                           html: isMd ? md.parse(d.text) : `<pre class="txt">${esc(d.text)}</pre>` });
+        docSet(l.path, d, isMd);
         changed = true;
       }
     } catch {}
@@ -1658,7 +1663,74 @@ function docKey(w) {
   return w.link.path + ' ' + (d ? d.mtime || d.error : '');
 }
 
+// ---- editing a document card: its file's raw text, saved on leaving --------
+let docEdit = null;                 // {id, path, rev, orig, text, saving} while a document is typed into
+async function editDoc(id) {
+  if (docEdit && docEdit.id === id) return focusDoc();
+  const l = links.find(v => 'link:' + v.id === id);
+  if (!l || !l.path) return;
+  if (docEdit) await leaveDoc();
+  if (docEdit) return;                // that one could not be saved: it stays
+  let d;
+  try {
+    const r = await fetch('/api/file?path=' + encodeURIComponent(l.path));
+    d = await r.json();
+    if (!r.ok) return toast('Cannot edit: ' + esc(d.error || 'unreadable'), 4000);
+  } catch { return toast('Cannot edit: no answer from the server', 4000); }
+  if (!/\.(md|markdown|txt)$/i.test(l.path)) return toast('Only .md, .markdown and .txt files can be edited', 4000);
+  docEdit = { id, path: l.path, rev: d.rev, orig: d.text, text: d.text, saving: false };
+  render();
+  focusDoc();
+}
+function focusDoc() {
+  const ta = docEdit && tileEls.get(docEdit.id) && tileEls.get(docEdit.id).querySelector('.doctxt');
+  if (ta) { ta.focus({ preventScroll: true }); ta.setSelectionRange(ta.value.length, ta.value.length); }
+}
+async function leaveDoc() {
+  const e = docEdit;
+  if (!e || e.saving) return;       // a redraw drops the textarea and blurs it too
+  const done = () => { if (docEdit === e) docEdit = null; render(); };
+  if (e.text === e.orig) return done();
+  e.saving = true;
+  try {
+    const r = await fetch('/api/doc/' + encodeURIComponent(e.id.replace(/^link:/, '')), {
+      method: 'PUT', body: JSON.stringify({ text: e.text, since: e.rev }) });
+    const d = await r.json().catch(() => ({}));
+    e.saving = false;
+    if (r.ok) {
+      docSet(e.path, { mtime: d.mtime, text: e.text }, isMdPath(e.path));
+      return done();
+    }
+    // the editor stays open with the typed text
+    toast(r.status === 409 ? 'This file changed outside the bench, so your text was not saved. It is still here to copy.'
+      : 'Not saved: ' + esc(d.error || r.status), 6000);
+  } catch {
+    e.saving = false;
+    toast('Not saved: no answer from the server', 4000);
+  }
+}
+
 function docCard(pic, w) {
+  if (docEdit && docEdit.id === w.id) {
+    pic.className = 'pic card doc';
+    pic.style.cssText = '';
+    pic.innerHTML = `<div class="docwrap" tabindex="-1"><textarea class="notetxt doctxt" spellcheck="false"></textarea></div>`;
+    const ta = pic.querySelector('.doctxt'), e = docEdit;
+    ta.value = e.text;
+    const fit = () => { ta.style.height = 'auto'; ta.style.height = ta.scrollHeight + 'px'; };
+    requestAnimationFrame(fit);
+    ta.addEventListener('input', () => { fit(); e.text = ta.value; });
+    ta.addEventListener('keydown', ev => {
+      if (ev.key === 'Escape' || (ev.code === 'Space' && ev.ctrlKey)) { ev.preventDefault(); ta.blur(); }
+      else if (ev.key === 'Tab' && !ev.ctrlKey && !ev.altKey && !ev.metaKey && !ev.shiftKey) {
+        ev.preventDefault();                 // stays in the field: two spaces in markdown, a tab elsewhere
+        ta.setRangeText(isMdPath(e.path) ? '  ' : '\t', ta.selectionStart, ta.selectionEnd, 'end');
+        ta.dispatchEvent(new Event('input'));
+      }
+    });
+    ta.addEventListener('blur', () => leaveDoc());
+    return;
+  }
   const old = pic.querySelector('.docwrap'), top = old ? old.scrollTop : 0, left = old ? old.scrollLeft : 0;
   const inside = old && old.contains(document.activeElement);
   const d = docs.get(w.link.path);
@@ -1865,7 +1937,7 @@ function cardKey(w) {
     : w.link.image ? w.link.image
     : w.link.note ? 'note ' + (noteEdit === w.id ? 'edit' : w.link.text || '')
     : w.link.diff ? diffKey(w)
-    : w.link.path ? docKey(w) : w.link.url + (gh ? ' ' + gh.state + ' ' + (gh.assignees || []).join(',') : '') + ' ' + shownTitle(w);
+    : w.link.path ? (docEdit && docEdit.id === w.id ? 'doc edit' : docKey(w)) : w.link.url + (gh ? ' ' + gh.state + ' ' + (gh.assignees || []).join(',') : '') + ' ' + shownTitle(w);
 }
 
 const imgSrc = l => /^https?:/i.test(l.image) ? l.image : '/api/image?path=' + encodeURIComponent(l.image);
@@ -3137,6 +3209,7 @@ function renderCanvas(match) {
         // the drag captured the pointer, so e.target is the tile: ask what is really under it
         const hit = document.elementFromPoint(e.clientX, e.clientY) || e.target;
         if (w.link.url && !w.link.diff && hit.closest('.cap .t2')) return void renameCard(w);
+        if (hit.closest('.md a, textarea')) return;      // a link is followed; a field's double click picks a word
         if (!shifted(e) && !hit.closest('.more, .grip')) { via = 'dbl'; activate(w.id); }
       });
       // a terminal is typed into on a double click, as Enter does: the one
@@ -3424,6 +3497,7 @@ async function activate(id) {
   if (id.startsWith('link:')) {
     const w = data.windows.find(x => x.id === id);
     if (w && w.link.note) return editNote(id);
+    if (w && w.link.path) return editDoc(id);
     const dw = w && (w.link.path || w.link.diff) && tileEls.get(id) && tileEls.get(id).querySelector('.docwrap');
     if (dw) dw.focus({ preventScroll: true });        // into the document: INSERT
     else if (w && w.link.tool) runTool(w.link, w);
