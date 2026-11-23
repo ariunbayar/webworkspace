@@ -512,3 +512,15 @@ Each entry:
 - **A:** Yes: `@login` beside the state badge (comma-separated when several), nothing when unassigned. Applies to issue and PR cards. Added 2026-11-23.
 - **Why:** See at a glance whose ticket it is.
 - **Status:** built
+
+### Link cards show their title once
+- **Q:** Why does a link card show its title twice?
+- **A:** The caption keeps it; the body shows only icon and address. Rename edits the caption title. Added 2026-11-23.
+- **Why:** The body title predates the caption and repeated it.
+- **Status:** built
+
+### Arrows move within an open ⋯ menu
+- **Q:** With a ⋯ menu open, should ↑↓ move within it?
+- **A:** Yes; ↑↓ move a highlight, Enter presses it; arrows don't reach the board while the menu is open. Added 2026-11-23.
+- **Why:** They moved the board's selection, which looked like switching tiles.
+- **Status:** built

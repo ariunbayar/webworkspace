@@ -1925,11 +1925,12 @@ function card(pic, w) {
     pic.querySelector('.ttl span').textContent = w.link.title || 'Card';
     return;
   }
-  pic.innerHTML = `<div class="ttl"><img alt=""><span></span></div><div class="url"></div>`;
-  const img = pic.querySelector('img');
+  // the title is on the caption; the body is the icon and the address
+  pic.innerHTML = `<div class="url"></div>`;
+  const img = document.createElement('img');
+  img.alt = '';
   img.onerror = () => img.remove();
   img.src = u.origin + '/favicon.ico';
-  pic.querySelector('.ttl span').textContent = shownTitle(w);
   pic.querySelector('.url').textContent = u.host + u.pathname;
   const gh = ghOf(w);
   if (gh) {
@@ -1945,6 +1946,7 @@ function card(pic, w) {
       b.after(who);
     }
   }
+  pic.querySelector('.url').prepend(img);
   if (/^https:\/\/github\.com\/[^/]+\/[^/]+\/pull\/\d+/.test(w.link.url)) {
     const b = document.createElement('button');
     b.className = 'diffbtn';
@@ -2849,12 +2851,28 @@ function tileMenu(anchor, items) {
   tmenu.hidden = false;
   tmenu.style.left = Math.max(4, Math.min(r.right - tmenu.offsetWidth, innerWidth - tmenu.offsetWidth - 4)) + 'px';
   tmenu.style.top = Math.min(r.bottom + 2, innerHeight - tmenu.offsetHeight - 4) + 'px';
+  // ↑↓ (and j/k, unless an item owns that key) move a highlight, Enter presses it
+  const stops = [...tmenu.querySelectorAll('.tmitem')];
+  let at = -1;
+  const light = i => {
+    stops.forEach(s => s.classList.remove('hl'));
+    at = i;
+    if (stops[i]) stops[i].classList.add('hl');
+  };
+  stops.forEach((s, i) => s.addEventListener('pointerenter', () => light(i)));
+  tmenu.onpointerleave = () => light(-1);
   const key = e => {
     if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); return put(); }
-    if (e.ctrlKey || e.altKey || e.metaKey || e.key.length !== 1) return;
-    // an item's own key presses it; no other letter reaches the page under the menu
+    if (e.ctrlKey || e.altKey || e.metaKey) return;
+    const k = e.key.toLowerCase();
+    const dir = e.key === 'ArrowDown' || (k === 'j' && !hot.has('j')) ? 1
+      : e.key === 'ArrowUp' || (k === 'k' && !hot.has('k')) ? -1 : 0;
+    // nothing but the menu hears a letter, arrow or Enter while it is open
+    if (!(e.key === 'Enter' || e.key.startsWith('Arrow') || e.key.length === 1)) return;
     e.preventDefault(); e.stopPropagation();
-    const b = hot.get(e.key.toLowerCase());
+    if (dir) { if (stops.length) light(at < 0 ? (dir > 0 ? 0 : stops.length - 1) : (at + dir + stops.length) % stops.length); return; }
+    if (e.key === 'Enter') { if (stops[at]) stops[at].onclick(); return; }
+    const b = hot.get(k);
     if (b) b.onclick();
   };
   const away = e => { if (!tmenu.contains(e.target)) put(); };
@@ -2872,7 +2890,7 @@ const faceName = id => { const t = terms.get(id); return t && (profiles()[t.prof
 // a link card's title by hand, for a page that gives none (behind a login):
 // Enter or leaving keeps it, Escape cancels, empty brings the automatic one back
 function renameCard(w) {
-  const el = tileEls.get(w.id), span = el && el.querySelector('.ttl span');
+  const el = tileEls.get(w.id), span = el && el.querySelector('.cap .t2');
   if (!span || !w.link.url) return;
   const was = w.link.named ? w.link.title : '';
   let cancel = false;
@@ -3084,6 +3102,7 @@ function renderCanvas(match) {
       }
       el.addEventListener('pointerdown', e => {
         const win = tileEls.get(w.id).win;
+        if (e.target.isContentEditable) return;      // a title being renamed is for the caret
         if (e.target.closest('.md a')) return;    // a link in a document is for following
         // answered here for the same reason as a terminal's close button below
         if (e.target.closest('.runbtn, .rerun')) {
@@ -3115,7 +3134,7 @@ function renderCanvas(match) {
         drag(e, win, el);
       });
       if (w.link) el.addEventListener('dblclick', e => {
-        if (w.link.url && !w.link.diff && e.target.closest('.ttl span')) return void renameCard(w);
+        if (w.link.url && !w.link.diff && e.target.closest('.cap .t2')) return void renameCard(w);
         if (!shifted(e) && !e.target.closest('.more, .grip')) { via = 'dbl'; activate(w.id); }
       });
       // a terminal is typed into on a double click, as Enter does: the one
@@ -3138,7 +3157,8 @@ function renderCanvas(match) {
     } else {
       el.title = `${w.app} — ${w.title}`;
       el.querySelector('.dot').style.background = colorOf(w.app);
-      el.querySelector('.t2').textContent = shownTitle(w);
+      const t2 = el.querySelector('.t2');
+      if (!t2.isContentEditable) t2.textContent = shownTitle(w);   // not under a rename in progress
       // the app is named in words, not only by the dot's colour — unless the
       // title says it already, or it is a card, whose title is what it is
       el.querySelector('.app').textContent = !w.link && w.app
