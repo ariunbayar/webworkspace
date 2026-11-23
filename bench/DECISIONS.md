@@ -547,6 +547,7 @@ Each entry:
 ### Markdown cards show where they live
 - **Q:** How to see which file a markdown card shows?
 - **A:** A small line at the top of the card: the file path (~ for home), or "on the board (no file)". Added 2026-11-23.
+- **A (also):** The path line can be selected with the mouse (no drag, double-click selects). ⋯ → Copy path (p) / Copy name (n) on cards with a file.
 - **Why:** Two cards can look alike; the user needs the location.
 - **Status:** built
 
