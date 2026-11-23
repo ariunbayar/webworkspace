@@ -2316,10 +2316,11 @@ function mount(w) {
   // what you type goes straight down the socket; nothing is echoed locally,
   // because the far end is what decides what a keystroke looks like
   // keys typed before the socket is open wait for it (see connect)
-  term.onData(d => {
+  t.send = d => {
     if (t.ws && t.ws.readyState === 1) t.ws.send(utf8.encode(d));
     else (t.early || (t.early = [])).push(d);
-  });
+  };
+  term.onData(t.send);
   // xterm.js sends a bare CR for Shift+Enter, same as Enter. Send ESC CR
   // instead, which is what Claude Code and readline take as "newline, don't
   // submit". keypress has to be swallowed too, or the CR goes out as well.
@@ -2328,6 +2329,15 @@ function mount(w) {
     // insert mode — Esc itself belongs to whatever runs in the terminal
     if (e.code === 'Space' && e.ctrlKey && !e.altKey && !e.metaKey) {
       if (e.type === 'keydown') { track('leave', { why: 'key' }); term.blur(); sel = 'web:' + id; render(); }
+      e.preventDefault();
+      return false;
+    }
+    // Ctrl+. opens this terminal's ⋯ menu without leaving INSERT; focus comes back after
+    if (e.code === 'Period' && e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey) {
+      if (e.type === 'keydown') {
+        const w = pickable().find(v => v.term && v.term.session === id), el = w && elOf(w);
+        if (w && el) termMenu(w, el.querySelector('.more') || el.querySelector('.cap') || el, true);
+      }
       e.preventDefault();
       return false;
     }
@@ -2849,7 +2859,7 @@ tmenu.id = 'tilemenu';
 tmenu.hidden = true;
 document.body.append(tmenu);
 let tmenuOff = null;
-function tileMenu(anchor, items) {
+function tileMenu(anchor, items, back) {
   if (tmenuOff) tmenuOff();
   tmenu.textContent = '';
   const hot = new Map();       // a shortcut key -> its item
@@ -2918,6 +2928,7 @@ function tileMenu(anchor, items) {
   const away = e => { if (!tmenu.contains(e.target)) put(); };
   const put = () => {
     tmenu.hidden = true;
+    if (back) setTimeout(() => back.focus());     // opened while typing: keep typing there
     removeEventListener('keydown', key, true);
     removeEventListener('pointerdown', away, true);
     tmenuOff = null;
@@ -2988,11 +2999,15 @@ async function closeMany(ws) {
   render();
   toast('Closed ' + n);
 }
-function termMenu(w, anchor) {
+function termMenu(w, anchor, typing) {
   const id = w.term.session, items = [];
+  // a terminal running Claude (a hook has reported its state): add a rule word
+  // to the prompt and send it. The digit keys are the menu's; the bookmark row is click-only
+  if (cstate[w.id]) [20, 100, 200].forEach((n, i) => items.push({ label: 'dmb' + n, key: String(i + 1),
+    run: () => { const t = terms.get(id); if (t) t.send(' dmb' + n + '\r'); } }));
   if (profiles().length > 1) items.push({ label: () => 'Font: ' + faceName(id) + '  ↻', run: () => swapFace(id), keep: true, key: 'f' });
   items.push(markItem(w.id), { label: 'Close terminal', key: 'x', close: () => closeTerm(id) });
-  tileMenu(anchor, items);
+  tileMenu(anchor, items, typing && terms.get(id) && terms.get(id).term);
 }
 
 // ---- bookmarks: tiles you go back to, on 1-9 ------------------------------

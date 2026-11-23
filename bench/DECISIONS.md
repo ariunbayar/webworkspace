@@ -542,3 +542,9 @@ Each entry:
 - **A:** Yes: send note with its text; one request makes the filled card. "show it on the bench" means no file; a file only when asked to save. Added 2026-11-23.
 - **Why:** Two steps could leave an empty card if the second failed.
 - **Status:** built
+
+### Ctrl+. opens a terminal's menu while typing; dmb shortcuts
+- **Q:** How to add dmb20/100/200 to a Claude prompt without the mouse or leaving INSERT?
+- **A:** Ctrl+. opens the ⋯ menu from INSERT; on Claude terminals 1/2/3 add ` dmb20/100/200` and press Enter; focus stays in the terminal. Ctrl+. is not a documented Claude Code shortcut, and the page catches it first. Rejected: buttons on the terminal, Alt+digit hotkeys, shorter words in CLAUDE.md, sending via Claude's cross-session socket (arrives labelled as another session, not the user). Added 2026-11-23.
+- **Why:** The user uses dmb often and wants keyboard only.
+- **Status:** built
