@@ -103,9 +103,13 @@
   #tilemenu[hidden] { display:none }
   .tmitem { padding:5px 9px; border-radius:4px; cursor:pointer; white-space:nowrap }
   .tmitem { display:flex; justify-content:space-between; gap:18px }
-  .tmk { opacity:.55; font:600 11px ui-monospace,monospace }
+  .tmitem { align-items:center }
+  .tmk { opacity:.7; font:600 11px/16px ui-monospace,monospace; min-width:16px; box-sizing:border-box; text-align:center;
+         padding:0 4px; border:1px solid currentColor; border-bottom-width:2px; border-radius:4px; background:var(--panel) }
+  .tmitem.hl .tmk { background:transparent; opacity:.85 }
   .tmitem.hl { background:var(--line) }
   .tmitem.danger { color:#cf222e }
+  .tmtitle { padding:4px 9px 2px; font-size:11px; color:var(--dim); cursor:default }
   .tmnums { display:flex; align-items:center; gap:2px; padding:4px 6px 4px 9px; white-space:nowrap }
   .tmnums span { margin-right:6px }
   .tmnums b { width:18px; line-height:18px; text-align:center; border-radius:4px; cursor:pointer; font-weight:600 }
