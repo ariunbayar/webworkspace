@@ -494,3 +494,9 @@ Each entry:
 - **A:** Pan the board a quarter of the view (Shift: three quarters). hjkl do nothing in NORMAL. Super+Enter keeps arrows and hjkl for moving and sizing. Supersedes picking the nearest tile with arrows/hjkl (2026-11-20). Picking is by click, the `/` list, bookmarks or the palette.
 - **Why:** The user dropped arrow picking.
 - **Status:** trying
+
+### Terminals use Unicode 11 character widths
+- **Q:** Why did lines with emoji (✅ 👉) show typos: stray letters, missing or doubled spaces?
+- **A:** Load the Unicode 11 addon into every terminal and switch to its widths, so emoji are two cells wide. If the addon fails to load, the terminal still works with the default widths. Added 2026-11-23.
+- **Why:** Claude Code measures emoji as 2 cells; xterm drew them as 1, so its line redraws landed in the wrong columns.
+- **Status:** trying

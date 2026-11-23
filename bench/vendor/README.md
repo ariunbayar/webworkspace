@@ -21,3 +21,12 @@ To move to another version, drop the two files in and change nothing else —
 It turns a markdown file on the surface into HTML. The page drops any raw HTML
 in the file and keeps only http(s) and mailto links, since whatever it shows
 sits next to terminals it can type into.
+
+`addon-unicode11.js` is @xterm/addon-unicode11 0.9.0 (the release that pairs with
+xterm.js 6.0.0), also unmodified, from
+
+    https://cdn.jsdelivr.net/npm/@xterm/addon-unicode11@0.9.0/lib/addon-unicode11.js
+
+MIT licensed. It makes emoji and other wide characters two cells wide, as
+Claude Code counts them. Unlike the files above, `bench_server.py` serves it
+only because it is listed in that file's `FILES` table.

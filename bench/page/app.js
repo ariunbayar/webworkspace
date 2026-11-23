@@ -1114,7 +1114,7 @@ function renderHusks() {
         if (sel !== 'husk:' + r.id || multi.size) { multi.clear(); sel = 'husk:' + r.id; render(); }     // a click on the screen picks it
       });
       const ps = profiles(), face = ps.find(p => p.name === (faces[r.id] || r.face)) || ps[0] || { font: look().font, size: look().size };
-      const term = new Terminal({
+      const term = newTerminal({
         cols: r.cols, rows: r.rows, theme: termTheme(), fontFamily: termFont(face.font),
         fontSize: face.size || 13, lineHeight: 1.125, disableStdin: true, cursorBlink: false,
         scrollback: 65536, convertEol: false,       // the whole of the 64 KB saved
@@ -2191,6 +2191,16 @@ const FALLBACK_THEME = { background: '#12110d', foreground: '#e9e7df', cursor: '
   blue: '#6f9bc4', magenta: '#b07ec0', cyan: '#5fa8a0', white: '#d9d5c8' };
 // a palette read from X is taken whole, not mixed with this one: half of one
 // scheme and half of another is nobody's idea of a colour scheme
+// Terminal with Unicode 11 widths, so emoji take 2 cells as Claude Code assumes.
+// Fails soft: without the addon the terminal still works, just with v6 widths.
+function newTerminal(opts) {
+  const term = new Terminal({ ...opts, allowProposedApi: true });
+  try {
+    term.loadAddon(new Unicode11Addon.Unicode11Addon());
+    term.unicode.activeVersion = '11';
+  } catch (e) { console.warn('unicode11 addon unavailable', e); }
+  return term;
+}
 const termTheme = () => look().theme || FALLBACK_THEME;
 
 function connect(t, id) {
@@ -2219,7 +2229,7 @@ function mount(w) {
   // a profile since taken out of ~/.Xresources falls back to the default
   const prof = Math.max(0, profiles().findIndex(p => p.name === faces[id]));
   const face = profiles()[prof] || { font: l.font, size: l.size };
-  const term = new Terminal({
+  const term = newTerminal({
     cols: w.term.cols, rows: w.term.rows, theme: termTheme(),
     fontFamily: termFont(face.font),
     fontSize: face.size || 13,
