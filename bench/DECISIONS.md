@@ -554,5 +554,6 @@ Each entry:
 - **Q:** Can the dmb shortcuts be defined on the bench instead of in Claude's instructions, and other kinds too?
 - **A:** Yes: a markdown table of Name / Key / Send / Text, shown and edited as a markdown card; Ctrl+, s lists them on Claude terminals; picking one types its full text (and presses Enter when Send is yes). Starts with dmb10/20/100/200; "Edit shortcuts" (e) puts the file beside the terminal. Added 2026-11-23.
 - **A (also):** A terminal counts as Claude's when a hook has reported its state or a claude process runs under its shell, so the row survives a server restart. The state badge still follows hooks only.
+- **A (also):** Enter is sent separately, after a short pause (80 ms), because Claude Code reads a chunk with Enter in it as a paste and the Enter becomes a newline.
 - **Why:** The bench types the whole instruction, so Claude needs no rule for it; the user can add their own.
 - **Status:** built
