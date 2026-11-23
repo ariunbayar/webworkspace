@@ -2859,7 +2859,7 @@ tmenu.id = 'tilemenu';
 tmenu.hidden = true;
 document.body.append(tmenu);
 let tmenuOff = null;
-function tileMenu(anchor, items, back) {
+function tileMenu(anchor, items, back, up) {
   if (tmenuOff) tmenuOff();
   tmenu.textContent = '';
   const hot = new Map();       // a shortcut key -> its item
@@ -2920,6 +2920,7 @@ function tileMenu(anchor, items, back) {
   const key = e => {
     if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); return put(); }
     if (e.ctrlKey || e.altKey || e.metaKey) return;
+    if (up && (e.key === 'Backspace' || e.key === 'ArrowLeft')) { e.preventDefault(); e.stopPropagation(); return up(); }
     const k = e.key.toLowerCase();
     const dir = e.key === 'ArrowDown' || (k === 'j' && !hot.has('j')) ? 1
       : e.key === 'ArrowUp' || (k === 'k' && !hot.has('k')) ? -1 : 0;
@@ -3007,13 +3008,17 @@ async function closeMany(ws) {
 }
 function termMenu(w, anchor, typing) {
   const id = w.term.session, items = [];
-  // a terminal running Claude (a hook has reported its state): add a rule word
-  // to the prompt and send it. The digit keys are the menu's; the bookmark row is click-only
-  if (cstate[w.id]) [20, 100, 200].forEach((n, i) => items.push({ label: 'dmb' + n, key: String(i + 1),
-    run: () => { const t = terms.get(id); if (t) t.send(' dmb' + n + '\r'); } }));
+  // a terminal running Claude (a hook has reported its state): "dmb" opens a submenu
+  // of rule words; picking one adds it to the prompt and sends it. The digit keys are
+  // the menu's; the bookmark row is click-only
+  const back = typing && terms.get(id) && terms.get(id).term;
+  const main = () => termMenu(w, anchor, typing);
+  if (cstate[w.id]) items.push({ label: 'dmb  ▸', key: 'd', keep: true, run: () =>
+    tileMenu(anchor, [{ title: 'dmb' }, ...[10, 20, 100, 200].map((n, i) => ({ label: 'dmb' + n, key: String(i + 1),
+      run: () => { const t = terms.get(id); if (t) t.send(' dmb' + n + '\r'); } }))], back, main) });
   if (profiles().length > 1) items.push({ label: () => 'Font: ' + faceName(id) + '  ↻', run: () => swapFace(id), keep: true, key: 'f' });
   items.push(markItem(w.id), { label: 'Close terminal', key: 'x', close: () => closeTerm(id) });
-  tileMenu(anchor, items, typing && terms.get(id) && terms.get(id).term);
+  tileMenu(anchor, items, back);
 }
 
 // ---- bookmarks: tiles you go back to, on 1-9 ------------------------------

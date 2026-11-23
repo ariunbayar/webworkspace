@@ -546,6 +546,6 @@ Each entry:
 
 ### Ctrl+. opens a terminal's menu while typing; dmb shortcuts
 - **Q:** How to add dmb20/100/200 to a Claude prompt without the mouse or leaving INSERT?
-- **A:** Ctrl+. is the only menu key, in NORMAL (the picked tile, or the bulk menu titled "N selected") and INSERT; plain `.` is retired. From INSERT it opens the ⋯ menu; on Claude terminals 1/2/3 add ` dmb20/100/200` and press Enter; focus stays in the terminal. Ctrl+. is not a documented Claude Code shortcut, and the page catches it first. Rejected: buttons on the terminal, Alt+digit hotkeys, shorter words in CLAUDE.md, sending via Claude's cross-session socket (arrives labelled as another session, not the user). Added 2026-11-23.
+- **A:** Ctrl+. is the only menu key, in NORMAL (the picked tile, or the bulk menu titled "N selected") and INSERT; plain `.` is retired. From INSERT it opens the ⋯ menu; on Claude terminals d opens a dmb submenu and 1/2/3/4 add ` dmb10/20/100/200` and press Enter (Ctrl+. d 3 is dmb100; Backspace goes back); focus stays in the terminal. Ctrl+. is not a documented Claude Code shortcut, and the page catches it first. Rejected: buttons on the terminal, Alt+digit hotkeys, shorter words in CLAUDE.md, sending via Claude's cross-session socket (arrives labelled as another session, not the user). Added 2026-11-23.
 - **Why:** The user uses dmb often and wants keyboard only.
 - **Status:** built
