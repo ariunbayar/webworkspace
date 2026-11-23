@@ -536,3 +536,9 @@ Each entry:
 - **A:** No: one markdown card; its text lives in a file or on the board. Both render as normal markdown (no forced line breaks) and edit as plain text. Old notes carry over. Added 2026-11-23.
 - **Why:** One kind of card, never told apart as plain text.
 - **Status:** built
+
+### A markdown card with its text in one step
+- **Q:** Can Claude put text on the bench without writing a file, in one request?
+- **A:** Yes: send note with its text; one request makes the filled card. "show it on the bench" means no file; a file only when asked to save. Added 2026-11-23.
+- **Why:** Two steps could leave an empty card if the second failed.
+- **Status:** built

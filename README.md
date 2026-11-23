@@ -146,7 +146,8 @@ runs free from 2% to 400%. "Fit" brings everything back into view.
 `n` drops a sticky note at that spot and puts you straight into it: type markdown,
 `Esc` (or `Ctrl+Space`) reads it rendered, `Enter` or a double click writes again.
 Its text is kept on the server with the other cards (`PATCH /api/links/<id>`
-with `{"text": ...}`), and the `/` filter matches it.
+with `{"text": ...}`), and the `/` filter matches it. To make a filled card with no file
+in one request: `POST /api/links` with `{"note": true, "text": "# Hi", "title": "..."}`.
 
 `y` hands the picked tile to Claude: it copies a link like
 `http://localhost:8766/api/what?ref=wl:note:<id>` to paste into any prompt.
