@@ -53,7 +53,7 @@
     <span id="bms"></span>
     <span class="keys">click pick · <kbd>↑↓←→</kbd> pan · <kbd>Enter</kbd> focus · <kbd>/</kbd> filter · <kbd>:</kbd> palette ·
       <kbd>Super+Enter</kbd> move/size · <kbd>t</kbd> terminal · <kbd>c</kbd> Claude ·
-      <kbd>Ctrl+Space</kbd> leave a terminal · <kbd>Ctrl+.</kbd> its menu · <kbd>?</kbd> all keys</span>
+      <kbd>Ctrl+Space</kbd> leave a terminal · <kbd>Ctrl+.</kbd> tile menu · <kbd>?</kbd> all keys</span>
   </div>
   <div class="pan" id="pan"><div class="canvas" id="canvas"><div id="groups"></div><div id="sticks"></div><div id="tiles"></div><div id="mark"></div></div><div id="grid"></div><div id="edges"></div><div id="loupe"><div class="lens"></div></div><canvas id="map" title="The whole surface: press or drag to go there · m keeps it shown"></canvas><div id="nomatch"></div><div id="banner"></div></div>
 <div id="corner"><span class="mode" id="mode" title="NORMAL: keys move about the surface · INSERT: typing into a terminal or document · TILE: moving and sizing (Super+Enter)"></span><span id="nsel"></span><span id="zpct" title="Zoom · tap Ctrl twice: overview ⇄ 100%"></span></div>
@@ -93,7 +93,7 @@
     <section><h3>Getting about</h3><table>
       <tr><td><kbd>↑↓←→</kbd></td><td>pan the board a quarter of the view; <kbd>Shift</kbd> three quarters</td></tr>
       <tr><td><kbd>Shift</kbd>+click</td><td>add a tile to, or take it out of, a selection of several (shown as "N selected"); <kbd>Esc</kbd> or a click on the background clears it. Dragging moves only the tile you grab</td></tr>
-      <tr><td><kbd>.</kbd></td><td>open the ⋯ menu of the picked tile; each item shows its key, Close is <kbd>x</kbd>. With several selected, <kbd>x</kbd> arms "Close N" and <kbd>x</kbd> again closes them all. <kbd>↑</kbd><kbd>↓</kbd> move a highlight within the menu, <kbd>Enter</kbd> presses it. <kbd>Esc</kbd> shuts the menu</td></tr>
+      <tr><td><kbd>Ctrl+.</kbd></td><td>open the ⋯ menu of the picked tile (several selected: one menu titled "N selected"); each item shows its key, Close is <kbd>x</kbd>. With several selected, <kbd>x</kbd> arms "Close N" and <kbd>x</kbd> again closes them all. <kbd>↑</kbd><kbd>↓</kbd> move a highlight within the menu, <kbd>Enter</kbd> presses it. <kbd>Esc</kbd> shuts the menu</td></tr>
       <tr><td><kbd>Enter</kbd> <kbd>Space</kbd></td><td>focus it: type into a terminal, open a card</td></tr>
       <tr><td><kbd>/</kbd></td><td>find: type to filter, and a list of matches opens under the box. <kbd>↑↓</kbd> or hover shows each one; <kbd>Enter</kbd> goes there (<kbd>Shift+Enter</kbd> into it), <kbd>Esc</kbd> puts the view back</td></tr>
       <tr><td><kbd>:</kbd></td><td>palette: find an action, tile or group by name; <kbd>↑↓</kbd> <kbd>Enter</kbd></td></tr>
@@ -123,7 +123,7 @@
     </table></section>
     <section><h3>In a terminal</h3><table>
       <tr><td><kbd>Ctrl+Space</kbd></td><td>hand the keyboard back to the page</td></tr>
-      <tr><td><kbd>Ctrl+.</kbd></td><td>open the <b>⋯</b> menu while typing in a terminal; on Claude terminals <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> send dmb20 / dmb100 / dmb200</td></tr>
+      <tr><td><kbd>Ctrl+.</kbd></td><td>open the <b>⋯</b> menu, also while typing in a terminal; on Claude terminals <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> send dmb20 / dmb100 / dmb200</td></tr>
       <tr><td><kbd>Shift+Enter</kbd></td><td>newline without submitting</td></tr>
       <tr><td><b>⋯</b></td><td>on a caption: its options. Close asks once more, in place: Close, then Confirm</td></tr>
       <tr><td><kbd>Ctrl+Alt+F</kbd></td><td>next font profile from ~/.Xresources (or <b>⋯</b> → Font on the terminal)</td></tr>

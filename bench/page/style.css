@@ -106,6 +106,7 @@
   .tmk { opacity:.55; font:600 11px ui-monospace,monospace }
   .tmitem.hl { background:var(--line) }
   .tmitem.danger { color:#cf222e }
+  .tmtitle { padding:4px 9px 2px; font-size:11px; color:var(--dim); cursor:default }
   .tmnums { display:flex; align-items:center; gap:2px; padding:4px 6px 4px 9px; white-space:nowrap }
   .tmnums span { margin-right:6px }
   .tmnums b { width:18px; line-height:18px; text-align:center; border-radius:4px; cursor:pointer; font-weight:600 }

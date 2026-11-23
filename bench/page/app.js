@@ -33,7 +33,7 @@ try {
 } catch {}
 
 let data = null, failures = 0, sel = null;
-// Shift+click gathers tiles: with two or more here the ⋯ menu (`.`) closes them
+// Shift+click gathers tiles: with two or more here the ⋯ menu (Ctrl+.) closes them
 // together. `sel` stays the last one touched; fewer than two is just a pick.
 const multi = new Set();
 let started = null;                        // which run of the server we are talking to
@@ -2864,6 +2864,12 @@ function tileMenu(anchor, items, back) {
   tmenu.textContent = '';
   const hot = new Map();       // a shortcut key -> its item
   items.forEach(it => {
+    if (it.title) {
+      const h = document.createElement('div');
+      h.className = 'tmtitle';
+      h.textContent = it.title;
+      return void tmenu.append(h);
+    }
     if (it.nums) {
       const row = document.createElement('div'), mine = markOf(it.nums);
       row.className = 'tmnums';
@@ -2967,18 +2973,18 @@ const cardMenu = (w, anchor) => tileMenu(anchor, [markItem(w.id),
   ...(w.link.url ? [{ label: 'Rename', key: 'r', run: () => setTimeout(() => renameCard(w)) }] : []),
   { label: 'Remove card', key: 'x', close: () => closeLink(w.id) }]);
 const closeHusk = id => { const r = ((data && data.lost) || []).find(x => x.id === id); return r && restoreTerm(r, false); };
-// `.` opens the ⋯ menu of the picked tile; with several gathered, one menu
+// Ctrl+. opens the ⋯ menu of the picked tile; with several gathered, one menu
 // holds the one thing they share: Close them all, armed by its first press.
 function openTileMenu() {
   const ids = multi.size >= 2 ? [...multi] : sel ? [sel] : [];
   const w = pickable().find(v => v.id === (multi.has(sel) ? sel : ids[ids.length - 1])), el = w && elOf(w);
-  if (!w || !el) return void toast('Click a tile first, then <kbd>.</kbd> for its options');
+  if (!w || !el) return void toast('Click a tile first, then <kbd>Ctrl+.</kbd> for its options');
   const anchor = el.querySelector('.more') || el.querySelector('.cap') || el;
   if (ids.length > 1) {
     const ws = ids.map(id => pickable().find(v => v.id === id)).filter(Boolean);
     const nT = ws.filter(v => v.term).length, nH = ws.filter(v => v.husk).length, n = ws.length;
     const note = [nT && nT + (nT > 1 ? ' terminals' : ' terminal'), nH && nH + (nH > 1 ? ' placeholders' : ' placeholder')].filter(Boolean).join(', ');
-    return tileMenu(anchor, [{ label: 'Close ' + n, key: 'x', close: () => closeMany(ws),
+    return tileMenu(anchor, [{ title: n + ' selected' }, { label: 'Close ' + n, key: 'x', close: () => closeMany(ws),
       armed: 'Close ' + n + (note ? ' (' + note + ')' : '') + '? x again' }]);
   }
   if (w.term) return termMenu(w, anchor);
@@ -3712,6 +3718,11 @@ document.addEventListener('keydown', e => {
     return toast('Click a tile first, then <kbd>Super+Enter</kbd>');
   }
   if (e.target.tagName === 'TEXTAREA') return;   // a terminal has the keyboard
+  // Ctrl+. is the one key for the ⋯ menu (in a terminal it is caught by the terminal's own handler)
+  if (e.code === 'Period' && e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey && e.target.tagName !== 'INPUT' && !e.target.isContentEditable) {
+    e.preventDefault();
+    return openTileMenu();
+  }
   const doc = e.target.closest && e.target.closest('.docwrap');
   if (doc) {                         // a document has it: it scrolls, Esc leaves
     if (e.key === 'Escape' || (e.code === 'Space' && e.ctrlKey)) { e.preventDefault(); doc.blur(); return; }
@@ -3774,7 +3785,6 @@ document.addEventListener('keydown', e => {
   // a placeholder takes no typing: Enter and Space leave it be
   if (k === 'Enter' || k === ' ') { const w = selected(); if (w && !w.husk) { e.preventDefault(); via = k === ' ' ? 'space' : 'enter'; activate(w.id); } return; }
   if (k === 'PageUp' || k === 'PageDown') { e.preventDefault(); return scrollPicked(k === 'PageUp' ? -1 : 1); }
-  if (k === '.') { e.preventDefault(); return openTileMenu(); }
   // the arrows pan the board: a quarter of the view, Shift three quarters
   const pans = { ArrowUp: [0, 1], ArrowDown: [0, -1], ArrowLeft: [1, 0], ArrowRight: [-1, 0] };
   if (pans[k]) {
@@ -3830,7 +3840,7 @@ track('open', { vw: innerWidth, vh: innerHeight, bare, zoom: Math.round(zoom * 1
 // A key the page does nothing with is counted as 'other', with no character:
 // a row of them would spell out whatever was being typed
 const PAGE_KEYS = new Set(['a', '?', ':', '/', 'Escape', 'b', 't', 'c', 'u', 'o', 'p', 'n', 'y', 'g', 'd', 'z', 'm', '1', '2', '3', '4', '5', '6', '7', '8', '9',
-  'Enter', ' ', '.', 'x', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'PageUp', 'PageDown']);
+  'Enter', ' ', 'x', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'PageUp', 'PageDown']);
 document.addEventListener('keydown', e => {
   // a box is anything that takes text: a group's name and folder are edited in
   // place (contenteditable), and a dialog's keys are its own
