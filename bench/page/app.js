@@ -1836,6 +1836,7 @@ const GH_URL = /^https:\/\/github\.com\/[^/]+\/[^/]+\/(pull|issues)\/(\d+)/;
 // title — which stands in for a bare host, or for the page's "… · GitHub" one
 function shownTitle(w) {
   const m = w.link && GH_URL.exec(w.link.url || '');
+  if (w.link && w.link.named) return w.title;      // set by hand: kept as typed
   if (!m) return w.title;
   const gh = ghOf(w), n = '#' + m[2], kind = m[1] === 'pull' ? 'PR' : 'Issue';
   const t = w.link.title || '';
@@ -2868,7 +2869,34 @@ function tileMenu(anchor, items) {
   tmenuOff = put;
 }
 const faceName = id => { const t = terms.get(id); return t && (profiles()[t.prof] || {}).name || ''; };
-const cardMenu = (w, anchor) => tileMenu(anchor, [markItem(w.id), { label: 'Remove card', key: 'x', close: () => closeLink(w.id) }]);
+// a link card's title by hand, for a page that gives none (behind a login):
+// Enter or leaving keeps it, Escape cancels, empty brings the automatic one back
+function renameCard(w) {
+  const el = tileEls.get(w.id), span = el && el.querySelector('.ttl span');
+  if (!span || !w.link.url) return;
+  const was = w.link.named ? w.link.title : '';
+  let cancel = false;
+  span.contentEditable = 'true';
+  span.focus();
+  getSelection().selectAllChildren(span);
+  span.addEventListener('blur', () => {
+    span.contentEditable = 'false';
+    const t = span.textContent.trim().slice(0, 200);
+    if (!cancel && t !== was) {
+      if (t) { w.link.title = t; w.link.named = true; }
+      else { delete w.link.named; w.link.title = cardHost(w.link.url); }
+      sendCard(w.link, { title: t });
+    }
+    render();
+  }, { once: true });
+  span.onkeydown = ev => {
+    ev.stopPropagation();
+    if (ev.key === 'Enter' || ev.key === 'Escape') { ev.preventDefault(); cancel = ev.key === 'Escape'; span.blur(); }
+  };
+}
+const cardMenu = (w, anchor) => tileMenu(anchor, [markItem(w.id),
+  ...(w.link.url ? [{ label: 'Rename', key: 'r', run: () => setTimeout(() => renameCard(w)) }] : []),
+  { label: 'Remove card', key: 'x', close: () => closeLink(w.id) }]);
 const closeHusk = id => { const r = ((data && data.lost) || []).find(x => x.id === id); return r && restoreTerm(r, false); };
 // `.` opens the ⋯ menu of the picked tile; with several gathered, one menu
 // holds the one thing they share: Close them all, armed by its first press.
@@ -3087,6 +3115,7 @@ function renderCanvas(match) {
         drag(e, win, el);
       });
       if (w.link) el.addEventListener('dblclick', e => {
+        if (w.link.url && !w.link.diff && e.target.closest('.ttl span')) return void renameCard(w);
         if (!shifted(e) && !e.target.closest('.more, .grip')) { via = 'dbl'; activate(w.id); }
       });
       // a terminal is typed into on a double click, as Enter does: the one
