@@ -484,7 +484,7 @@ Each entry:
 - **Status:** trying
 
 ### Shift+click selects several; `.` opens the menu, `x` twice closes
-- **Replaced 2026-11-23:** the menu key is now Ctrl+. (see "Ctrl+. opens a terminal's menu while typing; dmb shortcuts"); plain `.` is retired.
+- **Replaced 2026-11-23:** the menu key is now Ctrl+, (see "Ctrl+, opens a terminal's menu while typing; dmb shortcuts"); plain `.` is retired.
 - **Q:** Can several tiles be closed at once, without a bare key that closes by accident?
 - **A:** Shift+click adds a tile to, or takes it from, a selection (same ring as a pick; "N selected" shows from two). Plain click or background click or Esc clears it. `.` in NORMAL opens the ⋯ menu of the picked tile (with several: of the last added); every item shows its key and Close is `x`. With several selected the item reads "Close N"; the first `x` (or click) only arms it ("Close 3 (1 terminal)? x again"), the second closes them all by each kind's usual close path, leaves nothing picked and does not move the view, and toasts "Closed N". A drag still moves only the tile grabbed. Added 2026-11-20.
 - **Why:** A bare `x` would close tiles by accident; the second press is the confirmation, so there is no dialog. Moving the selection together was explicitly not wanted.
@@ -544,8 +544,8 @@ Each entry:
 - **Why:** Two steps could leave an empty card if the second failed.
 - **Status:** built
 
-### Ctrl+. opens a terminal's menu while typing; dmb shortcuts
+### Ctrl+, opens a terminal's menu while typing; dmb shortcuts
 - **Q:** How to add dmb20/100/200 to a Claude prompt without the mouse or leaving INSERT?
-- **A:** Ctrl+. is the only menu key, in NORMAL (the picked tile, or the bulk menu titled "N selected") and INSERT; plain `.` is retired. From INSERT it opens the ⋯ menu; on Claude terminals d opens a dmb submenu and 1/2/3/4 add ` dmb10/20/100/200` and press Enter (Ctrl+. d 3 is dmb100; Backspace goes back); focus stays in the terminal. Ctrl+. is not a documented Claude Code shortcut, and the page catches it first. Rejected: buttons on the terminal, Alt+digit hotkeys, shorter words in CLAUDE.md, sending via Claude's cross-session socket (arrives labelled as another session, not the user). Added 2026-11-23.
+- **A:** Ctrl+, is the only menu key, in NORMAL (the picked tile, or the bulk menu titled "N selected") and INSERT; plain `.` is retired. From INSERT it opens the ⋯ menu; on Claude terminals d opens a dmb submenu and 1/2/3/4 add ` dmb10/20/100/200` and press Enter (Ctrl+, d 3 is dmb100; Backspace goes back); focus stays in the terminal. Ctrl+, is not a documented Claude Code shortcut, and the page catches it first. Ctrl+, was chosen because IBus uses Ctrl+. and Ctrl+; for emoji typing (it then eats the menu's keys); Ctrl+/ was avoided because terminals turn it into Ctrl+_ (Claude Code undo). Rejected: buttons on the terminal, Alt+digit hotkeys, shorter words in CLAUDE.md, sending via Claude's cross-session socket (arrives labelled as another session, not the user). Added 2026-11-23.
 - **Why:** The user uses dmb often and wants keyboard only.
 - **Status:** built
