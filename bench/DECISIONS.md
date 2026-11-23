@@ -524,3 +524,9 @@ Each entry:
 - **A:** Yes; ↑↓ move a highlight, Enter presses it; arrows don't reach the board while the menu is open. Added 2026-11-23.
 - **Why:** They moved the board's selection, which looked like switching tiles.
 - **Status:** built
+
+### Document cards can be edited
+- **Q:** Can a markdown card be edited?
+- **A:** Yes, as plain text: double-click or Enter opens the raw file in place; leaving saves it; a file changed outside meanwhile is not overwritten. Added 2026-11-23.
+- **Why:** Fix a doc without leaving the board.
+- **Status:** built
