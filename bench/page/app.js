@@ -2982,7 +2982,16 @@ function renameCard(w) {
     if (ev.key === 'Enter' || ev.key === 'Escape') { ev.preventDefault(); cancel = ev.key === 'Escape'; span.blur(); }
   };
 }
+const copyText = async t => {
+  try { await navigator.clipboard.writeText(t); toast('Copied ' + esc(t)); }
+  catch { toast('Could not copy; select it by hand: ' + esc(t), 8000); }
+};
 const cardMenu = (w, anchor) => tileMenu(anchor, [markItem(w.id),
+  ...(w.link.path && !w.link.note && !w.link.image ? (() => {
+    const d = docs.get(w.link.path), full = (d && d.path) || w.link.path;
+    return [{ label: 'Copy path', key: 'p', run: () => copyText(full) },
+            { label: 'Copy name', key: 'n', run: () => copyText(baseName(full)) }];
+  })() : []),
   ...(w.link.url ? [{ label: 'Rename', key: 'r', run: () => setTimeout(() => renameCard(w)) }] : []),
   { label: 'Remove card', key: 'x', close: () => closeLink(w.id) }]);
 const closeHusk = id => { const r = ((data && data.lost) || []).find(x => x.id === id); return r && restoreTerm(r, false); };
@@ -3196,6 +3205,7 @@ function renderCanvas(match) {
         const win = tileEls.get(w.id).win;
         if (e.target.isContentEditable) return;      // a title being renamed is for the caret
         if (e.target.closest('.md a')) return;    // a link in a document is for following
+        if (e.target.closest('.where')) return;   // the path line is for selecting with the mouse
         // answered here for the same reason as a terminal's close button below
         if (e.target.closest('.runbtn, .rerun')) {
           e.preventDefault(); e.stopPropagation();
@@ -3229,7 +3239,7 @@ function renderCanvas(match) {
         // the drag captured the pointer, so e.target is the tile: ask what is really under it
         const hit = document.elementFromPoint(e.clientX, e.clientY) || e.target;
         if (w.link.url && !w.link.diff && hit.closest('.cap .t2')) return void renameCard(w);
-        if (hit.closest('.md a, textarea')) return;      // a link is followed; a field's double click picks a word
+        if (hit.closest('.md a, textarea, .where')) return;      // a link is followed; a field's double click picks a word
         if (!shifted(e) && !hit.closest('.more, .grip')) { via = 'dbl'; activate(w.id); }
       });
       // a terminal is typed into on a double click, as Enter does: the one
