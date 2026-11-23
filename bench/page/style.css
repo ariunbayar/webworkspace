@@ -217,6 +217,8 @@
   .md table { border-collapse:collapse } .md td, .md th { border:1px solid var(--line); padding:3px 8px }
   /* typing a markdown card shows its raw text; the textarea grows with the text
      so only the card scrolls, never a second bar inside it */
+  .docwrap .where { font:11px ui-monospace,monospace; color:var(--dim); margin:0 0 6px; white-space:nowrap;
+                    overflow:hidden; text-overflow:ellipsis; user-select:text }
   .doctxt { display:block; width:100%; min-height:100%; box-sizing:border-box; resize:none;
             border:0; outline:0; padding:0; overflow:hidden; background:transparent;
             color:var(--fg); font:13px/1.45 ui-monospace, Menlo, Consolas, monospace; white-space:pre-wrap; tab-size:4 }

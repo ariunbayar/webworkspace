@@ -542,3 +542,9 @@ Each entry:
 - **A:** Yes: send note with its text; one request makes the filled card. "show it on the bench" means no file; a file only when asked to save. Added 2026-11-23.
 - **Why:** Two steps could leave an empty card if the second failed.
 - **Status:** built
+
+### Markdown cards show where they live
+- **Q:** How to see which file a markdown card shows?
+- **A:** A small line at the top of the card: the file path (~ for home), or "on the board (no file)". Added 2026-11-23.
+- **Why:** Two cards can look alike; the user needs the location.
+- **Status:** built
