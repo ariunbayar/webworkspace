@@ -3030,7 +3030,12 @@ function termMenu(w, anchor, typing) {
     let got;
     try { got = await (await fetch('/api/shortcuts')).json(); } catch { got = { error: 'the server did not answer', items: [] }; }
     const rows = (got.items || []).map(v => ({ label: v.name, key: v.key || undefined,
-      run: () => { const t = terms.get(id); if (t) t.send(' ' + v.text + (v.send ? '\r' : '')); } }));
+      run: () => {
+        const t = terms.get(id); if (!t) return;
+        t.send(' ' + v.text);
+        // Enter goes separately: Claude Code reads a multi-char chunk containing \r as a paste (newline, no submit)
+        if (v.send) setTimeout(() => t.send('\r'), 80);
+      } }));
     const edit = { label: 'Edit shortcuts', key: 'e', run: () => {
       fetch('/api/links', { method: 'POST', body: JSON.stringify({ path: got.path || '~/.config/bench/shortcuts.md', term: id }) })
         .then(r => r.ok || toast('Could not open the shortcuts file', 3000)).catch(() => {});
