@@ -546,6 +546,12 @@ Each entry:
 
 ### Ctrl+, opens a terminal's menu while typing; dmb shortcuts
 - **Q:** How to add dmb20/100/200 to a Claude prompt without the mouse or leaving INSERT?
-- **A:** Ctrl+, is the only menu key, in NORMAL (the picked tile, or the bulk menu titled "N selected") and INSERT; plain `.` is retired. From INSERT it opens the ⋯ menu; on Claude terminals d opens a dmb submenu and 1/2/3/4 add ` dmb10/20/100/200` and press Enter (Ctrl+, d 3 is dmb100; Backspace goes back); focus stays in the terminal. Ctrl+, is not a documented Claude Code shortcut, and the page catches it first. Ctrl+, was chosen because IBus uses Ctrl+. and Ctrl+; for emoji typing (it then eats the menu's keys); Ctrl+/ was avoided because terminals turn it into Ctrl+_ (Claude Code undo). Rejected: buttons on the terminal, Alt+digit hotkeys, shorter words in CLAUDE.md, sending via Claude's cross-session socket (arrives labelled as another session, not the user). Added 2026-11-23.
+- **A:** Ctrl+, is the only menu key, in NORMAL (the picked tile, or the bulk menu titled "N selected") and INSERT; plain `.` is retired. From INSERT it opens the ⋯ menu; on Claude terminals s opens the Shortcuts submenu (the fixed dmb submenu of this entry was replaced 2026-11-23, see "Shortcuts you define, on Claude terminals"); Backspace goes back; focus stays in the terminal. Ctrl+, is not a documented Claude Code shortcut, and the page catches it first. Ctrl+, was chosen because IBus uses Ctrl+. and Ctrl+; for emoji typing (it then eats the menu's keys); Ctrl+/ was avoided because terminals turn it into Ctrl+_ (Claude Code undo). Rejected: buttons on the terminal, Alt+digit hotkeys, shorter words in CLAUDE.md, sending via Claude's cross-session socket (arrives labelled as another session, not the user). Added 2026-11-23.
 - **Why:** The user uses dmb often and wants keyboard only.
+- **Status:** built
+
+### Shortcuts you define, on Claude terminals
+- **Q:** Can the dmb shortcuts be defined on the bench instead of in Claude's instructions, and other kinds too?
+- **A:** Yes: a markdown table of Name / Key / Send / Text, shown and edited as a markdown card; Ctrl+, s lists them on Claude terminals; picking one types its full text (and presses Enter when Send is yes). Starts with dmb10/20/100/200; "Edit shortcuts" (e) puts the file beside the terminal. Added 2026-11-23.
+- **Why:** The bench types the whole instruction, so Claude needs no rule for it; the user can add their own.
 - **Status:** built

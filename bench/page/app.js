@@ -3011,14 +3011,23 @@ async function closeMany(ws) {
 }
 function termMenu(w, anchor, typing) {
   const id = w.term.session, items = [];
-  // a terminal running Claude (a hook has reported its state): "dmb" opens a submenu
-  // of rule words; picking one adds it to the prompt and sends it. The digit keys are
-  // the menu's; the bookmark row is click-only
+  // a terminal running Claude (a hook has reported its state): "Shortcuts" lists the
+  // user's text shortcuts (a markdown table the server reads fresh); picking one types
+  // its text, and presses Enter when its Send is yes. The digit keys are the menu's;
+  // the bookmark row is click-only
   const back = typing && terms.get(id) && terms.get(id).term;
   const main = () => termMenu(w, anchor, typing);
-  if (cstate[w.id]) items.push({ label: 'dmb  ▸', key: 'd', keep: true, run: () =>
-    tileMenu(anchor, [{ title: 'dmb' }, ...[10, 20, 100, 200].map((n, i) => ({ label: 'dmb' + n, key: String(i + 1),
-      run: () => { const t = terms.get(id); if (t) t.send(' dmb' + n + '\r'); } }))], back, main) });
+  if (cstate[w.id]) items.push({ label: 'Shortcuts  ▸', key: 's', keep: true, run: async () => {
+    let got;
+    try { got = await (await fetch('/api/shortcuts')).json(); } catch { got = { error: 'the server did not answer', items: [] }; }
+    const rows = (got.items || []).map(v => ({ label: v.name, key: v.key || undefined,
+      run: () => { const t = terms.get(id); if (t) t.send(' ' + v.text + (v.send ? '\r' : '')); } }));
+    const edit = { label: 'Edit shortcuts', key: 'e', run: () => {
+      fetch('/api/links', { method: 'POST', body: JSON.stringify({ path: got.path || '~/.config/bench/shortcuts.md', term: id }) })
+        .then(r => r.ok || toast('Could not open the shortcuts file', 3000)).catch(() => {});
+    } };
+    tileMenu(anchor, [{ title: 'Shortcuts' }, ...(got.error ? [{ title: 'Cannot read them: ' + got.error }] : []), ...rows, edit], back, main);
+  } });
   if (profiles().length > 1) items.push({ label: () => 'Font: ' + faceName(id) + '  ↻', run: () => swapFace(id), keep: true, key: 'f' });
   items.push(markItem(w.id), { label: 'Close terminal', key: 'x', close: () => closeTerm(id) });
   tileMenu(anchor, items, back);

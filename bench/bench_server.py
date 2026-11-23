@@ -694,6 +694,54 @@ def save_doc(lid, text, since):
         return {"error": e.strerror or "cannot write it"}, 500
 
 
+# ---- text shortcuts: the Shortcuts submenu of a Claude terminal -------------
+SHORTCUTS_FILE = os.path.expanduser("~/.config/bench/shortcuts.md")
+SHORTCUTS_DEFAULT = """Shortcuts for a terminal running Claude (Ctrl+, then s). Name is what the menu shows; Key is one character that picks it; Send yes presses Enter after typing the text; Text is typed as one line (write a pipe as \\|).
+
+| Name | Key | Send | Text |
+|---|---|---|---|
+| dmb10 | 1 | yes | Answer in plain language, under 10 words. |
+| dmb20 | 2 | yes | Answer in plain language, under 20 words. |
+| dmb100 | 3 | yes | Answer in plain language, under 100 words. |
+| dmb200 | 4 | yes | Answer in plain language, under 200 words. |
+"""
+
+
+def parse_shortcuts(text):
+    """Rows of a markdown table: Name | Key | Send | Text. Header, separator and
+    malformed rows are skipped; a repeated key keeps its first row."""
+    items, seen = [], set()
+    for line in text.splitlines():
+        line = line.strip()
+        if not (line.startswith("|") and line.endswith("|") and len(line) > 1):
+            continue
+        cells = [c.strip().replace("\\|", "|") for c in re.split(r"(?<!\\)\|", line[1:-1])]
+        if len(cells) < 4:
+            continue
+        name, key, send, body = cells[0], cells[1], cells[2], "|".join(cells[3:]) if len(cells) > 4 else cells[3]
+        if not name or not body or set(name) <= set("-: ") or name.lower() == "name":
+            continue
+        key = key[:1]
+        if key in seen:
+            key = ""
+        if key:
+            seen.add(key)
+        items.append({"name": name, "key": key, "send": send.lower() in ("yes", "y", "true"), "text": body})
+    return items
+
+
+def read_shortcuts():
+    try:
+        if not os.path.exists(SHORTCUTS_FILE):
+            os.makedirs(os.path.dirname(SHORTCUTS_FILE), exist_ok=True)
+            with open(SHORTCUTS_FILE, "w", encoding="utf-8") as f:
+                f.write(SHORTCUTS_DEFAULT)
+        with open(SHORTCUTS_FILE, encoding="utf-8", errors="replace") as f:
+            return {"path": SHORTCUTS_FILE, "items": parse_shortcuts(f.read())}
+    except OSError as e:
+        return {"path": SHORTCUTS_FILE, "items": [], "error": e.strerror or "cannot read it"}
+
+
 def read_doc(path, since=None):
     path = os.path.abspath(os.path.expanduser(path or ""))
     try:
@@ -1309,6 +1357,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(out, "application/octet-stream", cache="no-store")
         if self.path.startswith("/api/windows"):
             self._send(json.dumps(sample()))
+        elif self.path.startswith("/api/shortcuts"):
+            self._send(json.dumps(read_shortcuts()), cache="no-store")
         elif self.path.startswith("/api/file?"):
             # a page under any other name could be a site pointed here to read
             if not same_page(None, self.headers.get("Host", ""), named=True):
