@@ -1725,11 +1725,18 @@ async function leaveDoc() {
   }
 }
 
+const homeDir = p => String(p || '').replace(/^\/home\/[^/]+(?=\/|$)/, '~');
+function whereLine(w) {             // where the card's text lives: its file, or the board
+  const d = w.link.path && docs.get(w.link.path), p = homeDir((d && d.path) || w.link.path);
+  return w.link.note ? '<div class="where" title="Held on the bench, not in a file">on the board (no file)</div>'
+    : `<div class="where" title="${esc(p)}">${esc(p)}</div>`;
+}
+
 function docCard(pic, w) {
   if (docEdit && docEdit.id === w.id) {
     pic.className = 'pic card doc';
     pic.style.cssText = '';
-    pic.innerHTML = `<div class="docwrap" tabindex="-1"><textarea class="doctxt" spellcheck="false"></textarea></div>`;
+    pic.innerHTML = `<div class="docwrap" tabindex="-1">${whereLine(w)}<textarea class="doctxt" spellcheck="false"></textarea></div>`;
     const ta = pic.querySelector('.doctxt'), e = docEdit;
     ta.value = e.text;
     const fit = () => { ta.style.height = 'auto'; ta.style.height = ta.scrollHeight + 'px'; };
@@ -1760,7 +1767,7 @@ function docCard(pic, w) {
     : docs.get(w.link.path);
   pic.className = 'pic card doc';
   pic.style.cssText = '';
-  pic.innerHTML = `<div class="docwrap" tabindex="-1"><div class="md"></div></div>`;
+  pic.innerHTML = `<div class="docwrap" tabindex="-1">${whereLine(w)}<div class="md"></div></div>`;
   const body = pic.querySelector('.md');
   if (d && !d.error && !d.md) body.className = 'txtwrap';
   body.innerHTML = !d ? '<p>Reading…</p>'
